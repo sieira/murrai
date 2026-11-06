@@ -8,7 +8,10 @@ binds (AGENTS.md header).
 
 - tensor: a multi-dimensional array of numbers; everything in murrAI is one.
 - parameter: one learned number inside the model; murrAI targets 10-50M.
+- corpus: the training text; TinyStories is the corpus for phases 1-5.
 - token: one integer the model reads or predicts; text becomes tokens.
+- one-hot: a vector of zeros with a single 1 marking one token id.
+- bigram: a model whose whole memory is the previous token; our baseline.
 - tokenizer: the pair of functions turning text into tokens and back.
 - BPE: byte pair encoding; the algorithm our tokenizer learns as merges of
   frequent pairs.
@@ -23,6 +26,16 @@ binds (AGENTS.md header).
 
 - loss: one number measuring how wrong the predictions are; training
   lowers it.
+- negative log-likelihood: the loss for a language model; how unlikely
+  the real next token was under the model's distribution.
+- gradient descent: repeated small steps against each parameter's
+  gradient; the only training method we use.
+- autograd engine: code that computes every parameter's gradient for any
+  computation, automatically; micrograd builds one (phase 1).
+- smoothing: counting a 1 before a 0 so nothing is impossible by
+  construction.
+- held-out: a corpus slice kept out of training; perplexity is measured
+  there.
 - gradient: how much the loss changes if one parameter is nudged.
 - learning rate: the step size applied to parameters using their gradients.
 - epoch: one full pass over the training data.

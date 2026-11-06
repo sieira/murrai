@@ -12,8 +12,8 @@ test-one:
 	uv run pytest -k "$(SCRIPT)"
 
 lint:
-	uv run ruff check murrai tests
-	uv run ruff format --check murrai tests
+	uv run ruff check murrai tests scripts
+	uv run ruff format --check murrai tests scripts
 
 boundaries:
 	uv run lint-imports
