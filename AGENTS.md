@@ -63,7 +63,10 @@ vocabulary. Both bind. `SPEC.md` holds the phase plan and the target.
    wrong branch means abort and report. Everything lands via PR and
    squash-merges; PR titles follow Conventional Commits
    (`<type>(<scope>)!: <subject>`); a PR resolving an issue carries
-   `Fixes #N`. A PR over ~30 files splits or stops.
+   `Fixes #N`. A PR over ~30 files splits or stops. PRs are created and
+   merged only with the author's explicit approval — a PR may be pushed
+   and its review summary reported, but `gh pr merge` (or any equivalent)
+   waits for the author's go.
 
 9. **Evidence over claims.** "It works" needs evidence: a test run, a loss
    curve, a sample transcript. A subagent report is a claim; verify it
@@ -92,6 +95,8 @@ make boundaries                # import-linter layer check (ADR-0003)
 ## Definition of done
 
 - A failing test was shown before the change (red), then green.
+- Every increment ships a runnable example of the result (demo, script,
+  or command) alongside the tests.
 - `make check` passes locally; the main agent runs it once at session end.
 - Claims carry evidence: test output, loss curve, or sample transcript.
 - Domain tests run with no network and no GPU.
