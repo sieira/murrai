@@ -1,0 +1,42 @@
+[project]
+name = "murrai"
+version = "0.1.0"
+description = "A conversational LLM built and trained from scratch, on one machine, as a learning project."
+readme = "README.md"
+license = "GPL-3.0-only"
+requires-python = ">=3.14"
+dependencies = ["torch>=2.5"]
+
+[dependency-groups]
+dev = [
+    "pytest>=8",
+    "ruff>=0.8",
+    "import-linter>=2",
+]
+
+[build-system]
+requires = ["uv_build>=0.8,<1"]
+build-backend = "uv_build"
+
+[tool.uv.build-backend]
+module-root = ""
+
+[tool.ruff]
+line-length = 88
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "W"]
+
+[tool.importlinter]
+root_package = "murrai"
+
+[[tool.importlinter.contracts]]
+name = "Hexagonal layers (ADR-0002, doc/ddd/layers.md)"
+type = "layers"
+layers = [
+    "murrai.composition",
+    "murrai.presentation",
+    "murrai.adapters",
+    "murrai.application",
+    "murrai.domain",
+]
