@@ -8,14 +8,15 @@ def render_dice(prev_char, dice, rolled, top=8):
 
 
 def run_chat(session, read, write):
-    write("bigram chat: one char per turn; empty line or q quits\n")
+    write("bigram chat: one char per turn; ctrl-d or ctrl-c quits\n")
     while True:
         write("char> ")
-        line = read()
-        if line is None or not line.strip():
+        try:
+            line = read()
+        except KeyboardInterrupt:
             write("bye\n")
             return
-        if line.strip().lower() in ("q", "quit"):
+        if line is None or line == "":
             write("bye\n")
             return
         char = line.strip()[:1]
@@ -26,3 +27,6 @@ def run_chat(session, read, write):
             write(render_dice(char, session.dice(char), session.roll(char)))
         except ValueError:
             write("unknown char for this corpus\n")
+        except KeyboardInterrupt:
+            write("\nbye\n")
+            return
