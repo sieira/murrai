@@ -23,11 +23,15 @@ architecture:
      depends on domain plus ports.
    - `adapters/` — port implementations: dataset download, checkpoint
      files, and fakes for tests.
-   - `presentation/` — the chat REPL: renders state and emits intents;
-     never decides math.
+   - `presentation/` — renders state and samples; it computes no math.
+     The chat (REPL, stage picker, chat session) is a separable unit
+     inside it, `presentation/chat/`, touching the core only through the
+     `LanguageModel` port, so it could later be extracted into its own
+     project.
    - `composition/` — wires concrete adapters into ports.
-2. **Ports.** `DataSource` (training corpora) and `CheckpointStore` (model
-   persistence) start the port set; new I/O needs enter through a port.
+2. **Ports.** `DataSource` (training corpora), `LanguageModel` (the chat's
+   view of any model), and `CheckpointStore` (model persistence) start the
+   port set; new I/O needs enter through a port.
 3. **DDD subset we use:** a shared vocabulary (doc/ddd/glossary.md) binding
    identifiers across code, tests, and docs; domain invariants where they
    exist (a tokenizer's encode/decode round trip is one).
