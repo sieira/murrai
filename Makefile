@@ -1,7 +1,10 @@
-.PHONY: setup check test test-one lint boundaries bench
+.PHONY: setup check test test-one lint boundaries bench corpus
 
 setup:
 	uv sync
+
+corpus:
+	uv run python scripts/fetch_corpus.py
 
 check: lint boundaries test
 

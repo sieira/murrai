@@ -56,9 +56,11 @@ carries from bigram to transformer unchanged.
 
 The training corpus for phases 1-5 is TinyStories (decision recorded in
 this file because the choice follows SPEC phase 5 and ADR-0004; the full
-naming and licensing ADRs stay at Phase 5). A bundled slice — Aesop's
-Fables, Townsend translation, in `examples/` — drives the runs until the
-TinyStories download adapter exists.
+naming and licensing ADRs stay at Phase 5). Until the TinyStories
+download adapter exists, `make corpus` fetches a public-domain slice —
+Aesop's Fables, Townsend translation (Project Gutenberg #21) — into
+`data/corpus/`. Nothing dataset-sized is committed; no training data
+lives in the repo.
 
 ## Resources
 
