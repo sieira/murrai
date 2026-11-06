@@ -1,0 +1,56 @@
+import math
+from collections import Counter
+
+from murrai.adapters.corpus import DirTextCorpus
+from murrai.application.runs import train_neural_bigram
+from murrai.domain.bigram import Bigram
+from murrai.domain.vocabulary import Vocabulary
+
+
+def main():
+    text = DirTextCorpus("data/corpus").text()
+    train = text[: int(len(text) * 0.8)]
+    vocabulary = Vocabulary.from_text(train)
+    counted = Bigram.fit(train, vocabulary)
+
+    print("training softmax bigram through the autograd engine...")
+    result = train_neural_bigram(train, steps=2000, batch=64, seed=0, learning_rate=3.0)
+    neural = result.model
+
+    curve = result.loss_curve
+    width = max(f"{m:.2f}".__len__() for m in (min(curve), max(curve)))
+    print("\nloss curve (training steps, one every 100):")
+    for i in range(0, len(curve), 100):
+        bar = "#" * max(
+            1, int((curve[i] - min(curve)) / (max(curve) - min(curve)) * 40 + 0.5)
+        )
+        print(f"  step {i:4d}  {curve[i]:{width}.2f}  {bar}")
+    print(
+        f"\nuniform no-knowledge loss: {math.log(vocabulary.size):.3f}"
+        f"\ncounted bigram loss:       {counted.nll(train):.3f}"
+        f"\ntrained bigram loss:       {curve[-1]:.3f}"
+    )
+
+    ids = vocabulary.encode(train)
+    pairs = zip([vocabulary.size, *ids][:-1], ids)
+    prev_counts = Counter(p for p, _ in pairs)
+    distances = []
+    for prev in range(vocabulary.size):
+        if prev_counts.get(prev, 0) < 50:
+            continue
+        learned = neural.probs(prev)
+        counted_probs = counted.probs(prev).tolist()
+        distances.append(0.5 * sum(abs(a - b) for a, b in zip(learned, counted_probs)))
+    print(
+        f"\ntable distance to the counted table (rows with >= 50 uses, 0 = identical):"
+        f"\n  mean {sum(distances) / len(distances):.3f}   worst {max(distances):.3f}"
+    )
+
+    print("\nsample text, counted bigram (seed 17):")
+    print(" ", counted.generate(180, seed=17))
+    print("sample text, trained bigram (seed 17):")
+    print(" ", neural.generate(180, seed=17))
+
+
+if __name__ == "__main__":
+    main()

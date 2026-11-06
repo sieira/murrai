@@ -12,6 +12,8 @@ binds (AGENTS.md header).
 - token: one integer the model reads or predicts; text becomes tokens.
 - one-hot: a vector of zeros with a single 1 marking one token id.
 - bigram: a model whose whole memory is the previous token; our baseline.
+- neural bigram: the same memory as a bigram, but its table is trained
+  by gradient descent through the autograd engine instead of tallied.
 - tokenizer: the pair of functions turning text into tokens and back.
 - BPE: byte pair encoding; the algorithm our tokenizer learns as merges of
   frequent pairs.
