@@ -25,6 +25,9 @@ class Bigram:
     def probs(self, prev_id):
         return self._probs[prev_id]
 
+    def roll(self, prev_id, generator):
+        return int(torch.multinomial(self._probs[prev_id], 1, generator=generator))
+
     def nll(self, text):
         ids = self.vocabulary.encode(text)
         prev = [self.start, *ids[:-1]]

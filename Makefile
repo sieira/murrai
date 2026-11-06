@@ -1,7 +1,10 @@
-.PHONY: setup check test test-one lint boundaries bench corpus
+.PHONY: setup check test test-one lint boundaries bench corpus chat
 
 setup:
 	uv sync
+
+chat:
+	uv run python scripts/chat.py
 
 corpus:
 	uv run python scripts/fetch_corpus.py

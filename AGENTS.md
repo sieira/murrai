@@ -95,6 +95,8 @@ make boundaries                # import-linter layer check (ADR-0003)
 ## Definition of done
 
 - A failing test was shown before the change (red), then green.
+- Every increment ships a runnable example of the result (demo, script,
+  or command) alongside the tests.
 - `make check` passes locally; the main agent runs it once at session end.
 - Claims carry evidence: test output, loss curve, or sample transcript.
 - Domain tests run with no network and no GPU.
