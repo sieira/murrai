@@ -79,6 +79,11 @@ vocabulary. Both bind. `SPEC.md` holds the phase plan and the target.
     an explicit author-abort with a written handoff. Never leave stranded
     work.
 
+12. **Board discipline.** Work follows the "murrAI — work board"
+    (https://github.com/users/sieira/projects/2): every session's work ties
+    to an issue on the board, the issue carries a P0-P3 priority, and the
+    row is removed when the work lands.
+
 ## Commands
 
 ```bash
