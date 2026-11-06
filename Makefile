@@ -1,7 +1,10 @@
-.PHONY: setup check test test-one lint boundaries bench
+.PHONY: setup check test test-one lint boundaries bench corpus
 
 setup:
 	uv sync
+
+corpus:
+	uv run python scripts/fetch_corpus.py
 
 check: lint boundaries test
 
@@ -12,8 +15,8 @@ test-one:
 	uv run pytest -k "$(SCRIPT)"
 
 lint:
-	uv run ruff check murrai tests
-	uv run ruff format --check murrai tests
+	uv run ruff check murrai tests scripts
+	uv run ruff format --check murrai tests scripts
 
 boundaries:
 	uv run lint-imports

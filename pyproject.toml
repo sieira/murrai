@@ -27,6 +27,11 @@ line-length = 88
 [tool.ruff.lint]
 select = ["E", "F", "I", "W"]
 
+[tool.pytest.ini_options]
+filterwarnings = [
+    "ignore:Failed to initialize NumPy",
+]
+
 [tool.importlinter]
 root_package = "murrai"
 
