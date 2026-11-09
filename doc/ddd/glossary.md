@@ -48,6 +48,9 @@ binds (AGENTS.md header).
 
 ## Generating
 
+- stage: one selectable model in the chat's stage menu; it names itself,
+  describes itself, and knows how to build a session (composition wires
+  the concrete ones).
 - sample: pick the next token from the predicted distribution.
 - temperature: flattens or sharpens the distribution before sampling.
 - top-k: sample only from the k most likely tokens.
