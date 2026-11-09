@@ -29,34 +29,39 @@ def _stage(corpus, name, **kwargs):
 
 def test_counted_stage_builds_a_working_session(corpus):
     session = _stage(corpus, "counted bigram", seed=0).build()
-    session.commit("a")
+    session.extend_user("a")
     probabilities = [p for _, p in session.dice()]
     assert pytest.approx(sum(probabilities)) == 1.0
-    assert session.send() in ("a", "b")
+    assert session.rollout("a", 5)
 
 
 def test_neural_stage_builds_a_working_session(corpus):
     session = _stage(corpus, "neural bigram", seed=0, neural_steps=20).build()
-    session.commit("a")
+    session.extend_user("a")
     probabilities = [p for _, p in session.dice()]
     assert pytest.approx(sum(probabilities)) == 1.0
-    assert session.send() in ("a", "b")
+    assert session.rollout("a", 5)
 
 
 def test_mlp_stage_builds_a_working_session(corpus):
     session = _stage(corpus, "windowed mlp", seed=0, mlp_steps=20).build()
-    session.commit("a")
+    session.extend_user("a")
     probabilities = [p for _, p in session.dice()]
     assert pytest.approx(sum(probabilities)) == 1.0
-    assert session.send() in ("a", "b")
+    assert session.rollout("a", 5)
 
 
 def test_mlp_session_story_carries_generated_text(corpus):
     session = _stage(corpus, "windowed mlp", seed=0, mlp_steps=20).build()
-    session.commit("a")
-    rolled = session.send()
-    session.commit(session.text + "a")
-    assert session.text == "a" + rolled + "a"
+    session.extend_user("a")
+    session.extend_generated("b")
+    session.extend_user("a")
+    assert session.text == "aba"
+    assert session.segments() == [
+        ("a", "entered"),
+        ("b", "generated"),
+        ("a", "entered"),
+    ]
 
 
 def test_no_store_means_no_load_stage(corpus):
@@ -81,7 +86,7 @@ def test_the_load_stage_restores_the_trained_model(corpus):
     loader = [s for s in second if s.name == "load from checkpoint"][0]
     assert not loader.trains
     session = loader.build()
-    session.commit("a")
+    session.extend_user("a")
     probabilities = [p for _, p in session.dice()]
     assert pytest.approx(sum(probabilities)) == 1.0
-    assert session.send() in ("a", "b")
+    assert session.rollout("a", 5)

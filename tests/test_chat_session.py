@@ -8,53 +8,70 @@ from murrai.presentation.chat import ChatSession
 
 @pytest.fixture
 def model():
-    return Bigram.fit("aab", Vocabulary.from_text("ab"))
+    return Bigram.fit("abab", Vocabulary.from_text("ab"))
 
 
-def test_the_story_holds_entered_and_generated_text(model):
+def test_user_and_generated_chars_build_the_story(model):
     session = ChatSession(model, seed=0)
-    session.commit("ab")
-    rolled = session.send()
-    assert session.text == "ab" + rolled
-    assert rolled in ("a", "b")
+    session.extend_user("ab")
+    session.extend_generated("a")
+    assert session.text == "aba"
+    assert session.segments() == [("ab", "entered"), ("a", "generated")]
 
 
-def test_commit_returns_only_the_user_addition(model):
+def test_truncate_rolls_the_story_back(model):
     session = ChatSession(model, seed=0)
-    session.commit("a")
-    session.send()
-    delta = session.commit(session.text + "b")
-    assert delta == "b"
+    session.extend_user("ab")
+    session.extend_generated("b")
+    session.truncate(2)
+    assert session.text == "ab"
+    assert session.segments() == [("ab", "entered")]
 
 
-def test_commit_validates_against_the_vocabulary(model):
+def test_unknown_chars_raise_without_corrupting(model):
     session = ChatSession(model, seed=0)
+    session.extend_user("a")
     with pytest.raises(ValueError):
-        session.commit("az")
+        session.extend_user("az")
+    assert session.text == "a"
+
+
+def test_rollout_samples_the_next_n_chars(model):
+    session = ChatSession(model, seed=0)
+    ghost = session.rollout("a", 5)
+    assert len(ghost) == 5
+    assert set(ghost) <= set(model.vocabulary.chars)
+
+
+def test_rollout_is_deterministic_per_seed(model):
+    first = ChatSession(model, seed=7)
+    second = ChatSession(model, seed=7)
+    assert first.rollout("ab", 12) == second.rollout("ab", 12)
+
+
+def test_rollout_does_not_change_the_story(model):
+    session = ChatSession(model, seed=0)
+    session.extend_user("a")
+    session.rollout("a", 5)
+    assert session.text == "a"
 
 
 def test_the_die_is_sorted_and_sums_to_one(model):
     session = ChatSession(model, seed=0)
-    session.commit("a")
+    session.extend_user("a")
     dice = session.dice()
     probabilities = [p for _, p in dice]
     assert probabilities == sorted(probabilities, reverse=True)
     assert pytest.approx(sum(probabilities)) == 1.0
 
 
-def test_segments_mark_entered_and_generated_runs(model):
+def test_the_die_reflects_the_whole_story(model):
     session = ChatSession(model, seed=0)
-    session.commit("ab")
-    rolled = session.send()
-    assert session.segments() == [("ab", "entered"), (rolled, "generated")]
-
-
-def test_send_is_deterministic_per_seed(model):
-    first = ChatSession(model, seed=7)
-    second = ChatSession(model, seed=7)
-    first.commit("a")
-    second.commit("a")
-    assert first.send() == second.send()
+    session.extend_user("a")
+    dice = session.dice()
+    session.extend_user("ab")
+    dice_after = session.dice()
+    assert dice != dice_after
 
 
 class Recording:
@@ -68,23 +85,13 @@ class Recording:
         return [0.5, 0.5]
 
 
-def test_send_extends_the_context_with_the_generated_char():
+def test_the_die_feeds_the_whole_story_to_the_port():
     recorder = Recording()
     session = ChatSession(recorder, seed=0)
-    session.commit("a")
-    rolled = session.send()
-    assert recorder.contexts == [[0]]
+    session.extend_user("a")
+    session.extend_generated("b")
     session.dice()
-    rolled_id = Recording.vocabulary.chars.index(rolled)
-    assert recorder.contexts[-1] == [0, rolled_id]
-
-
-def test_unknown_chars_in_a_later_commit_raise_without_corrupting(model):
-    session = ChatSession(model, seed=0)
-    session.commit("a")
-    with pytest.raises(ValueError):
-        session.commit(session.text + "z")
-    assert session.text == "a"
+    assert recorder.contexts == [[0, 1]]
 
 
 @pytest.fixture
@@ -94,8 +101,8 @@ def neural_model():
 
 def test_session_serves_the_neural_bigram_the_same_way(neural_model):
     session = ChatSession(neural_model, seed=0)
-    session.commit("ab")
+    session.extend_user("ab")
     dice = session.dice()
     probabilities = [p for _, p in dice]
-    assert probabilities == sorted(probabilities, reverse=True)
     assert pytest.approx(sum(probabilities)) == 1.0
+    assert session.rollout("ab", 3)

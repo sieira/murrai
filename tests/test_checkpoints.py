@@ -102,6 +102,7 @@ def test_a_fake_store_drives_a_tiny_training_run_end_to_end():
     store.save(result.model.kind, snapshot_of(result.model))
     model = restore(store.load("windowed-mlp"))
     session = ChatSession(model, seed=0)
-    session.commit("ab")
+    session.extend_user("ab")
     dice = session.dice()
     assert pytest.approx(sum(p for _, p in dice)) == 1.0
+    assert session.rollout("ab", 5)
