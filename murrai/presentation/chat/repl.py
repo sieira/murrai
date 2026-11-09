@@ -73,18 +73,27 @@ class GhostSuggestions(AutoSuggest):
         self._chat = chat
         self._cache: dict[str, str] = {}
 
-    def get_suggestion(self, buffer, document):
-        context = document.text
+    def _roll_for(self, context: str) -> str:
         if context not in self._cache:
             roll = self._chat.suggestions(context)
             if not roll:
-                return None
+                self._cache[context] = ""
+                return ""
             for offset in range(len(roll) + 1):
                 self._cache[context + roll[:offset]] = roll[offset:]
-        return Suggestion(self._cache[context])
+        return self._cache[context]
+
+    def real_for(self, context: str) -> str:
+        return self._roll_for(context)
+
+    def get_suggestion(self, buffer, document):
+        roll = self._roll_for(document.text)
+        if not roll:
+            return None
+        return Suggestion(roll.replace("\n", "↵"))
 
 
-def _key_bindings(chat: GhostChat) -> KeyBindings:
+def _key_bindings(chat: GhostChat, suggestions: GhostSuggestions) -> KeyBindings:
     kb = KeyBindings()
 
     @kb.add("tab")
@@ -92,9 +101,12 @@ def _key_bindings(chat: GhostChat) -> KeyBindings:
         buffer = event.current_buffer
         if buffer.suggestion is None or not buffer.suggestion.text:
             return
+        real = suggestions.real_for(buffer.text)
+        if not real:
+            return
         try:
-            chat.accept(buffer.text, buffer.suggestion.text[0])
-            buffer.text = buffer.text + buffer.suggestion.text[0]
+            chat.accept(buffer.text, real[0])
+            buffer.text = buffer.text + real[0]
         except ValueError:
             return
 
@@ -102,9 +114,10 @@ def _key_bindings(chat: GhostChat) -> KeyBindings:
     def _(event):
         buffer = event.current_buffer
         if buffer.suggestion is not None and buffer.suggestion.text:
+            real = suggestions.real_for(buffer.text)
             try:
-                chat.accept_rest(buffer.text, buffer.suggestion.text)
-                buffer.text = buffer.text + buffer.suggestion.text
+                chat.accept_rest(buffer.text, real)
+                buffer.text = buffer.text + real
             except ValueError:
                 pass
         buffer.validate_and_handle()
@@ -123,6 +136,7 @@ def _intro():
 
 def run_chat(session, input=None, output=None):
     chat = GhostChat(session)
+    suggestions = GhostSuggestions(chat)
     holder = {}
 
     def _toolbar():
@@ -130,14 +144,14 @@ def run_chat(session, input=None, output=None):
         if current is None:
             return []
         buffer = current.default_buffer
-        ghost = buffer.suggestion.text if buffer.suggestion else ""
-        return chat.die_bar(buffer.text, ghost)
+        return chat.die_bar(buffer.text, suggestions.real_for(buffer.text))
 
     prompt = PromptSession(
-        auto_suggest=GhostSuggestions(chat),
-        key_bindings=_key_bindings(chat),
+        auto_suggest=suggestions,
+        key_bindings=_key_bindings(chat, suggestions),
         style=STYLE,
         bottom_toolbar=_toolbar,
+        multiline=True,
         complete_while_typing=False,
         input=input,
         output=output,

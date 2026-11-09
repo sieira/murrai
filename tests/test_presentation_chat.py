@@ -50,6 +50,35 @@ def test_the_ghost_is_deterministic_per_seed(model):
     assert one.suggestions("ab") == two.suggestions("ab")
 
 
+@pytest.fixture
+def newline_chat():
+    model = Bigram.fit("a\nb\na\nb", Vocabulary.from_text("a\nb"))
+    return GhostChat(ChatSession(model, seed=0))
+
+
+def test_the_ghost_shows_newlines_as_a_marker(newline_chat):
+    real = newline_chat.suggestions("")
+    if "\n" not in real:
+        pytest.skip("rollout held no newline")
+    suggestions = GhostSuggestions(newline_chat)
+    shown = suggestions.get_suggestion(None, Document("")).text
+    assert "\n" not in shown
+    assert "↵" in shown
+
+
+def test_the_ghost_keeps_the_real_roll_for_acceptance(newline_chat):
+    suggestions = GhostSuggestions(newline_chat)
+    shown = suggestions.get_suggestion(None, Document("")).text
+    real = suggestions.real_for("")
+    assert shown.replace("↵", "\n") == real
+
+
+def test_the_story_holds_newlines(newline_chat):
+    newline_chat.sync("a\nb")
+    assert newline_chat.session.text == "a\nb"
+    assert newline_chat.session.segments() == [("a\nb", "entered")]
+
+
 def test_sync_marks_typed_chars_as_entered(chat):
     chat.sync("ab")
     assert chat.session.text == "ab"
