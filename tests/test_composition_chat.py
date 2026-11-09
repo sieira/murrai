@@ -22,45 +22,37 @@ def test_chat_stages_list_both_models(corpus):
     assert mlp.trains
 
 
-def test_mlp_stage_builds_a_working_session(corpus):
-    (mlp,) = [
-        s for s in chat_stages(corpus, seed=0, mlp_steps=20) if s.name == "windowed mlp"
-    ]
-    session = mlp.build()
-    turn = session.turn("a")
-    probabilities = [p for _, p in turn.dice]
-    assert pytest.approx(sum(probabilities)) == 1.0
-    assert turn.rolled in ("a", "b")
-
-
-def test_mlp_session_context_reaches_the_window(corpus):
-    (mlp,) = [
-        s for s in chat_stages(corpus, seed=0, mlp_steps=20) if s.name == "windowed mlp"
-    ]
-    session = mlp.build()
-    session.turn("a")
-    session.turn("b")
-    turn = session.turn("a")
-    assert turn.history == "aba"
+def _stage(corpus, name, **kwargs):
+    return [s for s in chat_stages(corpus, **kwargs) if s.name == name][0]
 
 
 def test_counted_stage_builds_a_working_session(corpus):
-    (counted,) = [s for s in chat_stages(corpus, seed=0) if s.name == "counted bigram"]
-    session = counted.build()
-    turn = session.turn("a")
-    probabilities = [p for _, p in turn.dice]
+    session = _stage(corpus, "counted bigram", seed=0).build()
+    session.commit("a")
+    probabilities = [p for _, p in session.dice()]
     assert pytest.approx(sum(probabilities)) == 1.0
-    assert turn.rolled in ("a", "b")
+    assert session.send() in ("a", "b")
 
 
 def test_neural_stage_builds_a_working_session(corpus):
-    (neural,) = [
-        s
-        for s in chat_stages(corpus, seed=0, neural_steps=20)
-        if s.name == "neural bigram"
-    ]
-    session = neural.build()
-    turn = session.turn("a")
-    probabilities = [p for _, p in turn.dice]
+    session = _stage(corpus, "neural bigram", seed=0, neural_steps=20).build()
+    session.commit("a")
+    probabilities = [p for _, p in session.dice()]
     assert pytest.approx(sum(probabilities)) == 1.0
-    assert turn.rolled in ("a", "b")
+    assert session.send() in ("a", "b")
+
+
+def test_mlp_stage_builds_a_working_session(corpus):
+    session = _stage(corpus, "windowed mlp", seed=0, mlp_steps=20).build()
+    session.commit("a")
+    probabilities = [p for _, p in session.dice()]
+    assert pytest.approx(sum(probabilities)) == 1.0
+    assert session.send() in ("a", "b")
+
+
+def test_mlp_session_story_carries_generated_text(corpus):
+    session = _stage(corpus, "windowed mlp", seed=0, mlp_steps=20).build()
+    session.commit("a")
+    rolled = session.send()
+    session.commit(session.text + "a")
+    assert session.text == "a" + rolled + "a"

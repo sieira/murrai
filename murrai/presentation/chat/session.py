@@ -1,14 +1,7 @@
+import itertools
 import random
-from dataclasses import dataclass
 
 from murrai.application.ports import LanguageModel
-
-
-@dataclass
-class Turn:
-    dice: list[tuple[str, float]]
-    rolled: str
-    history: str
 
 
 class ChatSession:
@@ -16,21 +9,45 @@ class ChatSession:
         self._model = model
         self._rng = random.Random(seed)
         self._ids: list[int] = []
+        self._origins: list[str] = []
 
-    def turn(self, char: str) -> Turn:
-        (char_id,) = self._model.vocabulary.encode(char)
-        self._ids.append(char_id)
-        row = [float(p) for p in self._model.probs(list(self._ids))]
-        dice = sorted(
+    @property
+    def text(self) -> str:
+        return self._model.vocabulary.decode(self._ids)
+
+    def commit(self, new_text: str) -> str:
+        old = self.text
+        common = 0
+        for a, b in zip(old, new_text):
+            if a != b:
+                break
+            common += 1
+        fresh = list(self._model.vocabulary.encode(new_text[common:]))
+        self._ids = self._ids[:common] + fresh
+        self._origins = self._origins[:common] + ["entered"] * len(fresh)
+        return new_text[common:]
+
+    def dice(self):
+        return self._dice(self._ids)
+
+    def preview(self, text: str):
+        return self._dice(list(self._model.vocabulary.encode(text)))
+
+    def _dice(self, ids):
+        row = [float(p) for p in self._model.probs(list(ids))]
+        pairs = sorted(
             zip(self._model.vocabulary.chars, row),
             key=lambda entry: entry[1],
             reverse=True,
         )
-        return Turn(
-            dice=dice,
-            rolled=self._sample(row),
-            history=self._model.vocabulary.decode(self._ids),
-        )
+        return pairs
+
+    def send(self) -> str:
+        row = [float(p) for p in self._model.probs(list(self._ids))]
+        index = self._sample(row)
+        self._ids.append(index)
+        self._origins.append("generated")
+        return self._model.vocabulary.chars[index]
 
     def _sample(self, row):
         r = self._rng.random() * sum(row)
@@ -38,5 +55,17 @@ class ChatSession:
         for index, p in enumerate(row):
             so_far += p
             if r < so_far:
-                return self._model.vocabulary.chars[index]
-        return self._model.vocabulary.chars[-1]
+                return index
+        return len(row) - 1
+
+    def segments(self):
+        segments = []
+        position = 0
+        for origin, run in itertools.groupby(self._origins):
+            count = len(list(run))
+            segment = self._model.vocabulary.decode(
+                self._ids[position : position + count]
+            )
+            segments.append((segment, origin))
+            position += count
+        return segments
