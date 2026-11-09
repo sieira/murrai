@@ -1,8 +1,7 @@
 # Study: bigram language models
 
-Notes from the author-understanding session before Phase 1's bigram was
-built. Plain language stays here; the code and the glossary use the same
-words.
+The theory behind the counted bigram and the neural bridge to it. Plain
+language stays here; the code and the glossary use the same words.
 
 ## The job
 

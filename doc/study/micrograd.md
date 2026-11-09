@@ -1,7 +1,8 @@
 # Study: the autograd engine (micrograd)
 
-Notes from the author-understanding session before the engine was built.
-Plain language throughout; the code and the glossary use the same words.
+The theory behind the autograd engine: what it computes and why it can
+be trusted. Plain language throughout; the code and the glossary use the
+same words.
 
 ## The job
 
@@ -70,6 +71,34 @@ punctuation) to show the distribution was truly learned:
 counted: 0"uke ms and Oome moty wl.Hecrigesesendiferoure pr,[,...
 trained: moaMamae4(XglkIpo[" toPoqus-Dous Hahh-8ggRi!W-yU-Wgr...
 ```
+
+## The update rule
+
+One formula moves every weight, every step:
+
+    w <- w - rate * gradient(w)
+
+In code, `update()` in `neural_bigram.py`: `weight.data -= learning_rate
+* weight.grad`.
+
+- gradient(w): how much the loss moves per unit increase of w; the walk
+  computes it, summed over every path through w in the minibatch, and
+  `batch_loss` has already divided by the batch size.
+- rate: one shared boldness knob, the same for every weight.
+- minus: the gradient points uphill by definition, so descent steps the
+  other way. First-order justification: L(w + d) is approximately
+  L + d * gradient(w); choosing d = -rate * gradient(w) predicts a
+  change of -rate * gradient(w)^2, never positive, whatever the
+  weight's sign. One rule, every weight.
+
+The linear prediction holds only near the current point, so the rate
+must be small. Measured on one batch of 8 pairs: rate 0.5 lowered a
+fresh batch from 4.76 to 4.75, rate 50 to 4.48; rate 500 left the
+trained pairs at 0.17 but pushed the fresh ones to 11.47, worse than
+the blind 4.76. A giant step memorizes the sampled pairs and wrecks
+everything else. The run's decay from 3.0 to 0.1 is this table in
+motion, and the same measurement is the held-out lesson in miniature:
+the trained batch flatters any rate; only fresh pairs tell the truth.
 
 ## What it unlocks
 
