@@ -4,6 +4,7 @@ import torch
 from murrai.application.ports import LanguageModel
 from murrai.application.runs import train_neural_bigram
 from murrai.domain.bigram import Bigram
+from murrai.domain.mlp import MlpLM
 from murrai.domain.vocabulary import Vocabulary
 
 
@@ -17,8 +18,14 @@ def neural():
     return train_neural_bigram("abab", steps=5, batch=8, seed=0).model
 
 
-def test_both_models_satisfy_the_language_model_port(counted, neural):
-    for model in (counted, neural):
+@pytest.fixture
+def mlp():
+    torch.manual_seed(0)
+    return MlpLM(Vocabulary.from_text("abab"), window=2, dimension=8, hidden=16)
+
+
+def test_all_models_satisfy_the_language_model_port(counted, neural, mlp):
+    for model in (counted, neural, mlp):
         assert isinstance(model, LanguageModel)
 
 
