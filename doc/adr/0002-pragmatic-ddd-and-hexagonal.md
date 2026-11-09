@@ -30,8 +30,10 @@ architecture:
      project.
    - `composition/` — wires concrete adapters into ports.
 2. **Ports.** `DataSource` (training corpora), `LanguageModel` (the chat's
-   view of any model), and `CheckpointStore` (model persistence) start the
-   port set; new I/O needs enter through a port.
+   view of any model: a context of token ids in, a next-token distribution
+   out; a model trims the context to its own memory — a bigram reads the
+   last id, a windowed model its last k), and `CheckpointStore` (model
+   persistence) start the port set; new I/O needs enter through a port.
 3. **DDD subset we use:** a shared vocabulary (doc/ddd/glossary.md) binding
    identifiers across code, tests, and docs; domain invariants where they
    exist (a tokenizer's encode/decode round trip is one).
