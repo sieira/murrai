@@ -1,7 +1,8 @@
 # Study: the autograd engine (micrograd)
 
-Notes from the author-understanding session before the engine was built.
-Plain language throughout; the code and the glossary use the same words.
+The theory behind the autograd engine: what it computes and why it can
+be trusted. Plain language throughout; the code and the glossary use the
+same words.
 
 ## The job
 
