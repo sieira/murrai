@@ -31,8 +31,9 @@ class NeuralBigram:
                 loss = loss + -(exps[nxt] / normalizer).log()
         return loss * (1.0 / len(prev_ids))
 
-    def probs(self, prev_id):
-        row = self.logits(prev_id)
+    def probs(self, context_ids):
+        prev = context_ids[-1] if context_ids else self.start
+        row = self.logits(prev)
         exps = [_exp(logit.data) for logit in row]
         total = sum(exps)
         return [e / total for e in exps]
@@ -54,13 +55,13 @@ class NeuralBigram:
         return self.vocabulary.decode(ids)
 
     def roll(self, prev_id, rng):
-        r = rng.random() * sum(self.probs(prev_id))
+        r = rng.random() * sum(self.probs([prev_id]))
         so_far = 0.0
-        for i, p in enumerate(self.probs(prev_id)):
+        for i, p in enumerate(self.probs([prev_id])):
             so_far += p
             if r < so_far:
                 return i
-        return len(self.probs(prev_id)) - 1
+        return len(self.probs([prev_id])) - 1
 
 
 def _exp(x):

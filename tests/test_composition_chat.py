@@ -20,9 +20,10 @@ def test_chat_stages_list_both_models(corpus):
 def test_counted_stage_builds_a_working_session(corpus):
     (counted,) = [s for s in chat_stages(corpus, seed=0) if s.name == "counted bigram"]
     session = counted.build()
-    probabilities = [p for _, p in session.dice("a")]
+    turn = session.turn("a")
+    probabilities = [p for _, p in turn.dice]
     assert pytest.approx(sum(probabilities)) == 1.0
-    assert session.roll("a") in ("a", "b")
+    assert turn.rolled in ("a", "b")
 
 
 def test_neural_stage_builds_a_working_session(corpus):
@@ -32,6 +33,7 @@ def test_neural_stage_builds_a_working_session(corpus):
         if s.name == "neural bigram"
     ]
     session = neural.build()
-    probabilities = [p for _, p in session.dice("a")]
+    turn = session.turn("a")
+    probabilities = [p for _, p in turn.dice]
     assert pytest.approx(sum(probabilities)) == 1.0
-    assert session.roll("a") in ("a", "b")
+    assert turn.rolled in ("a", "b")

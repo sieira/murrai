@@ -1,3 +1,5 @@
+from types import SimpleNamespace
+
 from murrai.presentation.chat import render_dice, run_chat
 
 
@@ -6,20 +8,23 @@ class FakeSession:
         self.calls = []
         self.rolls = {"a": "b", "b": "a", "q": "a"}
 
-    def dice(self, char):
-        self.calls.append(("dice", char))
+    def turn(self, char):
+        self.calls.append(("turn", char))
         if char not in ("a", "b", "q"):
             raise ValueError("unknown char")
-        return [("a", 0.5), ("b", 0.5)]
-
-    def roll(self, char):
-        self.calls.append(("roll", char))
-        return self.rolls[char]
+        return SimpleNamespace(
+            dice=[("a", 0.5), ("b", 0.5)], rolled=self.rolls[char], history=char
+        )
 
 
 def test_render_dice_exact():
     out = render_dice("a", [("b", 0.5), ("a", 0.5)], rolled="b")
     assert out == ("after 'a', the die:\n  b 50.0%\n  a 50.0%\nrolled 'b'\n")
+
+
+def test_render_dice_shows_the_history_tail():
+    out = render_dice("abcdefghijk", [("b", 0.5), ("a", 0.5)], rolled="b")
+    assert "after '…cdefghijk', the die:" in out
 
 
 def test_render_dice_shows_only_top():
@@ -38,9 +43,8 @@ def test_run_chat_scripted():
     assert out[-1].endswith("bye\n")
     assert any("after 'a', the die:" in chunk for chunk in out)
     assert any("rolled 'b'" in chunk for chunk in out)
-    assert ("dice", "a") in session.calls
-    assert ("roll", "a") in session.calls
-    assert ("dice", "q") in session.calls
+    assert ("turn", "a") in session.calls
+    assert ("turn", "q") in session.calls
 
 
 def test_run_chat_ctrl_c_quits():
@@ -56,10 +60,7 @@ def test_run_chat_ctrl_c_quits():
 
 def test_run_chat_unknown_char_message():
     class Unknown:
-        def dice(self, char):
-            raise ValueError("unknown char")
-
-        def roll(self, char):
+        def turn(self, char):
             raise ValueError("unknown char")
 
     out = []

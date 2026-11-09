@@ -17,8 +17,14 @@ binds (AGENTS.md header).
 - tokenizer: the pair of functions turning text into tokens and back.
 - BPE: byte pair encoding; the algorithm our tokenizer learns as merges of
   frequent pairs.
-- embedding: a learned vector standing for one token.
+- embedding: a learned vector standing for one token; a lookup row
+  fetched by index, describing the token rather than predicting.
 - context window: how many previous tokens the model can see at once.
+- concatenate: lay vectors side by side into one long vector; how a
+  context window enters the network, each position keeping its own
+  weights.
+- MLP: multi-layer perceptron; a network of lookup, linear layers, and
+  an activation between them.
 - logits: raw scores, one per vocabulary entry, before normalization.
 - softmax: turns logits into probabilities that sum to one.
 - attention head: one learned pattern of "which tokens look at which".
@@ -30,6 +36,8 @@ binds (AGENTS.md header).
   lowers it.
 - negative log-likelihood: the loss for a language model; how unlikely
   the real next token was under the model's distribution.
+- cross-entropy: the torch name for negative log-likelihood; softmax
+  and the log fused into one overflow-safe function.
 - gradient descent: repeated small steps against each parameter's
   gradient; the only training method we use.
 - autograd engine: code that computes every parameter's gradient for any

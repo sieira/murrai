@@ -1,5 +1,6 @@
-def render_dice(prev_char, dice, rolled, top=8):
-    lines = [f"after '{prev_char}', the die:"]
+def render_dice(history, dice, rolled, top=8):
+    label = history if len(history) <= 10 else "…" + history[-9:]
+    lines = [f"after '{label}', the die:"]
     lines.extend(f"  {c} {p:.1%}" for c, p in dice[:top])
     if len(dice) > top:
         lines.append(f"  ... {len(dice) - top} more")
@@ -8,7 +9,7 @@ def render_dice(prev_char, dice, rolled, top=8):
 
 
 def run_chat(session, read, write):
-    write("bigram chat: one char per turn; ctrl-d or ctrl-c quits\n")
+    write("chat: one char per turn; ctrl-d or ctrl-c quits\n")
     while True:
         write("char> ")
         try:
@@ -24,7 +25,8 @@ def run_chat(session, read, write):
             write("one character per turn\n")
             continue
         try:
-            write(render_dice(char, session.dice(char), session.roll(char)))
+            turn = session.turn(char)
+            write(render_dice(turn.history, turn.dice, turn.rolled))
         except ValueError:
             write("unknown char for this corpus\n")
         except KeyboardInterrupt:
