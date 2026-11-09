@@ -7,7 +7,9 @@ from murrai.domain.vocabulary import Vocabulary
 
 
 class MlpLM(torch.nn.Module):
-    def __init__(self, vocabulary: Vocabulary, window: int, dimension: int, hidden: int):
+    def __init__(
+        self, vocabulary: Vocabulary, window: int, dimension: int, hidden: int
+    ):
         super().__init__()
         self.vocabulary = vocabulary
         self.start = vocabulary.size
@@ -42,7 +44,9 @@ class MlpLM(torch.nn.Module):
         contexts = [ids[max(0, i - self.window) : i] for i in range(len(ids))]
         targets = torch.tensor(ids, dtype=torch.long)
         with torch.no_grad():
-            losses = F.cross_entropy(self.forward_batch(contexts), targets, reduction="none")
+            losses = F.cross_entropy(
+                self.forward_batch(contexts), targets, reduction="none"
+            )
         return float(losses.mean())
 
     def perplexity(self, text: str) -> float:

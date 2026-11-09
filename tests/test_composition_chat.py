@@ -10,11 +10,38 @@ def corpus(tmp_path):
 
 
 def test_chat_stages_list_both_models(corpus):
-    stages = chat_stages(corpus, seed=0, neural_steps=20)
-    assert [stage.name for stage in stages] == ["counted bigram", "neural bigram"]
-    counted, neural = stages
+    stages = chat_stages(corpus, seed=0, neural_steps=20, mlp_steps=20)
+    assert [stage.name for stage in stages] == [
+        "counted bigram",
+        "neural bigram",
+        "windowed mlp",
+    ]
+    counted, neural, mlp = stages
     assert not counted.trains
     assert neural.trains
+    assert mlp.trains
+
+
+def test_mlp_stage_builds_a_working_session(corpus):
+    (mlp,) = [
+        s for s in chat_stages(corpus, seed=0, mlp_steps=20) if s.name == "windowed mlp"
+    ]
+    session = mlp.build()
+    turn = session.turn("a")
+    probabilities = [p for _, p in turn.dice]
+    assert pytest.approx(sum(probabilities)) == 1.0
+    assert turn.rolled in ("a", "b")
+
+
+def test_mlp_session_context_reaches_the_window(corpus):
+    (mlp,) = [
+        s for s in chat_stages(corpus, seed=0, mlp_steps=20) if s.name == "windowed mlp"
+    ]
+    session = mlp.build()
+    session.turn("a")
+    session.turn("b")
+    turn = session.turn("a")
+    assert turn.history == "aba"
 
 
 def test_counted_stage_builds_a_working_session(corpus):

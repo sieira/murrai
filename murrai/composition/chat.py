@@ -1,5 +1,5 @@
 from murrai.adapters.corpus import DirTextCorpus
-from murrai.application.runs import train_bigram, train_neural_bigram
+from murrai.application.runs import train_bigram, train_mlp_lm, train_neural_bigram
 from murrai.presentation.chat.picker import Stage
 from murrai.presentation.chat.session import ChatSession
 
@@ -20,7 +20,20 @@ def neural_chat_session_from_directory(directory, seed=0, steps=2000, batch=64):
     return ChatSession(result.model, seed)
 
 
-def chat_stages(directory, seed=0, neural_steps=2000):
+def mlp_chat_session_from_directory(directory, seed=0, steps=5000, batch=64):
+    result = train_mlp_lm(
+        DirTextCorpus(directory).text(),
+        steps=steps,
+        batch=batch,
+        seed=seed,
+        learning_rate=0.5,
+        patience=500,
+        window=4,
+    )
+    return ChatSession(result.model, seed)
+
+
+def chat_stages(directory, seed=0, neural_steps=2000, mlp_steps=5000):
     return [
         Stage(
             "counted bigram",
@@ -33,6 +46,12 @@ def chat_stages(directory, seed=0, neural_steps=2000):
             lambda: neural_chat_session_from_directory(
                 directory, seed, steps=neural_steps
             ),
+            trains=True,
+        ),
+        Stage(
+            "windowed mlp",
+            "four chars of memory through a hidden layer",
+            lambda: mlp_chat_session_from_directory(directory, seed, steps=mlp_steps),
             trains=True,
         ),
     ]
