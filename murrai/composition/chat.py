@@ -1,5 +1,4 @@
 from murrai.adapters.corpus import DirTextCorpus
-from murrai.application.checkpoints import restore, snapshot_of
 from murrai.application.runs import train_bigram, train_mlp_lm, train_neural_bigram
 from murrai.presentation.chat.picker import Stage
 from murrai.presentation.chat.session import ChatSession
@@ -25,9 +24,7 @@ def neural_chat_session_from_directory(
     return ChatSession(result.model, seed)
 
 
-def mlp_chat_session_from_directory(
-    directory, seed=0, steps=5000, batch=64, store=None
-):
+def mlp_chat_session_from_directory(directory, seed=0, steps=5000, batch=64):
     result = train_mlp_lm(
         DirTextCorpus(directory).text(),
         steps=steps,
@@ -37,18 +34,11 @@ def mlp_chat_session_from_directory(
         patience=500,
         window=4,
     )
-    if store is not None:
-        store.save(result.model.kind, snapshot_of(result.model))
     return ChatSession(result.model, seed)
 
 
-def load_checkpoint_session(store, seed=0):
-    model = restore(store.load(store.names()[-1]))
-    return ChatSession(model, seed)
-
-
-def chat_stages(directory, seed=0, neural_steps=2000, mlp_steps=5000, store=None):
-    stages = [
+def chat_stages(directory, seed=0, neural_steps=2000, mlp_steps=5000):
+    return [
         Stage(
             "counted bigram",
             "next-char odds tallied straight from the corpus",
@@ -68,6 +58,12 @@ def chat_stages(directory, seed=0, neural_steps=2000, mlp_steps=5000, store=None
             lambda: mlp_chat_session_from_directory(
                 directory, seed, steps=mlp_steps, store=store
             ),
+            trains=True,
+        ),
+        Stage(
+            "windowed mlp",
+            "four chars of memory through a hidden layer",
+            lambda: mlp_chat_session_from_directory(directory, seed, steps=mlp_steps),
             trains=True,
         ),
     ]
