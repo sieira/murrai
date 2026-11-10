@@ -1,9 +1,9 @@
 import math
 from collections import Counter
+from pathlib import Path
 
 import pytest
 
-from murrai.adapters.corpus import DirTextCorpus
 from murrai.application.runs import train_neural_bigram
 from murrai.domain.bigram import Bigram
 from murrai.domain.neural_bigram import NeuralBigram
@@ -24,7 +24,7 @@ def test_neural_bigram_batch_loss_is_the_nll_of_real_next_chars():
 
 
 def _aesop():
-    text = DirTextCorpus("data/corpus").text()
+    text = Path("data/corpus/aesop.txt").read_text()
     cut = int(len(text) * 0.8)
     return text[:cut], text[cut:]
 

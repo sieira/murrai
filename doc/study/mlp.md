@@ -86,6 +86,15 @@ memory barely matches the counted table — and then give some back at
 eight: more parameters over the same 53k characters stops paying. The
 window's worth is bounded by the corpus that feeds it.
 
+The boundary moved when the corpus did. On a 2M-char TinyStories slice
+(plus Aesop, `scripts/fetch_tinystories.py`), the same search ran again:
+window 8 with wider layers (32 dims, 256 hidden, ~100k parameters,
+10,000 steps, batch 256) beat window 4 — held-out perplexity 3.771
+against 3.903, and the largest window no longer overfits: 2M characters
+can feed eight. Held-out perplexity fell from 8.997 (Aesop only) to
+3.771. The lesson generalizes: conclusions about model size and window
+width are corpus conclusions, not laws.
+
 The learning rate decayed to zero by the end of the run (several
 plateau shrinks); late steps cost nothing but change nothing either.
 

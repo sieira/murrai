@@ -26,7 +26,7 @@ def neural_chat_session_from_directory(
 
 
 def mlp_chat_session_from_directory(
-    directory, seed=0, steps=5000, batch=64, store=None
+    directory, seed=0, steps=10000, batch=256, store=None
 ):
     result = train_mlp_lm(
         DirTextCorpus(directory).text(),
@@ -34,8 +34,10 @@ def mlp_chat_session_from_directory(
         batch=batch,
         seed=seed,
         learning_rate=0.5,
-        patience=500,
-        window=4,
+        patience=1000,
+        window=8,
+        dimension=32,
+        hidden=256,
     )
     if store is not None:
         store.save(result.model.kind, snapshot_of(result.model))
@@ -47,7 +49,7 @@ def load_checkpoint_session(store, seed=0):
     return ChatSession(model, seed)
 
 
-def chat_stages(directory, seed=0, neural_steps=2000, mlp_steps=5000, store=None):
+def chat_stages(directory, seed=0, neural_steps=2000, mlp_steps=10000, store=None):
     stages = [
         Stage(
             "counted bigram",
@@ -64,7 +66,7 @@ def chat_stages(directory, seed=0, neural_steps=2000, mlp_steps=5000, store=None
         ),
         Stage(
             "windowed mlp",
-            "four chars of memory through a hidden layer",
+            "eight chars of memory through a hidden layer",
             lambda: mlp_chat_session_from_directory(
                 directory, seed, steps=mlp_steps, store=store
             ),
