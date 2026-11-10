@@ -1,5 +1,6 @@
 import pytest
 
+from murrai.adapters.checkpoint import InMemoryCheckpointStore
 from murrai.composition.chat import chat_stages
 
 

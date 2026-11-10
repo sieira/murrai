@@ -1,5 +1,6 @@
 from typing import Protocol, runtime_checkable
 
+from murrai.application.checkpoints import Snapshot
 from murrai.domain.vocabulary import Vocabulary
 
 

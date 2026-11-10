@@ -5,6 +5,8 @@ from murrai.domain.autograd import Value
 
 
 class NeuralBigram:
+    kind = "neural-bigram"
+
     def __init__(self, vocabulary):
         self.vocabulary = vocabulary
         self.start = vocabulary.size
@@ -15,6 +17,17 @@ class NeuralBigram:
 
     def logits(self, prev_id):
         return self.weights[prev_id]
+
+    def state(self):
+        return {"weights": [[value.data for value in row] for row in self.weights]}
+
+    @classmethod
+    def from_state(cls, vocabulary, state):
+        model = cls(vocabulary)
+        for row, values in zip(model.weights, state["weights"]):
+            for value, data in zip(row, values):
+                value.data = data
+        return model
 
     def batch_loss(self, prev_ids, next_ids):
         loss = Value(0.0)

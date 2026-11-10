@@ -4,6 +4,8 @@ import torch
 
 
 class Bigram:
+    kind = "counted-bigram"
+
     def __init__(self, vocabulary, counts):
         self.vocabulary = vocabulary
         self.start = vocabulary.size
