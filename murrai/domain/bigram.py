@@ -22,8 +22,8 @@ class Bigram:
     def _start(vocabulary):
         return vocabulary.size
 
-    def probs(self, prev_id):
-        return self._probs[prev_id]
+    def probs(self, context_ids):
+        return self._probs[context_ids[-1] if context_ids else self.start]
 
     def roll(self, prev_id, generator):
         return int(torch.multinomial(self._probs[prev_id], 1, generator=generator))

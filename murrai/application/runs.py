@@ -1,8 +1,12 @@
 import random
 from dataclasses import dataclass
 
+import torch
+import torch.nn.functional as F
+
 from murrai.application.ports import DataSource
 from murrai.domain.bigram import Bigram
+from murrai.domain.mlp import MlpLM
 from murrai.domain.neural_bigram import NeuralBigram
 from murrai.domain.vocabulary import Vocabulary
 
@@ -58,3 +62,77 @@ def train_neural_bigram(
         model.update(rate)
         loss_curve.append(loss.data)
     return NeuralTrainingResult(model=model, loss_curve=loss_curve)
+
+
+def plateau_rate(since_best, rate, patience, shrink):
+    if since_best >= patience:
+        return rate * shrink
+    return rate
+
+
+@dataclass
+class MlpTrainingResult:
+    model: MlpLM
+    loss_curve: list[float]
+    rate_curve: list[float]
+    train_chars: int
+    held_out_chars: int
+    held_out_perplexity: float
+
+
+def train_mlp_lm(
+    text,
+    steps,
+    batch,
+    seed,
+    window=4,
+    dimension=16,
+    hidden=128,
+    learning_rate=1.0,
+    patience=200,
+    shrink=0.5,
+    holdout=0.1,
+):
+    cut = int(len(text) * (1 - holdout))
+    train, held_out = text[:cut], text[cut:]
+
+    vocabulary = Vocabulary.from_text(text)
+    torch.manual_seed(seed)
+    model = MlpLM(vocabulary, window=window, dimension=dimension, hidden=hidden)
+    optimizer = torch.optim.SGD(model.parameters(), lr=learning_rate)
+
+    ids = [model.start, *vocabulary.encode(train)]
+    contexts = [ids[max(0, i - window) : i] for i in range(1, len(ids))]
+    targets = ids[1:]
+    pairs = len(targets)
+
+    rng = random.Random(seed)
+    loss_curve, rate_curve = [], []
+    best = float("inf")
+    best_step = 0
+    rate = learning_rate
+    for step in range(steps):
+        chosen = [rng.randrange(pairs) for _ in range(batch)]
+        batch_targets = torch.tensor([targets[i] for i in chosen], dtype=torch.long)
+        loss = F.cross_entropy(
+            model.forward_batch([contexts[i] for i in chosen]), batch_targets
+        )
+        loss.backward()
+        optimizer.step()
+        optimizer.zero_grad()
+        value = float(loss.detach())
+        best_step = step if value < best else best_step
+        best = min(best, value)
+        rate = plateau_rate(step - best_step, rate, patience, shrink)
+        optimizer.param_groups[0]["lr"] = rate
+        loss_curve.append(value)
+        rate_curve.append(rate)
+
+    return MlpTrainingResult(
+        model=model,
+        loss_curve=loss_curve,
+        rate_curve=rate_curve,
+        train_chars=len(train),
+        held_out_chars=len(held_out),
+        held_out_perplexity=model.perplexity(held_out),
+    )

@@ -17,8 +17,14 @@ binds (AGENTS.md header).
 - tokenizer: the pair of functions turning text into tokens and back.
 - BPE: byte pair encoding; the algorithm our tokenizer learns as merges of
   frequent pairs.
-- embedding: a learned vector standing for one token.
+- embedding: a learned vector standing for one token; a lookup row
+  fetched by index, describing the token rather than predicting.
 - context window: how many previous tokens the model can see at once.
+- concatenate: lay vectors side by side into one long vector; how a
+  context window enters the network, each position keeping its own
+  weights.
+- MLP: multi-layer perceptron; a network of lookup, linear layers, and
+  an activation between them.
 - logits: raw scores, one per vocabulary entry, before normalization.
 - softmax: turns logits into probabilities that sum to one.
 - attention head: one learned pattern of "which tokens look at which".
@@ -30,6 +36,8 @@ binds (AGENTS.md header).
   lowers it.
 - negative log-likelihood: the loss for a language model; how unlikely
   the real next token was under the model's distribution.
+- cross-entropy: the torch name for negative log-likelihood; softmax
+  and the log fused into one overflow-safe function.
 - gradient descent: repeated small steps against each parameter's
   gradient; the only training method we use.
 - autograd engine: code that computes every parameter's gradient for any
@@ -51,6 +59,10 @@ binds (AGENTS.md header).
 - stage: one selectable model in the chat's stage menu; it names itself,
   describes itself, and knows how to build a session (composition wires
   the concrete ones).
+- story: the chat's shared text; the characters the user typed plus the
+  characters the model generated, in order.
+- turn: one exchange; the user types their part and presses Enter to
+  hand over, the model answers by sampling one character.
 - sample: pick the next token from the predicted distribution.
 - temperature: flattens or sharpens the distribution before sampling.
 - top-k: sample only from the k most likely tokens.

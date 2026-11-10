@@ -13,7 +13,7 @@ from murrai.domain.vocabulary import Vocabulary
 def test_neural_bigram_fresh_predicts_uniform_over_next_chars():
     vocabulary = Vocabulary.from_text("abab")
     model = NeuralBigram(vocabulary)
-    assert model.probs(0) == pytest.approx([0.5, 0.5])
+    assert model.probs([0]) == pytest.approx([0.5, 0.5])
 
 
 def test_neural_bigram_batch_loss_is_the_nll_of_real_next_chars():
@@ -53,8 +53,8 @@ def test_neural_bigram_matches_the_counted_table():
     for prev in range(vocabulary.size):
         if prev_counts.get(prev, 0) < 50:
             continue
-        counted_probs = counted.probs(prev).tolist()
-        learned = neural.probs(prev)
+        counted_probs = counted.probs([prev]).tolist()
+        learned = neural.probs([prev])
         distance = 0.5 * sum(abs(a - b) for a, b in zip(learned, counted_probs))
         distances.append(distance)
 
