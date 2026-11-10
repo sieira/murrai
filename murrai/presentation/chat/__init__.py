@@ -4,14 +4,14 @@ from murrai.presentation.chat.picker import (
     resolve_stage,
     select_stage,
 )
-from murrai.presentation.chat.repl import run_chat
+from murrai.presentation.chat.repl import interactive_chat
 from murrai.presentation.chat.session import ChatSession
 
 __all__ = [
     "ChatSession",
     "Stage",
     "filter_stages",
+    "interactive_chat",
     "resolve_stage",
-    "run_chat",
     "select_stage",
 ]

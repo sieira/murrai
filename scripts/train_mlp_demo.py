@@ -6,15 +6,7 @@ from murrai.application.runs import train_mlp_lm
 directory = sys.argv[1]
 text = DirTextCorpus(directory).text()
 result = train_mlp_lm(
-    text,
-    steps=10000,
-    batch=256,
-    seed=0,
-    learning_rate=0.5,
-    patience=1000,
-    window=8,
-    dimension=32,
-    hidden=256,
+    text, steps=5000, batch=64, seed=0, learning_rate=0.5, patience=500, window=4
 )
 
 print(f"train chars: {result.train_chars}")
