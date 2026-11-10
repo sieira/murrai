@@ -1,6 +1,3 @@
-import pytest
-from prompt_toolkit.auto_suggest import Suggestion
-from prompt_toolkit.document import Document
 from prompt_toolkit.input.defaults import create_pipe_input
 from prompt_toolkit.output import DummyOutput
 
@@ -8,138 +5,149 @@ from murrai.domain.bigram import Bigram
 from murrai.domain.vocabulary import Vocabulary
 from murrai.presentation.chat import ChatSession
 from murrai.presentation.chat.repl import (
-    STYLE,
-    GhostChat,
-    GhostSuggestions,
+    die_fragments,
+    interactive_chat,
     plain_text,
     run_chat,
 )
 
 
-@pytest.fixture
-def model():
-    return Bigram.fit("abab", Vocabulary.from_text("ab"))
+class Collector:
+    def __init__(self):
+        self.chunks = []
+
+    def __call__(self, fragments):
+        self.chunks.append(plain_text(fragments))
+
+    def last(self):
+        return self.chunks[-1]
+
+    def any(self, needle):
+        return any(needle in chunk for chunk in self.chunks)
 
 
-@pytest.fixture
-def chat(model):
-    return GhostChat(ChatSession(model, seed=0))
+class FakeSession:
+    def __init__(self):
+        self.calls = []
+        self._text = ""
+        self.roll = "e"
+
+    @property
+    def text(self):
+        return self._text
+
+    def commit(self, new_text):
+        self.calls.append(("commit", new_text))
+        if "z" in new_text:
+            raise ValueError("unknown char")
+        delta = new_text[len(self._text) :]
+        self._text = new_text
+        return delta
+
+    def dice(self):
+        self.calls.append(("dice",))
+        return [("e", 0.12), ("t", 0.09), ("o", 0.08)]
+
+    def send(self):
+        self.calls.append(("send",))
+        self._text += self.roll
+        return self.roll
 
 
-def test_the_ghost_is_a_twenty_char_rollout(chat):
-    suggestion = GhostSuggestions(chat).get_suggestion(None, Document("a"))
-    assert isinstance(suggestion, Suggestion)
-    assert len(suggestion.text) == 20
+def test_die_fragments_show_the_split():
+    fragments = die_fragments([("e", 0.12), ("t", 0.09), ("o", 0.08)], rolled="e")
+    text = plain_text(fragments)
+    assert "e  12.0%" in text
+    assert "t   9.0%" in text
+    assert "→ e" in text
 
 
-def test_the_ghost_is_empty_on_unknown_chars(chat):
-    suggestion = GhostSuggestions(chat).get_suggestion(None, Document("az"))
-    assert suggestion is None
+def test_die_fragments_mark_the_rolled_row():
+    fragments = die_fragments([("e", 0.12), ("t", 0.09)], rolled="e")
+    styles = [style for style, _ in fragments]
+    assert "class:die-hit" in styles
+    assert "class:rolled" in styles
 
 
-def test_the_ghost_advances_after_an_accept_instead_of_rerolling(chat):
-    suggestions = GhostSuggestions(chat)
-    first = suggestions.get_suggestion(None, Document("a")).text
-    after_one = suggestions.get_suggestion(None, Document("a" + first[0])).text
-    assert after_one == first[1:]
+def test_die_fragments_without_a_roll_preview():
+    fragments = die_fragments([("e", 0.12), ("t", 0.09)], rolled=None)
+    assert "class:rolled" not in [style for style, _ in fragments]
 
 
-def test_the_ghost_is_deterministic_per_seed(model):
-    one = GhostChat(ChatSession(model, seed=3))
-    two = GhostChat(ChatSession(model, seed=3))
-    assert one.suggestions("ab") == two.suggestions("ab")
+def test_die_fragments_show_the_tail_count():
+    ten = [(chr(97 + i), 0.1) for i in range(10)]
+    text = plain_text(die_fragments(ten, rolled=None))
+    assert "... 2 more" in text
 
 
-@pytest.fixture
-def newline_chat():
-    model = Bigram.fit("a\nb\na\nb", Vocabulary.from_text("a\nb"))
-    return GhostChat(ChatSession(model, seed=0))
+def test_run_chat_scripted():
+    session = FakeSession()
+    out = Collector()
+    lines = iter(["Cr", None])
+    run_chat(session, lambda story: next(lines), out)
+    assert out.last().endswith("bye\n")
+    assert ("commit", "Cr") in session.calls
+    assert ("send",) in session.calls
+    assert out.any("e  12.0%")
+    assert out.any("→ e")
 
 
-def test_the_ghost_shows_newlines_as_a_marker(newline_chat):
-    real = newline_chat.suggestions("")
-    if "\n" not in real:
-        pytest.skip("rollout held no newline")
-    suggestions = GhostSuggestions(newline_chat)
-    shown = suggestions.get_suggestion(None, Document("")).text
-    assert "\n" not in shown
-    assert "↵" in shown
+def test_run_chat_prefills_the_next_prompt_with_the_story():
+    session = FakeSession()
+    out = Collector()
+    received = []
+    lines = iter(["Cr", None])
+
+    def read(story):
+        received.append(story)
+        return next(lines)
+
+    run_chat(session, read, out)
+    assert received == ["", "Cre"]
 
 
-def test_the_ghost_keeps_the_real_roll_for_acceptance(newline_chat):
-    suggestions = GhostSuggestions(newline_chat)
-    shown = suggestions.get_suggestion(None, Document("")).text
-    real = suggestions.real_for("")
-    assert shown.replace("↵", "\n") == real
+def test_run_chat_empty_buffer_clears_the_story_and_rerolls():
+    session = FakeSession()
+    out = Collector()
+    lines = iter(["a", "", None])
+    run_chat(session, lambda story: next(lines), out)
+    assert out.last().endswith("bye\n")
+    assert session.text == session.roll
 
 
-def test_the_story_holds_newlines(newline_chat):
-    newline_chat.sync("a\nb")
-    assert newline_chat.session.text == "a\nb"
-    assert newline_chat.session.segments() == [("a\nb", "entered")]
+def test_run_chat_ctrl_c_quits():
+    session = FakeSession()
+    out = Collector()
+
+    def read(story):
+        raise KeyboardInterrupt
+
+    run_chat(session, read, out)
+    assert out.last().endswith("bye\n")
 
 
-def test_sync_marks_typed_chars_as_entered(chat):
-    chat.sync("ab")
-    assert chat.session.text == "ab"
-    assert chat.session.segments() == [("ab", "entered")]
+def test_run_chat_unknown_char_message():
+    session = FakeSession()
+    out = Collector()
+    lines = iter(["z", None])
+    run_chat(session, lambda story: next(lines), out)
+    assert out.any("unknown")
+    assert session.text == ""
 
 
-def test_sync_survives_a_deletion(chat):
-    chat.sync("ab")
-    chat.sync("a")
-    assert chat.session.text == "a"
-    assert chat.session.segments() == [("a", "entered")]
+def test_run_chat_eof_read_returns_none():
+    session = FakeSession()
+    out = Collector()
+    run_chat(session, lambda story: None, out)
+    assert out.last().endswith("bye\n")
 
 
-def test_accept_marks_the_char_as_generated(chat):
-    chat.sync("a")
-    chat.accept("a", "b")
-    assert chat.session.text == "ab"
-    assert chat.session.segments() == [("a", "entered"), ("b", "generated")]
-
-
-def test_accept_rest_lands_the_whole_suggestion(chat):
-    ghost = chat.suggestions("a")
-    chat.sync("a")
-    chat.accept_rest("a", ghost)
-    assert chat.session.text == "a" + ghost
-    assert chat.session.segments()[-1] == (ghost, "generated")
-
-
-def test_the_style_leaves_the_terminal_background_alone():
-    assert any(
-        name == "bottom-toolbar" and "noreverse" in rule
-        for name, rule in STYLE.style_rules
-    )
-
-
-def test_the_die_bar_marks_what_tab_will_accept(chat):
-    ghost = chat.suggestions("a")
-    chat.sync("a")
-    bar = chat.die_bar("a", ghost)
-    text = plain_text(bar)
-    assert chat.session.text
-    assert "»" in text
-    assert "%" in text
-
-
-def test_the_die_bar_is_empty_on_unknown_chars(chat):
-    assert plain_text(chat.die_bar("az")) == ""
-
-
-def test_run_chat_types_and_returns_the_story(chat):
+def test_the_real_prompt_reader_scripts_end_to_end():
+    model = Bigram.fit("abab", Vocabulary.from_text("ab"))
+    session = ChatSession(model, seed=0)
     with create_pipe_input() as pipe:
         pipe.send_text("ab\r")
         pipe.close()
-        run_chat(chat.session, input=pipe, output=DummyOutput())
-    assert chat.session.text == "ab"
-    assert chat.session.segments() == [("ab", "entered")]
-
-
-def test_run_chat_ctrl_c_quits(chat):
-    with create_pipe_input() as pipe:
-        pipe.send_text("a\x03")
-        pipe.close()
-        run_chat(chat.session, input=pipe, output=DummyOutput())
-    assert chat.session.text == ""
+        interactive_chat(session, input=pipe, output=DummyOutput())
+    assert session.text.startswith("ab")
+    assert len(session.text) >= 3

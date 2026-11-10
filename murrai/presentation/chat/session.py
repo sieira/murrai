@@ -15,20 +15,17 @@ class ChatSession:
     def text(self) -> str:
         return self._model.vocabulary.decode(self._ids)
 
-    def truncate(self, keep: int) -> None:
-        self._ids = self._ids[:keep]
-        self._origins = self._origins[:keep]
-
-    def extend_user(self, chars: str) -> None:
-        self._extend(chars, "entered")
-
-    def extend_generated(self, chars: str) -> None:
-        self._extend(chars, "generated")
-
-    def _extend(self, chars: str, origin: str) -> None:
-        fresh = list(self._model.vocabulary.encode(chars))
-        self._ids.extend(fresh)
-        self._origins.extend([origin] * len(fresh))
+    def commit(self, new_text: str) -> str:
+        old = self.text
+        common = 0
+        for a, b in zip(old, new_text):
+            if a != b:
+                break
+            common += 1
+        fresh = list(self._model.vocabulary.encode(new_text[common:]))
+        self._ids = self._ids[:common] + fresh
+        self._origins = self._origins[:common] + ["entered"] * len(fresh)
+        return new_text[common:]
 
     def dice(self):
         return self._dice(self._ids)
@@ -45,15 +42,12 @@ class ChatSession:
         )
         return pairs
 
-    def rollout(self, text: str, n: int) -> str:
-        ids = list(self._model.vocabulary.encode(text))
-        chars = []
-        for _ in range(n):
-            row = [float(p) for p in self._model.probs(list(ids))]
-            index = self._sample(row)
-            ids.append(index)
-            chars.append(self._model.vocabulary.chars[index])
-        return "".join(chars)
+    def send(self) -> str:
+        row = [float(p) for p in self._model.probs(list(self._ids))]
+        index = self._sample(row)
+        self._ids.append(index)
+        self._origins.append("generated")
+        return self._model.vocabulary.chars[index]
 
     def _sample(self, row):
         r = self._rng.random() * sum(row)

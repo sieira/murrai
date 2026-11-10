@@ -24,13 +24,6 @@ class Bigram:
     def _start(vocabulary):
         return vocabulary.size
 
-    def state(self):
-        return {"probs": self._probs}
-
-    @classmethod
-    def from_state(cls, vocabulary, state):
-        return cls(vocabulary, state["probs"])
-
     def probs(self, context_ids):
         return self._probs[context_ids[-1] if context_ids else self.start]
 
