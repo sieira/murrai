@@ -7,6 +7,7 @@ from murrai.application.runs import train_mlp_lm, train_neural_bigram
 from murrai.domain.bigram import Bigram
 from murrai.domain.mlp import MlpLM
 from murrai.domain.neural_bigram import NeuralBigram
+from murrai.domain.transformer import TransformerLM
 from murrai.domain.vocabulary import Vocabulary
 from murrai.presentation.chat import ChatSession
 
@@ -24,6 +25,14 @@ def neural():
 @pytest.fixture
 def mlp():
     return train_mlp_lm("abab" * 20, steps=5, batch=8, seed=0).model
+
+
+@pytest.fixture
+def transformer():
+    torch.manual_seed(0)
+    return TransformerLM(
+        Vocabulary.from_text("ababab"), depth=2, dimension=8, max_time=4
+    )
 
 
 def test_the_counted_bigram_round_trips_through_its_state(counted):
@@ -45,19 +54,25 @@ def test_the_mlp_round_trips_through_its_state(mlp):
     torch.testing.assert_close(rebuilt.probs([0, 1]), mlp.probs([0, 1]))
 
 
-def test_a_snapshot_carries_kind_chars_and_state(counted, neural, mlp):
-    for model in (counted, neural, mlp):
+def test_the_transformer_round_trips_through_its_state(transformer):
+    vocabulary = Vocabulary(transformer.vocabulary.chars)
+    rebuilt = TransformerLM.from_state(vocabulary, transformer.state())
+    torch.testing.assert_close(rebuilt.probs([0, 1]), transformer.probs([0, 1]))
+
+
+def test_a_snapshot_carries_kind_chars_and_state(counted, neural, mlp, transformer):
+    for model in (counted, neural, mlp, transformer):
         snapshot = snapshot_of(model)
         assert snapshot.kind == model.kind
         assert snapshot.chars == model.vocabulary.chars
         assert snapshot.state
 
 
-def test_restore_rebuilds_each_model(counted, neural, mlp):
-    for model in (counted, neural, mlp):
+def test_restore_rebuilds_each_model(counted, neural, mlp, transformer):
+    for model in (counted, neural, mlp, transformer):
         rebuilt = restore(snapshot_of(model))
         assert rebuilt.kind == model.kind
-        ids = [0, 1] if isinstance(model, MlpLM) else [0]
+        ids = [] if isinstance(model, (Bigram, NeuralBigram)) else [0, 1]
         original = model.probs(ids)
         after = rebuilt.probs(ids)
         assert torch.allclose(torch.as_tensor(after), torch.as_tensor(original))

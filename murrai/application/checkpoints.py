@@ -3,6 +3,7 @@ from dataclasses import dataclass
 from murrai.domain.bigram import Bigram
 from murrai.domain.mlp import MlpLM
 from murrai.domain.neural_bigram import NeuralBigram
+from murrai.domain.transformer import TransformerLM
 from murrai.domain.vocabulary import Vocabulary
 
 
@@ -18,7 +19,7 @@ def snapshot_of(model):
 
 
 def restore(snapshot: Snapshot):
-    for cls in (Bigram, NeuralBigram, MlpLM):
+    for cls in (Bigram, NeuralBigram, MlpLM, TransformerLM):
         if cls.kind == snapshot.kind:
             return cls.from_state(Vocabulary(snapshot.chars), snapshot.state)
     raise ValueError(f"unknown checkpoint kind {snapshot.kind!r}")
