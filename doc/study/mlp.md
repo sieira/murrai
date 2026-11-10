@@ -64,34 +64,35 @@ exponentiating, the cap the `_exp` helper did by hand.
 - `murrai/application/runs.py`: `train_mlp_lm` (minibatch cross-entropy
   over sliding windows) and `plateau_rate` — when the loss stalls for
   `patience` steps, the learning rate shrinks.
-- `murrai/composition/chat.py`: the "windowed mlp" stage, k=4.
+- `scripts/fetch_tinystories.py`: the 2M-char TinyStories slice that
+  joins Aesop in `data/corpus/`.
+- `murrai/composition/chat.py`: the "windowed mlp" stage, k=8.
 - `scripts/train_mlp_demo.py`: the evidence runner.
 
-## Evidence (Aesop, 52,746 train chars, 5,861 held out)
+## Evidence (Aesop + TinyStories, 2,061,713 chars)
 
-The counted-bigram baseline on the same split: held-out perplexity
-12.866. The windowed MLP (window 4, 16 dims, hidden 128, 5,000 steps,
-batch 64, rate 0.5 with plateau shrink, seed 0): **8.997** — a 30%
-reduction, and the gate for the phase. Train loss fell 4.764 -> 1.577.
+Config: window 8, 32 dims, 256 hidden (~100k parameters), 10,000 steps,
+batch 256, rate 0.5 with plateau shrink, seed 0. Train loss fell 4.863
+-> 1.376; held-out perplexity **3.771**, against the counted-bigram
+baseline of 10.121 on the same split.
 
 Context-window ablation (same config, one knob turned; held-out
 perplexity):
 
-| window | 1      | 2      | 4     | 8     |
-|--------|--------|--------|-------|-------|
-| held-out perplexity | 13.383 | 10.174 | **8.997** | 9.859 |
+| window | 1      | 2     | 4     | 8     |
+|--------|--------|-------|-------|-------|
+| held-out perplexity | 10.497 | 6.270 | 3.903 | **3.771** |
 
-Wider windows buy real accuracy up to four characters — one char of
-memory barely matches the counted table — and then give some back at
-eight: more parameters over the same 53k characters stops paying. The
-window's worth is bounded by the corpus that feeds it.
+One char of memory through a network loses to the counted table;
+accuracy climbs with every widening, and on 2M characters the widest
+window wins. The window's worth is bounded by the corpus that feeds
+it — a small corpus cannot pay for a large memory.
 
-The learning rate decayed to zero by the end of the run (several
-plateau shrinks); late steps cost nothing but change nothing either.
+The ghosted continuation of the author's prompt (seed 0 rollout, 30
+chars):
 
-Sample at seed 17 reads like roughed-up English next to the bigram's
-character salad — word shapes, sentence starts, punctuation habits:
-
+```
+Hello, my name is Luis and I t | hought it was little girl name
 ```
 , Mouk to the Ass
 offer pur shad. The Croved to eingustson hive moul

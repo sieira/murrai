@@ -7,6 +7,8 @@ from murrai.domain.vocabulary import Vocabulary
 
 
 class MlpLM(torch.nn.Module):
+    kind = "windowed-mlp"
+
     def __init__(
         self, vocabulary: Vocabulary, window: int, dimension: int, hidden: int
     ):
@@ -17,6 +19,25 @@ class MlpLM(torch.nn.Module):
         self.embed = torch.nn.Embedding(vocabulary.size + 1, dimension)
         self.input = torch.nn.Linear(window * dimension, hidden)
         self.output = torch.nn.Linear(hidden, vocabulary.size)
+
+    def state(self):
+        return {
+            "window": self.window,
+            "dimension": self.embed.embedding_dim,
+            "hidden": self.input.out_features,
+            "parameters": self.state_dict(),
+        }
+
+    @classmethod
+    def from_state(cls, vocabulary, state):
+        model = cls(
+            vocabulary,
+            window=state["window"],
+            dimension=state["dimension"],
+            hidden=state["hidden"],
+        )
+        model.load_state_dict(state["parameters"])
+        return model
 
     def _pack(self, contexts: list[list[int]]) -> torch.Tensor:
         rows = []

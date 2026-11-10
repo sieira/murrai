@@ -3,8 +3,7 @@ from pathlib import Path
 
 from murrai.adapters.checkpoint import FileCheckpointStore
 from murrai.composition.chat import chat_stages
-from murrai.presentation.chat import select_stage
-from murrai.presentation.chat.repl import interactive_chat
+from murrai.presentation.chat import run_chat, select_stage
 
 corpus = Path("data/corpus")
 if not any(corpus.glob("*.txt")):
@@ -18,4 +17,4 @@ if stage is None:
     sys.exit(0)
 if stage.trains:
     print(f"training {stage.name}...")
-interactive_chat(stage.build())
+run_chat(stage.build())
