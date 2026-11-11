@@ -71,7 +71,9 @@ def load_checkpoint_session(store, seed=0):
     return ChatSession(model, seed)
 
 
-def chat_stages(directory, seed=0, neural_steps=2000, mlp_steps=10000, gpt_steps=2000, store=None):
+def chat_stages(
+    directory, seed=0, neural_steps=2000, mlp_steps=10000, gpt_steps=2000, store=None
+):
     stages = [
         Stage(
             "counted bigram",

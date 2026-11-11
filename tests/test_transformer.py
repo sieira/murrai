@@ -1,10 +1,9 @@
 import math
 
 import pytest
-
-from murrai.application.runs import train_transformer_lm
 import torch
 
+from murrai.application.runs import train_transformer_lm
 from murrai.domain.transformer import TransformerLM
 from murrai.domain.vocabulary import Vocabulary
 
