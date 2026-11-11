@@ -187,9 +187,7 @@ def train_transformer_lm(
         rows = stream[chosen[:, None] + span]
         targets = stream[chosen[:, None] + span + 1]
         logits = model(rows)
-        loss = F.cross_entropy(
-            logits.reshape(-1, vocabulary.size), targets.reshape(-1)
-        )
+        loss = F.cross_entropy(logits.reshape(-1, vocabulary.size), targets.reshape(-1))
         loss.backward()
         optimizer.step()
         optimizer.zero_grad()

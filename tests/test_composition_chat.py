@@ -54,9 +54,7 @@ def test_mlp_stage_builds_a_working_session(corpus):
 
 
 def test_gpt_stage_builds_a_working_session(corpus):
-    session = _stage(
-        corpus, "char gpt", seed=0, gpt_steps=20
-    ).build()
+    session = _stage(corpus, "char gpt", seed=0, gpt_steps=20).build()
     session.extend_user("a")
     probabilities = [p for _, p in session.dice()]
     assert pytest.approx(sum(probabilities)) == 1.0
