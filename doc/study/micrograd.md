@@ -1,8 +1,7 @@
 # Study: the autograd engine (micrograd)
 
 The theory behind the autograd engine: what it computes and why it can
-be trusted. Plain language throughout; the code and the glossary use the
-same words.
+be trusted.
 
 ## The job
 

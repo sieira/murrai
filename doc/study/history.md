@@ -1,8 +1,7 @@
 # Study: how next-token prediction became reasoning
 
 The history behind the recipe: where the ideas came from, what each step
-actually claimed, and why nobody saw the destination coming. Plain
-language stays here; the code and the glossary use the same words.
+actually claimed, and why nobody saw the destination coming.
 
 ## The short answer
 

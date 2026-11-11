@@ -2,8 +2,7 @@
 
 The theory behind phase 2: how a fixed window of characters enters an
 MLP (multi-layer perceptron), and what one training step does when torch
-owns the engine. Plain language throughout; the code and the glossary
-use the same words.
+owns the engine.
 
 ## The job
 

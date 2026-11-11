@@ -2,8 +2,7 @@
 
 The theory behind "what are we searching inside": the family of functions
 a network can represent, and what its universality does and does not
-promise. Plain language stays here; the code and the glossary use the
-same words.
+promise.
 
 ## The definition
 

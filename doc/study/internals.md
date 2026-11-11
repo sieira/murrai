@@ -1,8 +1,7 @@
 # Study: the model's anatomy
 
 What the model is inside, what runs when one character goes in, and what
-is and is not random about it. Plain language stays here; the code and
-the glossary use the same words.
+is and is not random about it.
 
 ## What the model is right now
 

@@ -1,7 +1,6 @@
 # Study: bigram language models
 
-The theory behind the counted bigram and the neural bridge to it. Plain
-language stays here; the code and the glossary use the same words.
+The theory behind the counted bigram and the neural bridge to it.
 
 ## The job
 
