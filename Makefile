@@ -7,7 +7,7 @@ chat:
 	uv run python scripts/chat.py
 
 corpus:
-	uv run python scripts/fetch_corpus.py
+	uv run python scripts/fetch_gutenberg.py
 
 check: lint boundaries test
 
