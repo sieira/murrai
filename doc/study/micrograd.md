@@ -1,8 +1,7 @@
 # Study: the autograd engine (micrograd)
 
 The theory behind the autograd engine: what it computes and why it can
-be trusted. Plain language throughout; the code and the glossary use the
-same words.
+be trusted.
 
 ## The job
 
@@ -106,3 +105,19 @@ Phase 2 replaces counted tables with trained parameters, using torch's
 C++ version of the same walk (`loss.backward()`). The loop, the loss,
 the learning rate, and the reset stay identical; only the speed of the
 engine changes.
+
+## Resources
+
+- Intro: Wikipedia,
+  [automatic differentiation](https://en.wikipedia.org/wiki/Automatic_differentiation).
+- Middle: 3Blue1Brown, ["Backpropagation,
+  intuitively"](https://www.youtube.com/watch?v=Ilg3gGewQ5U) and
+  ["Backpropagation calculus"](https://www.youtube.com/watch?v=tIeHLnjs5U8)
+  (chapters 3 and 4 of their deep learning series). Karpathy, ["The
+  spelled-out intro to neural networks and backpropagation: building
+  micrograd"](https://www.youtube.com/watch?v=VMj-3S1tku0), the lesson
+  this engine mirrors. It asks for Python and "a vague recollection of
+  calculus from high school", his words.
+- Advanced: Rumelhart, Hinton, Williams, [*Learning representations by
+  back-propagating errors*](https://www.nature.com/articles/323533a0)
+  (1986), the demonstration that the walk trains layers.
