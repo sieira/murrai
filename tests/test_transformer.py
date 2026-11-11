@@ -1,6 +1,8 @@
 import math
 
 import pytest
+
+from murrai.application.runs import train_transformer_lm
 import torch
 
 from murrai.domain.transformer import TransformerLM
@@ -56,3 +58,40 @@ def test_nll_matches_a_hand_computed_case(model):
     model.head.bias.data.copy_(torch.tensor([0.0, math.log(3.0)]))
     expected = -(math.log(0.25) + math.log(0.75)) / 2
     assert model.nll("ab") == pytest.approx(expected)
+
+
+def test_training_lowers_loss_on_a_toy_corpus():
+    result = train_transformer_lm(
+        "ab" * 200, steps=40, batch=8, seed=0, depth=1, dimension=8, max_time=8
+    )
+    assert result.loss_curve[-1] < result.loss_curve[0]
+
+
+def test_training_reports_held_out_perplexity():
+    result = train_transformer_lm(
+        "ab" * 400,
+        steps=5,
+        batch=8,
+        seed=0,
+        depth=1,
+        dimension=8,
+        max_time=8,
+        holdout=0.2,
+    )
+    assert math.isfinite(result.held_out_perplexity)
+    assert result.held_out_perplexity >= 1.0
+
+
+def test_the_plateau_schedule_shrinks_the_rate_during_a_stalled_run():
+    result = train_transformer_lm(
+        "abab" * 50,
+        steps=60,
+        batch=8,
+        seed=0,
+        depth=1,
+        dimension=8,
+        max_time=8,
+        learning_rate=0.1,
+        patience=3,
+    )
+    assert result.rate_curve[-1] < result.rate_curve[0]
