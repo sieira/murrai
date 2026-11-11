@@ -1,13 +1,15 @@
 # Study: attention
 
-The theory behind phase 3: how a network learns which earlier characters
-to read, instead of being handed a fixed window. Plain language
-throughout; the code and the glossary use the same words.
+Attention is a network's mechanism for deciding, per prediction, which
+earlier positions to read and how much to weigh each. This note covers
+the theory behind phase 3, where the fixed window of characters is
+replaced by that decision.
 
 ## The job
 
-The windowed mlp reads a fixed slice of the past — the last 8
-characters, always the same slice, always in the same slots. Two things
+The windowed mlp (multi-layer perceptron) reads a fixed slice of the
+past: the last 8 characters, always the same slice, always in the same
+slots. Two things
 it cannot do: look further back when it matters, and treat the same
 character differently depending on what surrounds it. Phase 3 replaces
 the fixed window with attention: every position asks all earlier
@@ -23,7 +25,8 @@ forward, so a prediction never sees its own answer.
   −∞ before the softmax, making them weigh zero.
 - `murrai/domain/block.py`: `TransformerBlock` — attention, then a
   small per-position network (one hidden layer, four times wider than
-  the model, GELU instead of tanh), each wrapped in layer-norm-first
+  the model, GELU (Gaussian error linear unit) instead of tanh), each
+  wrapped in layer-norm-first
   ("pre-norm") and a residual: the block's output is added to its
   input, so a block can choose to change almost nothing.
 - `murrai/domain/transformer.py`: `TransformerLM` (`kind` "char-gpt")
@@ -97,3 +100,19 @@ The window is gone: context length is now a parameter (`max_time`), and
 attention decides per position what to read. Phase 4's remaining work
 is making this trainable at scale — better schedules, longer windows,
 more data — toward the SPEC's chat target.
+
+## Resources
+
+- Intro: Wikipedia, [Transformer (deep
+  learning)](https://en.wikipedia.org/wiki/Transformer_(deep_learning)).
+- Middle: 3Blue1Brown, [Attention in transformers,
+  step-by-step](https://www.youtube.com/watch?v=eMlx5fFNoYc): the visual
+  pass over queries, keys, and values. Karpathy, [Let's build GPT: from
+  scratch, in code, spelled
+  out](https://www.youtube.com/watch?v=kCc8FmEb1nY): the same pieces
+  built in code.
+- Advanced: Vaswani et al., [*Attention Is All You
+  Need*](https://arxiv.org/abs/1706.03762) (2017): the original paper.
+  Ba, Kiros, Hinton, [*Layer
+  Normalization*](https://arxiv.org/abs/1607.06450) (2016): the
+  normalizer the blocks use.
