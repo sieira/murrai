@@ -1,11 +1,12 @@
 import itertools
 import random
+import time
 from dataclasses import dataclass
 
 import torch
 import torch.nn.functional as F
 
-from murrai.application.ports import Corpus
+from murrai.application.ports import Corpus, EventBus, TrainingEvent
 from murrai.domain.bigram import Bigram
 from murrai.domain.mlp import MlpLM
 from murrai.domain.neural_bigram import NeuralBigram
@@ -49,6 +50,7 @@ def train_neural_bigram(
     seed,
     learning_rate=0.5,
     final_learning_rate=0.1,
+    bus: EventBus | None = None,
 ):
     vocabulary = Vocabulary.from_text(train)
     model = NeuralBigram(vocabulary)
@@ -56,6 +58,7 @@ def train_neural_bigram(
     pairs = [(prev, nxt) for prev, nxt in itertools.pairwise(ids)]
 
     rng = random.Random(seed)
+    started = time.monotonic()
     loss_curve = []
     for step in range(steps):
         rate = learning_rate + (final_learning_rate - learning_rate) * step / (
@@ -68,6 +71,14 @@ def train_neural_bigram(
         loss.backward()
         model.update(rate)
         loss_curve.append(loss.data)
+        if bus is not None:
+            bus.emit(
+                TrainingEvent(
+                    step=step + 1,
+                    total_steps=steps,
+                    elapsed_ms=int((time.monotonic() - started) * 1000),
+                ),
+            )
     return NeuralTrainingResult(model=model, loss_curve=loss_curve)
 
 
@@ -99,6 +110,7 @@ def train_mlp_lm(
     patience=200,
     shrink=0.5,
     holdout=0.1,
+    bus: EventBus | None = None,
 ):
     cut = int(len(text) * (1 - holdout))
     train, held_out = text[:cut], text[cut:]
@@ -118,6 +130,7 @@ def train_mlp_lm(
     best = float("inf")
     best_step = 0
     rate = learning_rate
+    started = time.monotonic()
     for step in range(steps):
         chosen = [rng.randrange(pairs) for _ in range(batch)]
         batch_targets = torch.tensor([targets[i] for i in chosen], dtype=torch.long)
@@ -135,6 +148,14 @@ def train_mlp_lm(
         optimizer.param_groups[0]["lr"] = rate
         loss_curve.append(value)
         rate_curve.append(rate)
+        if bus is not None:
+            bus.emit(
+                TrainingEvent(
+                    step=step + 1,
+                    total_steps=steps,
+                    elapsed_ms=int((time.monotonic() - started) * 1000),
+                ),
+            )
 
     return MlpTrainingResult(
         model=model,
@@ -168,6 +189,7 @@ def train_transformer_lm(
     patience=200,
     shrink=0.5,
     holdout=0.1,
+    bus: EventBus | None = None,
 ):
     cut = int(len(text) * (1 - holdout))
     train, held_out = text[:cut], text[cut:]
@@ -192,6 +214,7 @@ def train_transformer_lm(
     best = float("inf")
     best_step = 0
     rate = learning_rate
+    started = time.monotonic()
     for step in range(steps):
         chosen = torch.tensor([rng.randrange(last_start) for _ in range(batch)])
         rows = stream[chosen[:, None] + span]
@@ -208,6 +231,14 @@ def train_transformer_lm(
         optimizer.param_groups[0]["lr"] = rate
         loss_curve.append(value)
         rate_curve.append(rate)
+        if bus is not None:
+            bus.emit(
+                TrainingEvent(
+                    step=step + 1,
+                    total_steps=steps,
+                    elapsed_ms=int((time.monotonic() - started) * 1000),
+                ),
+            )
 
     return TransformerTrainingResult(
         model=model,

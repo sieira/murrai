@@ -53,6 +53,10 @@ binds (AGENTS.md header).
 - epoch: one full pass over the training data.
 - checkpoint: a snapshot of all parameters, written by a CheckpointStore.
 - training run: one execution of the training loop over a corpus.
+- training event: one step's progress — step, total steps, elapsed time —
+  self-sufficient, so its reader never asks the trainer (ADR-0005).
+- event bus: delivers events to subscribers; subscribing and leaving may
+  take a lock, delivering may not; a listener never blocks.
 - perplexity: loss converted to "how many equally likely choices per
   token"; lower is better; our target metric (ADR-0004).
 
