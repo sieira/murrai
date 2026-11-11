@@ -6,4 +6,4 @@ class DirTextCorpus:
         self._directory = Path(directory)
 
     def text(self):
-        return "".join(p.read_text() for p in sorted(self._directory.glob("*.txt")))
+        return "\n".join(p.read_text() for p in sorted(self._directory.glob("*.txt")))

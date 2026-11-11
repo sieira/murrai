@@ -50,7 +50,7 @@ def test_run_perplexity_matches_domain_math():
 def test_dir_corpus_reads_txt_files(tmp_path):
     (tmp_path / "b.txt").write_text("second")
     (tmp_path / "a.txt").write_text("first")
-    assert DirTextCorpus(tmp_path).text() == "firstsecond"
+    assert DirTextCorpus(tmp_path).text() == "first\nsecond"
 
 
 def test_dir_corpus_ignores_other_files(tmp_path):

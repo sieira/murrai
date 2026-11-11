@@ -8,7 +8,9 @@ binds (AGENTS.md header).
 
 - tensor: a multi-dimensional array of numbers; everything in murrAI is one.
 - parameter: one learned number inside the model; murrAI targets 10-50M.
-- corpus: the training text; TinyStories is the corpus for phases 1-5.
+- text: one body of characters; a corpus element. Sources differ, texts do
+  not care; an adapter formalizes a source into a text.
+- corpus: the set of texts the model trains on, joined in order.
 - token: one integer the model reads or predicts; text becomes tokens.
 - one-hot: a vector of zeros with a single 1 marking one token id.
 - bigram: a model whose whole memory is the previous token; our baseline.
