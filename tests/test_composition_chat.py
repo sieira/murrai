@@ -26,7 +26,7 @@ def test_chat_stages_list_all_four_models(corpus):
 
 
 def _stage(corpus, name, **kwargs):
-    return [s for s in chat_stages(corpus, **kwargs) if s.name == name][0]
+    return next(s for s in chat_stages(corpus, **kwargs) if s.name == name)
 
 
 def test_counted_stage_builds_a_working_session(corpus):
@@ -82,22 +82,27 @@ def test_no_store_means_no_load_stage(corpus):
 def test_training_stages_save_a_checkpoint(corpus):
     store = InMemoryCheckpointStore()
     stages = chat_stages(
-        corpus, seed=0, neural_steps=20, mlp_steps=20, gpt_steps=20, store=store
+        corpus,
+        seed=0,
+        neural_steps=20,
+        mlp_steps=20,
+        gpt_steps=20,
+        store=store,
     )
-    [s for s in stages if s.name == "neural bigram"][0].build()
+    next(s for s in stages if s.name == "neural bigram").build()
     assert store.names() == ["neural-bigram"]
-    [s for s in stages if s.name == "windowed mlp"][0].build()
+    next(s for s in stages if s.name == "windowed mlp").build()
     assert store.names() == ["neural-bigram", "windowed-mlp"]
-    [s for s in stages if s.name == "char gpt"][0].build()
+    next(s for s in stages if s.name == "char gpt").build()
     assert store.names() == ["char-gpt", "neural-bigram", "windowed-mlp"]
 
 
 def test_the_load_stage_restores_the_trained_model(corpus):
     store = InMemoryCheckpointStore()
     first = chat_stages(corpus, seed=0, neural_steps=20, mlp_steps=20, store=store)
-    [s for s in first if s.name == "neural bigram"][0].build()
+    next(s for s in first if s.name == "neural bigram").build()
     second = chat_stages(corpus, seed=0, neural_steps=20, mlp_steps=20, store=store)
-    loader = [s for s in second if s.name == "load from checkpoint"][0]
+    loader = next(s for s in second if s.name == "load from checkpoint")
     assert not loader.trains
     session = loader.build()
     session.extend_user("a")

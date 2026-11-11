@@ -22,17 +22,18 @@ def main():
     print("\nloss curve (training steps, one every 100):")
     for i in range(0, len(curve), 100):
         bar = "#" * max(
-            1, int((curve[i] - min(curve)) / (max(curve) - min(curve)) * 40 + 0.5)
+            1,
+            int((curve[i] - min(curve)) / (max(curve) - min(curve)) * 40 + 0.5),
         )
         print(f"  step {i:4d}  {curve[i]:{width}.2f}  {bar}")
     print(
         f"\nuniform no-knowledge loss: {math.log(vocabulary.size):.3f}"
         f"\ncounted bigram loss:       {counted.nll(train):.3f}"
-        f"\ntrained bigram loss:       {curve[-1]:.3f}"
+        f"\ntrained bigram loss:       {curve[-1]:.3f}",
     )
 
     ids = vocabulary.encode(train)
-    pairs = zip([vocabulary.size, *ids][:-1], ids)
+    pairs = zip([vocabulary.size, *ids][:-1], ids, strict=False)
     prev_counts = Counter(p for p, _ in pairs)
     distances = []
     for prev in range(vocabulary.size):
@@ -40,10 +41,13 @@ def main():
             continue
         learned = neural.probs(prev)
         counted_probs = counted.probs(prev).tolist()
-        distances.append(0.5 * sum(abs(a - b) for a, b in zip(learned, counted_probs)))
+        distance = 0.5 * sum(
+            abs(a - b) for a, b in zip(learned, counted_probs, strict=False)
+        )
+        distances.append(distance)
     print(
         f"\ntable distance to the counted table (rows with >= 50 uses, 0 = identical):"
-        f"\n  mean {sum(distances) / len(distances):.3f}   worst {max(distances):.3f}"
+        f"\n  mean {sum(distances) / len(distances):.3f}   worst {max(distances):.3f}",
     )
 
     print("\nsample text, counted bigram (seed 17):")

@@ -39,7 +39,7 @@ class ChatSession:
     def _dice(self, ids):
         row = [float(p) for p in self._model.probs(list(ids))]
         pairs = sorted(
-            zip(self._model.vocabulary.chars, row),
+            zip(self._model.vocabulary.chars, row, strict=False),
             key=lambda entry: entry[1],
             reverse=True,
         )
@@ -70,7 +70,7 @@ class ChatSession:
         for origin, run in itertools.groupby(self._origins):
             count = len(list(run))
             segment = self._model.vocabulary.decode(
-                self._ids[position : position + count]
+                self._ids[position : position + count],
             )
             segments.append((segment, origin))
             position += count

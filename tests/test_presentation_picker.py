@@ -41,7 +41,7 @@ def test_resolve_stage_accepts_a_unique_partial_match():
 
 
 def test_resolve_stage_rejects_ambiguous_matches():
-    ambiguous = stages() + [Stage("neural mlp", "later", lambda: None)]
+    ambiguous = [*stages(), Stage("neural mlp", "later", lambda: None)]
     assert resolve_stage(ambiguous, "neural") is None
 
 

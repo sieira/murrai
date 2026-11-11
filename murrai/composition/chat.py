@@ -16,7 +16,11 @@ def chat_session_from_directory(directory, seed=0):
 
 
 def neural_chat_session_from_directory(
-    directory, seed=0, steps=2000, batch=64, store=None
+    directory,
+    seed=0,
+    steps=2000,
+    batch=64,
+    store=None,
 ):
     result = train_neural_bigram(
         DirTextCorpus(directory).text(),
@@ -31,7 +35,11 @@ def neural_chat_session_from_directory(
 
 
 def mlp_chat_session_from_directory(
-    directory, seed=0, steps=10000, batch=256, store=None
+    directory,
+    seed=0,
+    steps=10000,
+    batch=256,
+    store=None,
 ):
     result = train_mlp_lm(
         DirTextCorpus(directory).text(),
@@ -50,7 +58,11 @@ def mlp_chat_session_from_directory(
 
 
 def char_gpt_chat_session_from_directory(
-    directory, seed=0, steps=2000, batch=256, store=None
+    directory,
+    seed=0,
+    steps=2000,
+    batch=256,
+    store=None,
 ):
     result = train_transformer_lm(
         DirTextCorpus(directory).text(),
@@ -72,7 +84,12 @@ def load_checkpoint_session(store, seed=0):
 
 
 def chat_stages(
-    directory, seed=0, neural_steps=2000, mlp_steps=10000, gpt_steps=2000, store=None
+    directory,
+    seed=0,
+    neural_steps=2000,
+    mlp_steps=10000,
+    gpt_steps=2000,
+    store=None,
 ):
     stages = [
         Stage(
@@ -84,7 +101,10 @@ def chat_stages(
             "neural bigram",
             "same memory, trained by gradient descent",
             lambda: neural_chat_session_from_directory(
-                directory, seed, steps=neural_steps, store=store
+                directory,
+                seed,
+                steps=neural_steps,
+                store=store,
             ),
             trains=True,
         ),
@@ -92,7 +112,10 @@ def chat_stages(
             "windowed mlp",
             "eight chars of memory through a hidden layer",
             lambda: mlp_chat_session_from_directory(
-                directory, seed, steps=mlp_steps, store=store
+                directory,
+                seed,
+                steps=mlp_steps,
+                store=store,
             ),
             trains=True,
         ),
@@ -100,7 +123,10 @@ def chat_stages(
             "char gpt",
             "attention over the last sixty-four chars",
             lambda: char_gpt_chat_session_from_directory(
-                directory, seed, steps=gpt_steps, store=store
+                directory,
+                seed,
+                steps=gpt_steps,
+                store=store,
             ),
             trains=True,
         ),
@@ -111,6 +137,6 @@ def chat_stages(
                 "load from checkpoint",
                 "pick up the most recent trained model",
                 lambda: load_checkpoint_session(store, seed),
-            )
+            ),
         )
     return stages

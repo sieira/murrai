@@ -72,6 +72,11 @@ def test_training_reports_held_out_perplexity():
 
 def test_the_plateau_schedule_shrinks_the_rate_during_a_stalled_run():
     result = train_mlp_lm(
-        "abab" * 50, steps=40, batch=16, seed=0, learning_rate=1.0, patience=3
+        "abab" * 50,
+        steps=40,
+        batch=16,
+        seed=0,
+        learning_rate=1.0,
+        patience=3,
     )
     assert result.rate_curve[-1] < result.rate_curve[0]

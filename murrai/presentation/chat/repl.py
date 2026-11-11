@@ -16,7 +16,7 @@ STYLE = Style.from_dict(
         "die-hit": "ansibrightcyan bold",
         "more": "ansibrightblack",
         "bottom-toolbar": "noreverse",
-    }
+    },
 )
 
 
@@ -28,7 +28,7 @@ class GhostChat:
 
     def sync(self, buffer_text: str) -> None:
         common = 0
-        for a, b in zip(self._synced, buffer_text):
+        for a, b in zip(self._synced, buffer_text, strict=False):
             if a != b:
                 break
             common += 1
@@ -130,7 +130,7 @@ def _intro():
         (
             "class:more",
             "murrAI: write; Tab accepts a char; Enter lets it finish; ctrl-c quits\n",
-        )
+        ),
     ]
 
 

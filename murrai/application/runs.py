@@ -1,3 +1,4 @@
+import itertools
 import random
 from dataclasses import dataclass
 
@@ -42,12 +43,17 @@ def train_bigram(corpus: Corpus, holdout: float) -> TrainingResult:
 
 
 def train_neural_bigram(
-    train, steps, batch, seed, learning_rate=0.5, final_learning_rate=0.1
+    train,
+    steps,
+    batch,
+    seed,
+    learning_rate=0.5,
+    final_learning_rate=0.1,
 ):
     vocabulary = Vocabulary.from_text(train)
     model = NeuralBigram(vocabulary)
     ids = [vocabulary.size, *vocabulary.encode(train)]
-    pairs = [(prev, nxt) for prev, nxt in zip(ids, ids[1:])]
+    pairs = [(prev, nxt) for prev, nxt in itertools.pairwise(ids)]
 
     rng = random.Random(seed)
     loss_curve = []
@@ -116,7 +122,8 @@ def train_mlp_lm(
         chosen = [rng.randrange(pairs) for _ in range(batch)]
         batch_targets = torch.tensor([targets[i] for i in chosen], dtype=torch.long)
         loss = F.cross_entropy(
-            model.forward_batch([contexts[i] for i in chosen]), batch_targets
+            model.forward_batch([contexts[i] for i in chosen]),
+            batch_targets,
         )
         loss.backward()
         optimizer.step()
@@ -168,7 +175,10 @@ def train_transformer_lm(
     vocabulary = Vocabulary.from_text(text)
     torch.manual_seed(seed)
     model = TransformerLM(
-        vocabulary, depth=depth, dimension=dimension, max_time=max_time
+        vocabulary,
+        depth=depth,
+        dimension=dimension,
+        max_time=max_time,
     )
     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
 

@@ -24,15 +24,15 @@ class NeuralBigram:
     @classmethod
     def from_state(cls, vocabulary, state):
         model = cls(vocabulary)
-        for row, values in zip(model.weights, state["weights"]):
-            for value, data in zip(row, values):
+        for row, values in zip(model.weights, state["weights"], strict=False):
+            for value, data in zip(row, values, strict=False):
                 value.data = data
         return model
 
     def batch_loss(self, prev_ids, next_ids):
         loss = Value(0.0)
         rows = {}
-        for prev, nxt in zip(prev_ids, next_ids):
+        for prev, nxt in zip(prev_ids, next_ids, strict=False):
             rows.setdefault(prev, []).append(nxt)
         for prev, targets in rows.items():
             row = self.logits(prev)

@@ -16,7 +16,7 @@ class Bigram:
     def fit(cls, text, vocabulary):
         counts = torch.ones(vocabulary.size + 1, vocabulary.size)
         ids = vocabulary.encode(text)
-        for prev, nxt in zip([cls._start(vocabulary), *ids[:-1]], ids):
+        for prev, nxt in zip([cls._start(vocabulary), *ids[:-1]], ids, strict=False):
             counts[prev, nxt] += 1
         return cls(vocabulary, counts)
 

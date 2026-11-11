@@ -28,7 +28,7 @@ module-root = ""
 line-length = 88
 
 [tool.ruff.lint]
-select = ["E", "F", "I", "W"]
+select = ["E", "F", "I", "W", "B", "C4", "SIM", "UP", "RUF", "COM"]
 
 [tool.pytest.ini_options]
 filterwarnings = [

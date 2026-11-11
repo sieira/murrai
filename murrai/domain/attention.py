@@ -17,7 +17,8 @@ class CausalSelfAttention(torch.nn.Module):
         scores = q @ k.transpose(-2, -1) / x.size(-1) ** 0.5
         time = x.size(-2)
         future = torch.triu(
-            torch.ones(time, time, dtype=torch.bool, device=x.device), diagonal=1
+            torch.ones(time, time, dtype=torch.bool, device=x.device),
+            diagonal=1,
         )
         scores = scores.masked_fill(future, float("-inf"))
         self.shares = torch.softmax(scores, dim=-1)

@@ -21,7 +21,7 @@ def go(device):
     elapsed = time.perf_counter() - start
     print(
         f"mm {device.type}: 10 x {N}x{N} matmuls in {elapsed:.3f}s "
-        f"({2 * N**3 * 10 / elapsed / 1e9:.1f} GFLOP/s), sum={float(z.sum()):.2f}"
+        f"({2 * N**3 * 10 / elapsed / 1e9:.1f} GFLOP/s), sum={float(z.sum()):.2f}",
     )
 
 
