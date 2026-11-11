@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from murrai.adapters.texts import fetch_text, strip_between
+from murrai.adapters.texts import UrlText
 
 START = "START OF THE PROJECT GUTENBERG EBOOK"
 END = "END OF THE PROJECT GUTENBERG EBOOK"
@@ -49,20 +49,14 @@ BOOKS = {
 def main():
     total = 0
     for book_id, slug in BOOKS.items():
-        out = Path("data/corpus") / f"{slug}.txt"
-        if out.exists():
-            count = len(out.read_text())
-            print(f"{slug}: cached, {count} chars")
-        else:
-            raw = fetch_text(
-                f"https://www.gutenberg.org/cache/epub/{book_id}/pg{book_id}.txt"
-            )
-            body = strip_between(raw, START, END)
-            out.parent.mkdir(parents=True, exist_ok=True)
-            out.write_text(body)
-            count = len(body)
-            print(f"{slug}: fetched, {count} chars")
-        total += count
+        text = UrlText(
+            f"https://www.gutenberg.org/cache/epub/{book_id}/pg{book_id}.txt",
+            cache=Path("data/corpus") / f"{slug}.txt",
+            start=START,
+            end=END,
+        ).text()
+        total += len(text)
+        print(f"{slug}: {len(text)} chars")
     print(f"total: {total} chars")
 
 
