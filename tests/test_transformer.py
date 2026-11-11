@@ -61,7 +61,13 @@ def test_nll_matches_a_hand_computed_case(model):
 
 def test_training_lowers_loss_on_a_toy_corpus():
     result = train_transformer_lm(
-        "ab" * 200, steps=40, batch=8, seed=0, depth=1, dimension=8, max_time=8
+        "ab" * 200,
+        steps=40,
+        batch=8,
+        seed=0,
+        depth=1,
+        dimension=8,
+        max_time=8,
     )
     assert result.loss_curve[-1] < result.loss_curve[0]
 

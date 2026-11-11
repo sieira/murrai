@@ -10,7 +10,11 @@ class MlpLM(torch.nn.Module):
     kind = "windowed-mlp"
 
     def __init__(
-        self, vocabulary: Vocabulary, window: int, dimension: int, hidden: int
+        self,
+        vocabulary: Vocabulary,
+        window: int,
+        dimension: int,
+        hidden: int,
     ):
         super().__init__()
         self.vocabulary = vocabulary
@@ -66,7 +70,9 @@ class MlpLM(torch.nn.Module):
         targets = torch.tensor(ids, dtype=torch.long)
         with torch.no_grad():
             losses = F.cross_entropy(
-                self.forward_batch(contexts), targets, reduction="none"
+                self.forward_batch(contexts),
+                targets,
+                reduction="none",
             )
         return float(losses.mean())
 

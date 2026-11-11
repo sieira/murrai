@@ -29,7 +29,10 @@ def mlp():
 def transformer():
     torch.manual_seed(0)
     return TransformerLM(
-        Vocabulary.from_text("ababab"), depth=2, dimension=8, max_time=4
+        Vocabulary.from_text("ababab"),
+        depth=2,
+        dimension=8,
+        max_time=4,
     )
 
 

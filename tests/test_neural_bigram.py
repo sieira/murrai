@@ -44,7 +44,7 @@ def test_neural_bigram_matches_the_counted_table():
     neural = result.model
     counted = Bigram.fit(train, vocabulary)
     ids = vocabulary.encode(train)
-    pairs = zip([vocabulary.size, *ids][:-1], ids)
+    pairs = zip([vocabulary.size, *ids][:-1], ids, strict=False)
     prev_counts = Counter(p for p, _ in pairs)
 
     assert result.loss_curve[-1] < 2.90
@@ -55,7 +55,9 @@ def test_neural_bigram_matches_the_counted_table():
             continue
         counted_probs = counted.probs([prev]).tolist()
         learned = neural.probs([prev])
-        distance = 0.5 * sum(abs(a - b) for a, b in zip(learned, counted_probs))
+        distance = 0.5 * sum(
+            abs(a - b) for a, b in zip(learned, counted_probs, strict=False)
+        )
         distances.append(distance)
 
     assert max(distances) < 0.45

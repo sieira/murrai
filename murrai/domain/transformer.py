@@ -11,7 +11,11 @@ class TransformerLM(torch.nn.Module):
     kind = "char-gpt"
 
     def __init__(
-        self, vocabulary: Vocabulary, depth: int, dimension: int, max_time: int
+        self,
+        vocabulary: Vocabulary,
+        depth: int,
+        dimension: int,
+        max_time: int,
     ):
         super().__init__()
         self.vocabulary = vocabulary
@@ -76,8 +80,9 @@ class TransformerLM(torch.nn.Module):
                 logits = self.forward(row[None])
             losses.append(
                 F.cross_entropy(
-                    logits[0, :-1], stream[start + 1 : start + self.max_time]
-                )
+                    logits[0, :-1],
+                    stream[start + 1 : start + self.max_time],
+                ),
             )
         return float(torch.stack(losses).mean())
 

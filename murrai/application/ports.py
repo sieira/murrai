@@ -4,7 +4,7 @@ from murrai.application.checkpoints import Snapshot
 from murrai.domain.vocabulary import Vocabulary
 
 
-class DataSource(Protocol):
+class Corpus(Protocol):
     def text(self) -> str: ...
 
 

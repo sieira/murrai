@@ -108,7 +108,7 @@ def test_backward_matches_finite_differences_on_seeded_graph():
     out = build(a, b, c)
     out.backward()
     nudged = finite_difference_grads(build, [a, b, c])
-    for handle, numeric in zip((a.grad, b.grad, c.grad), nudged):
+    for handle, numeric in zip((a.grad, b.grad, c.grad), nudged, strict=False):
         assert handle == pytest.approx(numeric, rel=1e-4)
 
 
@@ -126,5 +126,5 @@ def test_gradients_agree_with_number_for_number_with_torch():
         torch.tensor(x.data, requires_grad=True, dtype=torch.float64) for x in (a, b, c)
     )
     build(*tensors).backward()
-    for handle, tensor in zip((a.grad, b.grad, c.grad), tensors):
+    for handle, tensor in zip((a.grad, b.grad, c.grad), tensors, strict=False):
         assert handle == pytest.approx(tensor.grad.item(), rel=1e-9)

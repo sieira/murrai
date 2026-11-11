@@ -29,7 +29,7 @@ architecture:
      `LanguageModel` port, so it could later be extracted into its own
      project.
    - `composition/` — wires concrete adapters into ports.
-2. **Ports.** `DataSource` (training corpora), `LanguageModel` (the chat's
+2. **Ports.** `Corpus` (training corpora), `LanguageModel` (the chat's
    view of any model: a context of token ids in, a next-token distribution
    out; a model trims the context to its own memory — a bigram reads the
    last id, a windowed model its last k), and `CheckpointStore` (model
@@ -43,7 +43,7 @@ architecture:
 ### Acceptance tests for this decision
 
 - Domain tests pass with the network disabled and no GPU present.
-- A fake `DataSource` and a fake `CheckpointStore` drive a tiny training
+- A fake `Corpus` and a fake `CheckpointStore` drive a tiny training
   run end to end; if that stops working, the hexagon is nominal, not real.
 - The REPL renders and samples only; no math in presentation.
 

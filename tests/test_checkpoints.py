@@ -31,7 +31,10 @@ def mlp():
 def transformer():
     torch.manual_seed(0)
     return TransformerLM(
-        Vocabulary.from_text("ababab"), depth=2, dimension=8, max_time=4
+        Vocabulary.from_text("ababab"),
+        depth=2,
+        dimension=8,
+        max_time=4,
     )
 
 
@@ -105,15 +108,15 @@ def test_the_file_store_rejects_a_missing_name(tmp_path):
         store.load("windowed-mlp")
 
 
-class FakeDataSource:
+class FakeCorpus:
     def text(self):
         return "abab" * 40
 
 
 def test_a_fake_store_drives_a_tiny_training_run_end_to_end():
-    source = FakeDataSource()
+    corpus = FakeCorpus()
     store = InMemoryCheckpointStore()
-    result = train_mlp_lm(source.text(), steps=5, batch=8, seed=0)
+    result = train_mlp_lm(corpus.text(), steps=5, batch=8, seed=0)
     store.save(result.model.kind, snapshot_of(result.model))
     model = restore(store.load("windowed-mlp"))
     session = ChatSession(model, seed=0)
