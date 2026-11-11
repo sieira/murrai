@@ -1,16 +1,17 @@
 # Study: the MLP language model
 
-The theory behind phase 2: how a fixed window of characters enters a
-network, and what one training step does when torch owns the engine.
-Plain language throughout; the code and the glossary use the same words.
+The theory behind phase 2: how a fixed window of characters enters an
+MLP (multi-layer perceptron), and what one training step does when torch
+owns the engine. Plain language throughout; the code and the glossary
+use the same words.
 
 ## The job
 
 The bigram's whole memory is one character. Real text carries more: the
 char before it changes the odds, and the one before that. Phase 2 grows
 the memory to a fixed window of k previous characters and feeds it
-through an MLP (multi-layer perceptron) — a lookup, a hidden layer, an
-output layer — while keeping everything else about training the same.
+through the MLP — a lookup, a hidden layer, an output layer — while
+keeping everything else about training the same.
 
 ## Embeddings are lookup tables
 
