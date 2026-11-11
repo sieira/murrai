@@ -4,7 +4,7 @@ from dataclasses import dataclass
 import torch
 import torch.nn.functional as F
 
-from murrai.application.ports import DataSource
+from murrai.application.ports import Corpus
 from murrai.domain.bigram import Bigram
 from murrai.domain.mlp import MlpLM
 from murrai.domain.neural_bigram import NeuralBigram
@@ -26,8 +26,8 @@ class NeuralTrainingResult:
     loss_curve: list[float]
 
 
-def train_bigram(source: DataSource, holdout: float) -> TrainingResult:
-    text = source.text()
+def train_bigram(corpus: Corpus, holdout: float) -> TrainingResult:
+    text = corpus.text()
     cut = int(len(text) * (1 - holdout))
     train, held_out = text[:cut], text[cut:]
 
