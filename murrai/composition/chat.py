@@ -1,6 +1,11 @@
 from murrai.adapters.corpus import DirTextCorpus
 from murrai.application.checkpoints import restore, snapshot_of
-from murrai.application.runs import train_bigram, train_mlp_lm, train_neural_bigram
+from murrai.application.runs import (
+    train_bigram,
+    train_mlp_lm,
+    train_neural_bigram,
+    train_transformer_lm,
+)
 from murrai.presentation.chat.picker import Stage
 from murrai.presentation.chat.session import ChatSession
 
@@ -44,12 +49,31 @@ def mlp_chat_session_from_directory(
     return ChatSession(result.model, seed)
 
 
+def char_gpt_chat_session_from_directory(
+    directory, seed=0, steps=2000, batch=256, store=None
+):
+    result = train_transformer_lm(
+        DirTextCorpus(directory).text(),
+        steps=steps,
+        batch=batch,
+        seed=seed,
+        depth=4,
+        dimension=64,
+        max_time=64,
+    )
+    if store is not None:
+        store.save(result.model.kind, snapshot_of(result.model))
+    return ChatSession(result.model, seed)
+
+
 def load_checkpoint_session(store, seed=0):
     model = restore(store.load(store.names()[-1]))
     return ChatSession(model, seed)
 
 
-def chat_stages(directory, seed=0, neural_steps=2000, mlp_steps=10000, store=None):
+def chat_stages(
+    directory, seed=0, neural_steps=2000, mlp_steps=10000, gpt_steps=2000, store=None
+):
     stages = [
         Stage(
             "counted bigram",
@@ -69,6 +93,14 @@ def chat_stages(directory, seed=0, neural_steps=2000, mlp_steps=10000, store=Non
             "eight chars of memory through a hidden layer",
             lambda: mlp_chat_session_from_directory(
                 directory, seed, steps=mlp_steps, store=store
+            ),
+            trains=True,
+        ),
+        Stage(
+            "char gpt",
+            "attention over the last sixty-four chars",
+            lambda: char_gpt_chat_session_from_directory(
+                directory, seed, steps=gpt_steps, store=store
             ),
             trains=True,
         ),

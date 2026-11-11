@@ -8,6 +8,7 @@ from murrai.application.ports import DataSource
 from murrai.domain.bigram import Bigram
 from murrai.domain.mlp import MlpLM
 from murrai.domain.neural_bigram import NeuralBigram
+from murrai.domain.transformer import TransformerLM
 from murrai.domain.vocabulary import Vocabulary
 
 
@@ -129,6 +130,76 @@ def train_mlp_lm(
         rate_curve.append(rate)
 
     return MlpTrainingResult(
+        model=model,
+        loss_curve=loss_curve,
+        rate_curve=rate_curve,
+        train_chars=len(train),
+        held_out_chars=len(held_out),
+        held_out_perplexity=model.perplexity(held_out),
+    )
+
+
+@dataclass
+class TransformerTrainingResult:
+    model: TransformerLM
+    loss_curve: list[float]
+    rate_curve: list[float]
+    train_chars: int
+    held_out_chars: int
+    held_out_perplexity: float
+
+
+def train_transformer_lm(
+    text,
+    steps,
+    batch,
+    seed,
+    depth=4,
+    dimension=64,
+    max_time=64,
+    learning_rate=1e-3,
+    patience=200,
+    shrink=0.5,
+    holdout=0.1,
+):
+    cut = int(len(text) * (1 - holdout))
+    train, held_out = text[:cut], text[cut:]
+
+    vocabulary = Vocabulary.from_text(text)
+    torch.manual_seed(seed)
+    model = TransformerLM(
+        vocabulary, depth=depth, dimension=dimension, max_time=max_time
+    )
+    optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
+
+    ids = [model.start, *vocabulary.encode(train)]
+    stream = torch.tensor(ids, dtype=torch.long)
+    span = torch.arange(max_time)
+    last_start = len(stream) - max_time - 1
+
+    rng = random.Random(seed)
+    loss_curve, rate_curve = [], []
+    best = float("inf")
+    best_step = 0
+    rate = learning_rate
+    for step in range(steps):
+        chosen = torch.tensor([rng.randrange(last_start) for _ in range(batch)])
+        rows = stream[chosen[:, None] + span]
+        targets = stream[chosen[:, None] + span + 1]
+        logits = model(rows)
+        loss = F.cross_entropy(logits.reshape(-1, vocabulary.size), targets.reshape(-1))
+        loss.backward()
+        optimizer.step()
+        optimizer.zero_grad()
+        value = float(loss.detach())
+        best_step = step if value < best else best_step
+        best = min(best, value)
+        rate = plateau_rate(step - best_step, rate, patience, shrink)
+        optimizer.param_groups[0]["lr"] = rate
+        loss_curve.append(value)
+        rate_curve.append(rate)
+
+    return TransformerTrainingResult(
         model=model,
         loss_curve=loss_curve,
         rate_curve=rate_curve,
