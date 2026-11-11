@@ -43,8 +43,9 @@ two directions of one bridge between additive and multiplicative land.
 
 A text's probability is a product: p(char 1) times p(char 2), and so on.
 Long products collapse toward zero and compare badly; taking the log
-turns the product into a sum of per-character costs, which is what nll
-computes. Training and scoring live in this additive land.
+turns the product into a sum of per-character costs, which is what
+`nll` (negative log-likelihood) computes. Training and scoring live in
+this additive land.
 
 e^loss translates back to multiplicative land. With an average cost of
 2.48 per character, each character multiplies the text's probability
@@ -77,3 +78,16 @@ twelve-faced die; the blind model's 4.76 is the full 117.
 
 The non-determinism seen across runs is the seed changing, never the
 table changing.
+
+## Resources
+
+- Intro: Wikipedia,
+  [softmax function](https://en.wikipedia.org/wiki/Softmax_function) and
+  [perplexity](https://en.wikipedia.org/wiki/Perplexity).
+- Middle: Jurafsky, Martin, [N-gram Language
+  Models](https://web.stanford.edu/~jurafsky/slp3/3.pdf) (chapter 3 of
+  *Speech and Language Processing*, free online): the textbook's
+  treatment of perplexity, for word models instead of characters.
+- Advanced: Shannon, [*A Mathematical Theory of
+  Communication*](https://doi.org/10.1002/j.1538-7305.1948.tb01338.x)
+  (1948), where measuring English's predictability began.

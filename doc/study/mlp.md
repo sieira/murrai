@@ -9,8 +9,8 @@ Plain language throughout; the code and the glossary use the same words.
 The bigram's whole memory is one character. Real text carries more: the
 char before it changes the odds, and the one before that. Phase 2 grows
 the memory to a fixed window of k previous characters and feeds it
-through an MLP — a lookup, a hidden layer, an output layer — while
-keeping everything else about training the same.
+through an MLP (multi-layer perceptron) — a lookup, a hidden layer, an
+output layer — while keeping everything else about training the same.
 
 ## Embeddings are lookup tables
 
@@ -105,3 +105,17 @@ offer pur shad. The Croved to eingustson hive moul
 Phase 3 stacks self-attention on top of this skeleton: the window stops
 being a fixed k and the model learns which positions to read. The
 training loop, the loss, and the schedule carry over untouched.
+
+## Resources
+
+- Intro: Wikipedia,
+  [multilayer perceptron](https://en.wikipedia.org/wiki/Multilayer_perceptron).
+- Middle: Karpathy, ["Building makemore Part 2:
+  MLP"](https://www.youtube.com/watch?v=TCH_1BHY58I). His own description:
+  "we implement a multilayer perceptron (MLP) character-level language
+  model", the model of this phase. 3Blue1Brown,
+  ["But what is a neural network?"](https://www.youtube.com/watch?v=aircAruvnKk):
+  chapter 1 of four, each one step harder, ending at the chain rule.
+- Advanced: Bengio, Ducharme, Vincent, Jauvin, [*A Neural Probabilistic
+  Language Model*](https://www.jmlr.org/papers/volume3/bengio03a/bengio03a.pdf)
+  (2003), the paper this phase retraces.

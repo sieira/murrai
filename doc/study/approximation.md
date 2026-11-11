@@ -20,7 +20,8 @@ is dense in C(K), the continuous functions on a compact set K. Cybenko
 proved it for sigmoid activations (1989); Hornik widened the conditions
 (1991); Leshno, Lin, Pinkus, Schocken found the exact border: any
 non-polynomial activation works, and no polynomial one does (1993).
-ReLU, which is not even smooth, needed separate work (2017).
+ReLU (rectified linear unit), which is not even smooth, needed separate
+work (2017).
 
 ## The Fourier parallel
 
@@ -46,10 +47,10 @@ nothing about finding the weights).
 Representation is not learnability. The theorem was on curriculum by the
 early 1990s; the language model arrived thirty years later, when the
 empirical answer landed: gradient descent, given web-scale text and GPU
-compute, does find usable weights. The proven half was the easy half.
-This is the same gap as the bet in the history notes: the claim under
-everything is learnability, and it is carried by evidence, not by
-theorem.
+(graphics processing unit) compute, does find usable weights. The proven
+half was the easy half. This is the same gap as the bet in the history
+notes: the claim under everything is learnability, and it is carried by
+evidence, not by theorem.
 
 ## Why the nonlinearity cannot go
 
@@ -70,9 +71,9 @@ case, and its real lesson stays representation-versus-learning.
 The neural bigram has zero hidden layers: one-hot times the weight
 matrix only picks a row, so its function family is exactly the set of
 one-step memories. That is the formal version of "it cannot look back".
-The theorem starts to apply at phase 2: the MLP's hidden layer builds
-learned basis functions over the context window. The transformer stacks
-the same idea.
+The theorem starts to apply at phase 2: the hidden layer of the MLP
+(multi-layer perceptron) builds learned basis functions over the context
+window. The transformer stacks the same idea.
 
 ## The three universals
 
@@ -89,10 +90,16 @@ a learnable procedure, under a prediction objective.
 
 ## Resources
 
-- Cybenko, *Approximation by superpositions of a sigmoidal function*
-  (1989): the original statement.
-- Hornik, *Approximation capabilities of multilayer feedforward
-  networks* (1991): the widening.
-- Leshno, Lin, Pinkus, Schocken (1993): the non-polynomial border.
-- Nielsen, *Neural Networks and Deep Learning*, chapter 4: a visual
-  proof sketch of the theorem, free online.
+- Intro: Wikipedia, [universal approximation
+  theorem](https://en.wikipedia.org/wiki/Universal_approximation_theorem).
+- Middle: Nielsen, [chapter 4](http://neuralnetworksanddeeplearning.com/chap4.html)
+  of *Neural Networks and Deep Learning*: a visual proof sketch of the
+  theorem, free online.
+- Advanced: Cybenko, [*Approximation by superpositions of a sigmoidal
+  function*](https://doi.org/10.1007/BF02551274) (1989): the original
+  statement. Hornik, [*Approximation capabilities of multilayer
+  feedforward networks*](https://doi.org/10.1016/0893-6080(91)90009-T)
+  (1991): the widening. Leshno, Lin, Pinkus, Schocken, [*Multilayer
+  feedforward networks with a nonpolynomial activation function can
+  approximate any function*](https://doi.org/10.1016/S0893-6080(05)80131-5)
+  (1993): the non-polynomial border.

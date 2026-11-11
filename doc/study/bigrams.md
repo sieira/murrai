@@ -63,7 +63,14 @@ lives in the repo.
 
 ## Resources
 
-- Karpathy, *Neural Networks: Zero to Hero*, lesson "makemore part 1":
-  a char-level bigram built by counting and rebuilt as a neural net, the
-  exact bridge described above.
-- minbpe and nanoGPT come later (phases 4 and 3 respectively).
+- Intro: Wikipedia, [bigram](https://en.wikipedia.org/wiki/Bigram) and
+  [n-gram](https://en.wikipedia.org/wiki/N-gram).
+- Middle: Karpathy, ["The spelled-out intro to language modeling: building
+  makemore"](https://www.youtube.com/watch?v=PaCmpygFfXo) (makemore part
+  1): a char-level bigram built by counting and rebuilt as a neural net,
+  the exact bridge described above.
+- Advanced: Shannon, [*A Mathematical Theory of
+  Communication*](https://doi.org/10.1002/j.1538-7305.1948.tb01338.x)
+  (1948): the counted bigram in the original.
+
+minbpe and nanoGPT come later (phases 4 and 3 respectively).

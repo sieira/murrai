@@ -75,8 +75,9 @@ engineering, where nobody expected thinking and nobody was disappointed.
 - Neural nets as function approximators: the universal approximation
   theorem (1989-1991) proved one hidden layer can represent any
   continuous function, and backprop trained useful ones for system
-  identification and control. ANFIS (1993) fused the two: a neural net
-  tuning the shapes of hand-written fuzzy rules.
+  identification and control. ANFIS (adaptive neuro-fuzzy inference
+  system; 1993) fused the two: a neural net tuning the shapes of
+  hand-written fuzzy rules.
 - By the 2000s this track had a name, "soft computing", and its own
   courses. In Spanish-speaking universities, "control neuronal y
   borroso" was a standard elective in industrial and telecommunications
@@ -91,9 +92,10 @@ kiln's temperature curve, a motor's dynamics), their nets were small,
 their rules were hand-authored. Language is the opposite profile:
 enormous dimension, discrete symbols, and the "function" is the whole
 regularity of human text. Three ingredients were missing: web-scale
-text, GPUs, and the bet tested at scale. They arrived after Hinton's
-2006 result on training deep nets, and the first visible win was vision,
-not language: AlexNet, 2012, trained on two consumer graphics cards.
+text, GPUs (graphics processing units), and the bet tested at scale.
+They arrived after Hinton's 2006 result on training deep nets, and the
+first visible win was vision, not language: AlexNet, 2012, trained on
+two consumer graphics cards.
 
 Two pieces of that curriculum reappeared inside transformers. Hopfield
 networks (1982), which store memories as attractors a partial pattern
@@ -189,17 +191,29 @@ not settled history.
 
 The counted bigram is Shannon's step. The neural bigram trained through
 micrograd is 1986 meeting 2003. The remaining phases retrace the sequence
-on purpose: the MLP (Bengio's step), attention (2017), then scale (2020).
+on purpose: the MLP (multi-layer perceptron; Bengio's step), attention
+(2017), then scale (2020).
 The phase plan in SPEC.md is this history, replayed at desk size.
 
 ## Resources
 
-- Shannon, *A Mathematical Theory of Communication* (1948): the counted
-  bigram and the predictability measurement, in the original.
-- Jaynes, *Probability Theory: The Logic of Science*, chapter 1:
-  probability as extended logic, the frame under all of it.
-- Bengio, Ducharme, Vincent, Jauvin, *A Neural Probabilistic Language
-  Model* (2003): the paper that started predicting language with a
-  neural net.
-- Karpathy, *Neural Networks: Zero to Hero*: the build-it-yourself version
-  of the same sequence, already the reference for the other study notes.
+- Intro: Wikipedia, [history of natural language
+  processing](https://en.wikipedia.org/wiki/History_of_natural_language_processing).
+- Middle: Karpathy, ["[1hr Talk] Intro to Large Language
+  Models"](https://www.youtube.com/watch?v=zjkBMFhNj_g): a general-audience
+  one-hour introduction, his own description. And [*Neural Networks: Zero
+  to Hero*](https://github.com/karpathy/nn-zero-to-hero): the
+  build-it-yourself version of the same sequence, already the reference
+  for the other study notes.
+- Advanced: Shannon, [*A Mathematical Theory of
+  Communication*](https://doi.org/10.1002/j.1538-7305.1948.tb01338.x)
+  (1948): the counted bigram and the predictability measurement, in the
+  original. Jaynes, [*Probability Theory: The Logic of
+  Science*](https://bayes.wustl.edu/etj/prob/book.pdf), chapter 1:
+  probability as extended logic, the frame under all of it. Zadeh,
+  [*Fuzzy sets*](https://doi.org/10.1016/S0019-9958(65)90241-X) (1965):
+  the "approximate reasoning" branding. Bengio, Ducharme, Vincent, Jauvin,
+  [*A Neural Probabilistic Language Model*](https://www.jmlr.org/papers/volume3/bengio03a/bengio03a.pdf)
+  (2003): the paper that started predicting language with a neural net.
+  Vaswani et al., [*Attention Is All You Need*](https://arxiv.org/abs/1706.03762)
+  (2017): the transformer, the paper behind phase 3.
