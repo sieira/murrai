@@ -6,21 +6,23 @@ from murrai.composition.chat import chat_stages
 
 @pytest.fixture
 def corpus(tmp_path):
-    (tmp_path / "story.txt").write_text("aabbaabb")
+    (tmp_path / "story.txt").write_text("aabbaabb" * 20)
     return tmp_path
 
 
-def test_chat_stages_list_both_models(corpus):
-    stages = chat_stages(corpus, seed=0, neural_steps=20, mlp_steps=20)
+def test_chat_stages_list_all_four_models(corpus):
+    stages = chat_stages(corpus, seed=0, neural_steps=20, mlp_steps=20, gpt_steps=20)
     assert [stage.name for stage in stages] == [
         "counted bigram",
         "neural bigram",
         "windowed mlp",
+        "char gpt",
     ]
-    counted, neural, mlp = stages
+    counted, neural, mlp, gpt = stages
     assert not counted.trains
     assert neural.trains
     assert mlp.trains
+    assert gpt.trains
 
 
 def _stage(corpus, name, **kwargs):
@@ -51,6 +53,16 @@ def test_mlp_stage_builds_a_working_session(corpus):
     assert session.rollout("a", 5)
 
 
+def test_gpt_stage_builds_a_working_session(corpus):
+    session = _stage(
+        corpus, "char gpt", seed=0, gpt_steps=20
+    ).build()
+    session.extend_user("a")
+    probabilities = [p for _, p in session.dice()]
+    assert pytest.approx(sum(probabilities)) == 1.0
+    assert session.rollout("a", 5)
+
+
 def test_mlp_session_story_carries_generated_text(corpus):
     session = _stage(corpus, "windowed mlp", seed=0, mlp_steps=20).build()
     session.extend_user("a")
@@ -71,11 +83,15 @@ def test_no_store_means_no_load_stage(corpus):
 
 def test_training_stages_save_a_checkpoint(corpus):
     store = InMemoryCheckpointStore()
-    stages = chat_stages(corpus, seed=0, neural_steps=20, mlp_steps=20, store=store)
+    stages = chat_stages(
+        corpus, seed=0, neural_steps=20, mlp_steps=20, gpt_steps=20, store=store
+    )
     [s for s in stages if s.name == "neural bigram"][0].build()
     assert store.names() == ["neural-bigram"]
     [s for s in stages if s.name == "windowed mlp"][0].build()
     assert store.names() == ["neural-bigram", "windowed-mlp"]
+    [s for s in stages if s.name == "char gpt"][0].build()
+    assert store.names() == ["char-gpt", "neural-bigram", "windowed-mlp"]
 
 
 def test_the_load_stage_restores_the_trained_model(corpus):
