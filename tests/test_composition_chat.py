@@ -1,6 +1,9 @@
+from typing import ClassVar
+
 import pytest
 
 from murrai.adapters.checkpoint import InMemoryCheckpointStore
+from murrai.composition import chat as chat_module
 from murrai.composition.chat import chat_stages
 
 
@@ -109,3 +112,45 @@ def test_the_load_stage_restores_the_trained_model(corpus):
     probabilities = [p for _, p in session.dice()]
     assert pytest.approx(sum(probabilities)) == 1.0
     assert session.rollout("a", 5)
+
+
+class RecordingLine:
+    built: ClassVar[list] = []
+
+    def __init__(self):
+        self.events = 0
+        self.started = False
+        self.stopped = False
+        RecordingLine.built.append(self)
+
+    def __call__(self, event):
+        self.events += 1
+
+    def start(self):
+        self.started = True
+
+    def stop(self):
+        self.stopped = True
+
+
+def test_training_stages_stream_progress_into_the_eta_line(monkeypatch, corpus):
+    RecordingLine.built = []
+    monkeypatch.setattr(chat_module, "EtaLine", RecordingLine)
+
+    stage = _stage(corpus, "neural bigram", seed=0, neural_steps=20)
+    stage.build()
+
+    assert len(RecordingLine.built) == 1
+    line = RecordingLine.built[0]
+    assert line.events == 20
+    assert line.started
+    assert line.stopped
+
+
+def test_the_counted_stage_stays_quiet(monkeypatch, corpus):
+    RecordingLine.built = []
+    monkeypatch.setattr(chat_module, "EtaLine", RecordingLine)
+
+    _stage(corpus, "counted bigram", seed=0).build()
+
+    assert RecordingLine.built == []
