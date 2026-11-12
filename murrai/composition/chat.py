@@ -8,20 +8,20 @@ from murrai.application.runs import (
     train_transformer_lm,
 )
 from murrai.presentation.chat.picker import Stage
-from murrai.presentation.chat.progress import EtaLine
+from murrai.presentation.chat.progress import ProgressLine
 from murrai.presentation.chat.session import ChatSession
 
 
 def _trained_session(build):
     bus = ListenerBus()
-    eta = EtaLine()
-    bus.subscribe(eta)
-    eta.start()
+    line = ProgressLine()
+    bus.subscribe(line)
+    line.start()
     try:
         return build(bus=bus)
     finally:
-        eta.stop()
-        bus.unsubscribe(eta)
+        line.stop()
+        bus.unsubscribe(line)
 
 
 def chat_session_from_directory(directory, seed=0):
@@ -98,9 +98,75 @@ def char_gpt_chat_session_from_directory(
     return ChatSession(result.model, seed)
 
 
-def load_checkpoint_session(store, seed=0):
-    model = restore(store.load(store.names()[-1]))
+def load_checkpoint_session(store, seed=0, name=None):
+    if name is None:
+        name = store.names()[-1]
+    model = restore(store.load(name))
     return ChatSession(model, seed)
+
+
+def chat_commands(
+    directory,
+    seed=0,
+    store=None,
+    neural_steps=2000,
+    mlp_steps=10000,
+    gpt_steps=2000,
+):
+    commands = []
+    if store is not None:
+        for name in store.names():
+            commands.append(
+                Stage(
+                    f"load {name}",
+                    "pick up this trained model",
+                    lambda name=name: load_checkpoint_session(store, seed, name),
+                ),
+            )
+    commands.extend(
+        [
+            Stage(
+                "retrain neural bigram",
+                "same memory, trained by gradient descent",
+                lambda: _trained_session(
+                    lambda bus: neural_chat_session_from_directory(
+                        directory,
+                        seed,
+                        steps=neural_steps,
+                        store=store,
+                        bus=bus,
+                    ),
+                ),
+            ),
+            Stage(
+                "retrain windowed mlp",
+                "eight chars of memory through a hidden layer",
+                lambda: _trained_session(
+                    lambda bus: mlp_chat_session_from_directory(
+                        directory,
+                        seed,
+                        steps=mlp_steps,
+                        store=store,
+                        bus=bus,
+                    ),
+                ),
+            ),
+            Stage(
+                "retrain char gpt",
+                "attention over the last sixty-four chars",
+                lambda: _trained_session(
+                    lambda bus: char_gpt_chat_session_from_directory(
+                        directory,
+                        seed,
+                        steps=gpt_steps,
+                        store=store,
+                        bus=bus,
+                    ),
+                ),
+            ),
+        ],
+    )
+    return commands
 
 
 def chat_stages(

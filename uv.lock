@@ -332,6 +332,7 @@ version = "0.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "prompt-toolkit" },
+    { name = "rich" },
     { name = "torch" },
 ]
 
@@ -345,6 +346,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "prompt-toolkit", specifier = ">=3.0.53" },
+    { name = "rich", specifier = ">=15.0.0" },
     { name = "torch", specifier = ">=2.5" },
 ]
 

@@ -10,7 +10,6 @@ from murrai.domain.vocabulary import Vocabulary
 class TrainingEvent:
     step: int
     total_steps: int
-    elapsed_ms: int
 
 
 class EventBus(Protocol):
