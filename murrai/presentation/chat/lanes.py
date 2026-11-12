@@ -5,7 +5,7 @@ from dataclasses import dataclass
 @dataclass(frozen=True)
 class ChatEvent:
     def lane_line(self) -> str:
-        return f"[event] {self}"
+        raise NotImplementedError
 
 
 @dataclass(frozen=True)
@@ -74,6 +74,9 @@ class TrainingFailed(ChatEvent):
 class EventObserver:
     def on_event(self, event: ChatEvent) -> None:
         pass
+
+
+SILENT = EventObserver()
 
 
 class ChatLog(EventObserver):

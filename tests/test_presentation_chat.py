@@ -91,13 +91,6 @@ def test_sync_survives_a_deletion(chat):
     assert chat.session.segments() == [("a", "entered")]
 
 
-def test_accept_marks_the_char_as_generated(chat):
-    chat.sync("a")
-    chat.accept("a", "b")
-    assert chat.session.text == "ab"
-    assert chat.session.segments() == [("a", "entered"), ("b", "generated")]
-
-
 def test_accept_rest_lands_the_whole_suggestion(chat):
     ghost = chat.suggestions("a")
     chat.sync("a")

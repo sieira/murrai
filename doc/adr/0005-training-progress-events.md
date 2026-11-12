@@ -26,8 +26,9 @@ not change training results or slow training down.
   over a pipe; a thread in the chat turns them into calls on the status
   registry. A child that ends without a result counts as failed. The
   child's standard output and error are silenced, because the chat owns
-  the terminal. A command that trains is therefore picklable (`Retrain`,
-  in composition) and saves its own checkpoint.
+  the terminal. A command that trains is therefore picklable (a
+  `functools.partial` of a module-level function, in composition) and
+  saves its own checkpoint.
 - The status registry (`murrai/presentation/chat/status.py`) holds one
   entry per running training. The status bar renders one bar per entry
   with its time left; a failed entry stays visible as "name failed". The

@@ -1,5 +1,4 @@
-from dataclasses import dataclass
-from typing import Any
+from functools import partial
 
 from murrai.adapters.corpus import DirTextCorpus
 from murrai.adapters.events import ListenerBus
@@ -25,25 +24,11 @@ def _trained_session(build, listener=None):
             bus.unsubscribe(listener)
 
 
-@dataclass(frozen=True)
-class Retrain:
-    builder: Any
-    directory: Any
-    seed: int
-    steps: int
-    store: Any
-
-    def __call__(self, on_event=None):
-        return _trained_session(
-            lambda bus: self.builder(
-                self.directory,
-                self.seed,
-                steps=self.steps,
-                store=self.store,
-                bus=bus,
-            ),
-            on_event,
-        )
+def _retrain(builder, directory, seed, steps, store, on_event=None):
+    return _trained_session(
+        lambda bus: builder(directory, seed, steps=steps, store=store, bus=bus),
+        on_event,
+    )
 
 
 def chat_session_from_directory(directory, seed=0):
@@ -155,7 +140,8 @@ def chat_commands(
             Command(
                 "retrain neural bigram",
                 "same memory, trained by gradient descent",
-                Retrain(
+                partial(
+                    _retrain,
                     neural_chat_session_from_directory,
                     directory,
                     seed,
@@ -167,7 +153,8 @@ def chat_commands(
             Command(
                 "retrain windowed mlp",
                 "eight chars of memory through a hidden layer",
-                Retrain(
+                partial(
+                    _retrain,
                     mlp_chat_session_from_directory,
                     directory,
                     seed,
@@ -179,7 +166,8 @@ def chat_commands(
             Command(
                 "retrain char gpt",
                 "attention over the last sixty-four chars",
-                Retrain(
+                partial(
+                    _retrain,
                     char_gpt_chat_session_from_directory,
                     directory,
                     seed,

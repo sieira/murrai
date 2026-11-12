@@ -2,7 +2,7 @@ import textwrap
 from collections.abc import Callable
 from dataclasses import dataclass
 
-from murrai.presentation.chat.lanes import EventObserver, PanelClosed, PanelOpened
+from murrai.presentation.chat.lanes import SILENT, PanelClosed, PanelOpened
 
 
 @dataclass
@@ -14,9 +14,9 @@ class Command:
 
 
 class CommandPanel:
-    def __init__(self, commands, observer=None):
+    def __init__(self, commands, observer=SILENT):
         self._commands = commands
-        self._observer = observer or EventObserver()
+        self._observer = observer
         self.menu = []
         self.selected = 0
         self.visible = False

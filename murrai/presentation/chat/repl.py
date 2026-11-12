@@ -12,8 +12,8 @@ from prompt_toolkit.styles import Style
 from prompt_toolkit.widgets import Frame, TextArea
 
 from murrai.presentation.chat.lanes import (
+    SILENT,
     CommandPicked,
-    EventObserver,
     SessionSwapped,
 )
 from murrai.presentation.chat.panel import (
@@ -73,11 +73,6 @@ class GhostChat:
         self.session.truncate(common)
         self.session.extend_user(buffer_text[common:])
         self._synced = buffer_text
-
-    def accept(self, buffer_text: str, char: str) -> None:
-        self.sync(buffer_text)
-        self.session.extend_generated(char)
-        self._synced = self.session.text
 
     def accept_rest(self, buffer_text: str, ghost: str) -> None:
         self.sync(buffer_text)
@@ -171,9 +166,8 @@ def run_chat(
     input=None,
     output=None,
     spawn=spawn_training,
-    observer=None,
+    observer=SILENT,
 ):
-    observer = observer or EventObserver()
     chat = GhostChat(session)
     suggestions = GhostSuggestions(chat)
     status = TrainingStatus(observer=observer)

@@ -6,7 +6,7 @@ import time
 
 from murrai.application.ports import TrainingEvent
 from murrai.presentation.chat.lanes import (
-    EventObserver,
+    SILENT,
     TrainingFailed,
     TrainingFinished,
     TrainingStarted,
@@ -18,8 +18,8 @@ WAKE_EVERY = 0.1
 
 
 class TrainingStatus:
-    def __init__(self, clock=time.monotonic, observer=None):
-        self._observer = observer or EventObserver()
+    def __init__(self, clock=time.monotonic, observer=SILENT):
+        self._observer = observer
         self._lock = threading.Lock()
         self._runs: dict[str, tuple[float, int, int] | None] = {}
         self.redraw = None
@@ -36,8 +36,7 @@ class TrainingStatus:
         def on_event(event):
             with self._lock:
                 run = self._runs.get(name)
-                known = run is not None
-            if not known:
+            if run is None:
                 self.begin(name)
             with self._lock:
                 start, _, total = self._runs[name]
@@ -79,9 +78,6 @@ class TrainingStatus:
                     eta = (total - step) * elapsed / step
             rows.append((name, (step, total, eta)))
         return rows
-
-    def has_lines(self):
-        return bool(self.rows())
 
     def _wake(self, force=False):
         now = self._clock()
