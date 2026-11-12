@@ -1,5 +1,6 @@
 from murrai.adapters.corpus import DirTextCorpus
-from murrai.application.ports import Corpus
+from murrai.adapters.events import ListenerBus
+from murrai.application.ports import Corpus, TrainingEvent
 from murrai.application.runs import train_bigram
 from murrai.domain.bigram import Bigram
 
@@ -62,3 +63,21 @@ def test_dir_corpus_ignores_other_files(tmp_path):
 def test_dir_corpus_accepts_plain_string_path(tmp_path):
     (tmp_path / "a.txt").write_text("text")
     assert DirTextCorpus(str(tmp_path)).text() == "text"
+
+
+def test_run_reports_counting_progress_to_a_bus():
+    class FakeCorpus:
+        def text(self):
+            return "aabbaabb" * 20
+
+    bus = ListenerBus()
+    seen = []
+    bus.subscribe(seen.append)
+
+    result = train_bigram(FakeCorpus(), holdout=0.2, bus=bus)
+
+    assert seen
+    assert all(isinstance(event, TrainingEvent) for event in seen)
+    assert seen[-1].step == seen[-1].total_steps == result.train_chars
+    steps = [event.step for event in seen]
+    assert steps == sorted(steps)

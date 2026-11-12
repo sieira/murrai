@@ -13,38 +13,26 @@ from murrai.presentation.chat.panel import Command
 from murrai.presentation.chat.session import ChatSession
 
 
-def _trained_session(build, listener=None):
+def _trained_chat_session(builder, directory, seed, store, on_event=None):
     bus = ListenerBus()
-    if listener is not None:
-        bus.subscribe(listener)
+    if on_event is not None:
+        bus.subscribe(on_event)
     try:
-        return build(bus=bus)
+        result = builder(directory, seed, bus=bus)
     finally:
-        if listener is not None:
-            bus.unsubscribe(listener)
-
-
-def _retrain(builder, directory, seed, steps, store, on_event=None):
-    return _trained_session(
-        lambda bus: builder(directory, seed, steps=steps, store=store, bus=bus),
-        on_event,
-    )
-
-
-def chat_session_from_directory(directory, seed=0):
-    result = train_bigram(DirTextCorpus(directory), holdout=0.1)
+        if on_event is not None:
+            bus.unsubscribe(on_event)
+    if store is not None:
+        store.save(result.model.kind, snapshot_of(result.model))
     return ChatSession(result.model, seed)
 
 
-def neural_chat_session_from_directory(
-    directory,
-    seed=0,
-    steps=2000,
-    batch=64,
-    store=None,
-    bus=None,
-):
-    result = train_neural_bigram(
+def counted_from_directory(directory, seed=0, bus=None):
+    return train_bigram(DirTextCorpus(directory), holdout=0.1, bus=bus)
+
+
+def neural_from_directory(directory, seed=0, steps=2000, batch=64, bus=None):
+    return train_neural_bigram(
         DirTextCorpus(directory).text(),
         steps=steps,
         batch=batch,
@@ -52,20 +40,10 @@ def neural_chat_session_from_directory(
         learning_rate=3.0,
         bus=bus,
     )
-    if store is not None:
-        store.save(result.model.kind, snapshot_of(result.model))
-    return ChatSession(result.model, seed)
 
 
-def mlp_chat_session_from_directory(
-    directory,
-    seed=0,
-    steps=10000,
-    batch=256,
-    store=None,
-    bus=None,
-):
-    result = train_mlp_lm(
+def mlp_from_directory(directory, seed=0, steps=10000, batch=256, bus=None):
+    return train_mlp_lm(
         DirTextCorpus(directory).text(),
         steps=steps,
         batch=batch,
@@ -77,20 +55,10 @@ def mlp_chat_session_from_directory(
         hidden=256,
         bus=bus,
     )
-    if store is not None:
-        store.save(result.model.kind, snapshot_of(result.model))
-    return ChatSession(result.model, seed)
 
 
-def char_gpt_chat_session_from_directory(
-    directory,
-    seed=0,
-    steps=2000,
-    batch=256,
-    store=None,
-    bus=None,
-):
-    result = train_transformer_lm(
+def gpt_from_directory(directory, seed=0, steps=2000, batch=256, bus=None):
+    return train_transformer_lm(
         DirTextCorpus(directory).text(),
         steps=steps,
         batch=batch,
@@ -100,9 +68,6 @@ def char_gpt_chat_session_from_directory(
         max_time=64,
         bus=bus,
     )
-    if store is not None:
-        store.save(result.model.kind, snapshot_of(result.model))
-    return ChatSession(result.model, seed)
 
 
 def load_checkpoint_session(store, seed=0, name=None):
@@ -135,17 +100,23 @@ def chat_commands(
             Command(
                 "counted bigram",
                 "next-char odds tallied straight from the corpus",
-                lambda: chat_session_from_directory(directory, seed),
+                partial(
+                    _trained_chat_session,
+                    counted_from_directory,
+                    directory,
+                    seed,
+                    store,
+                ),
+                trains=True,
             ),
             Command(
                 "retrain neural bigram",
                 "same memory, trained by gradient descent",
                 partial(
-                    _retrain,
-                    neural_chat_session_from_directory,
+                    _trained_chat_session,
+                    partial(neural_from_directory, steps=neural_steps),
                     directory,
                     seed,
-                    neural_steps,
                     store,
                 ),
                 trains=True,
@@ -154,11 +125,10 @@ def chat_commands(
                 "retrain windowed mlp",
                 "eight chars of memory through a hidden layer",
                 partial(
-                    _retrain,
-                    mlp_chat_session_from_directory,
+                    _trained_chat_session,
+                    partial(mlp_from_directory, steps=mlp_steps),
                     directory,
                     seed,
-                    mlp_steps,
                     store,
                 ),
                 trains=True,
@@ -167,11 +137,10 @@ def chat_commands(
                 "retrain char gpt",
                 "attention over the last sixty-four chars",
                 partial(
-                    _retrain,
-                    char_gpt_chat_session_from_directory,
+                    _trained_chat_session,
+                    partial(gpt_from_directory, steps=gpt_steps),
                     directory,
                     seed,
-                    gpt_steps,
                     store,
                 ),
                 trains=True,

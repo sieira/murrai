@@ -22,9 +22,11 @@ not change training results or slow training down.
   without one, and a listener subscribed twice is delivered once. A
   listener never blocks.
 - A training runs in its own process, started with `spawn`. The child
-  sends `("step", step, total)`, then `("done",)` or `("failed", reason)`
-  over a pipe; a thread in the chat turns them into calls on the status
-  registry. A child that ends without a result counts as failed. The
+  sends `("step", step, total)`, then `("done", built)` — built is the
+  session the training made — or `("failed", reason)` over a pipe; a
+  thread in the chat turns steps into calls on the status registry and
+  hands the built session to the screen's event loop, where it replaces
+  the chat's. A child that ends without a result counts as failed. The
   child's standard output and error are silenced, because the chat owns
   the terminal. A command that trains is therefore picklable (a
   `functools.partial` of a module-level function, in composition) and
@@ -34,6 +36,8 @@ not change training results or slow training down.
   with its time left; a failed entry stays visible as "name failed". The
   registry wakes the screen at most ten times a second, and always when a
   run ends.
+- The counted bigram counts the corpus in chunks and reports each chunk;
+  its step unit is characters.
 
 ## Consequences
 
@@ -45,5 +49,5 @@ not change training results or slow training down.
   load cannot delay a keystroke.
 - A training command cannot close over local state; whatever it needs
   travels as picklable data.
-- Anything that must return an object to the chat (a built session) needs
-  a channel beyond this protocol, which carries progress only.
+- The built session travels on the protocol's final message; nothing
+  needs a second channel.

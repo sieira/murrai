@@ -160,6 +160,18 @@ def _die_fragments(chat, suggestions, buffer):
     return chat.die_bar(buffer.text, suggestions.real_for(buffer.text))
 
 
+def status_line(status, model_kind=None):
+    runs = status_fragments(status)
+    fragments = []
+    if model_kind is not None:
+        fragments.append(("class:selected", model_kind))
+    if runs:
+        if fragments:
+            fragments.append(("class:hint", " │ "))
+        fragments.extend(runs)
+    return fragments or [("class:hint", "ctrl-p commands")]
+
+
 def run_chat(
     session=None,
     commands=(),
@@ -189,6 +201,11 @@ def run_chat(
         suggestions.forget()
         buffer.text = next_session.text
         buffer.cursor_position = len(next_session.text)
+
+    def schedule_swap(built):
+        with contextlib.suppress(RuntimeError):
+            # the app can quit before a build lands
+            app.loop.call_soon_threadsafe(lambda: swap(built))
 
     editor_keys = KeyBindings()
 
@@ -230,7 +247,7 @@ def run_chat(
         observer.on_event(CommandPicked(command.name))
         event.app.layout.focus(buffer)
         if command.trains:
-            spawn(command, status)
+            spawn(command, status, schedule_swap)
         else:
             swap(command.build())
 
@@ -317,9 +334,9 @@ def run_chat(
                 ),
                 Window(
                     FormattedTextControl(
-                        lambda: (
-                            status_fragments(status)
-                            or [("class:hint", "ctrl-p commands")]
+                        lambda: status_line(
+                            status,
+                            chat.session.kind if chat.session else None,
                         ),
                     ),
                     height=1,

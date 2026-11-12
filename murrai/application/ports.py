@@ -26,6 +26,7 @@ class Corpus(Protocol):
 
 @runtime_checkable
 class LanguageModel(Protocol):
+    kind: str
     vocabulary: Vocabulary
 
     def probs(self, context_ids: list[int]): ...

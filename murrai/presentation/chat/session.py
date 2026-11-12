@@ -12,6 +12,10 @@ class ChatSession:
         self._origins: list[str] = []
 
     @property
+    def kind(self) -> str:
+        return self._model.kind
+
+    @property
     def text(self) -> str:
         return self._model.vocabulary.decode(self._ids)
 

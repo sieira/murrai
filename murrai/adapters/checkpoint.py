@@ -1,3 +1,5 @@
+import os
+import tempfile
 from pathlib import Path
 
 import torch
@@ -14,14 +16,23 @@ class FileCheckpointStore:
 
     def save(self, name, snapshot):
         self._root.mkdir(parents=True, exist_ok=True)
-        torch.save(
-            {
-                "kind": snapshot.kind,
-                "chars": snapshot.chars,
-                "state": snapshot.state,
-            },
-            self._path(name),
-        )
+        descriptor, temp = tempfile.mkstemp(dir=self._root, suffix=".tmp")
+        try:
+            with os.fdopen(descriptor, "wb") as file:
+                torch.save(
+                    {
+                        "kind": snapshot.kind,
+                        "chars": snapshot.chars,
+                        "state": snapshot.state,
+                    },
+                    file,
+                )
+                file.flush()
+                os.fsync(file.fileno())
+            os.replace(temp, self._path(name))
+        except BaseException:
+            os.unlink(temp)
+            raise
 
     def load(self, name):
         path = self._path(name)

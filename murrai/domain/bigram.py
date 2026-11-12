@@ -13,11 +13,16 @@ class Bigram:
         self._probs = probs / probs.sum(dim=1, keepdim=True)
 
     @classmethod
-    def fit(cls, text, vocabulary):
+    def fit(cls, text, vocabulary, on_progress=None):
         counts = torch.ones(vocabulary.size + 1, vocabulary.size)
-        ids = vocabulary.encode(text)
-        for prev, nxt in zip([cls._start(vocabulary), *ids[:-1]], ids, strict=False):
-            counts[prev, nxt] += 1
+        chunk = max(1, len(text) // 100)
+        previous = cls._start(vocabulary)
+        for from_char in range(0, len(text), chunk):
+            for nxt in vocabulary.encode(text[from_char : from_char + chunk]):
+                counts[previous, nxt] += 1
+                previous = nxt
+            if on_progress is not None:
+                on_progress(min(from_char + chunk, len(text)), len(text))
         return cls(vocabulary, counts)
 
     @staticmethod

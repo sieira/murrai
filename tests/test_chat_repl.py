@@ -1,3 +1,6 @@
+import threading
+import time
+
 from prompt_toolkit.input.defaults import create_pipe_input
 from prompt_toolkit.output import DummyOutput
 
@@ -5,6 +8,7 @@ from murrai.application.ports import TrainingEvent
 from murrai.domain.bigram import Bigram
 from murrai.domain.vocabulary import Vocabulary
 from murrai.presentation.chat import ChatSession, Command, run_chat
+from murrai.presentation.chat.lanes import ChatLog
 from murrai.presentation.chat.repl import GhostChat, GhostSuggestions
 
 
@@ -117,20 +121,25 @@ def test_run_chat_without_a_session_opens_ready_to_pick():
 
 def test_a_picked_training_command_runs_in_the_background():
     calls = []
+    built_sessions = []
 
     def build(on_event=None):
         calls.append(on_event)
         on_event(TrainingEvent(step=1, total_steps=10))
-        return _session("baba")
+        built = _session("baba")
+        built_sessions.append(built)
+        return built
 
     command = Command("retrain x", "slow model", build, trains=True)
 
-    def spawn(cmd, status):
-        cmd.build(on_event=status.track(cmd.name))
+    def spawn(cmd, status, on_built):
+        on_built(cmd.build(on_event=status.track(cmd.name)))
 
     first = _session()
     with create_pipe_input() as pipe:
-        pipe.send_text("\x10\r\x03")
+        pipe.send_text("\x10\r")
+        time.sleep(0.3)
+        pipe.send_text("\x03")
         returned = run_chat(
             first,
             commands=[command],
@@ -141,7 +150,59 @@ def test_a_picked_training_command_runs_in_the_background():
 
     assert len(calls) == 1
     assert calls[0] is not None
-    assert returned is first
+    assert returned is built_sessions[0]
+
+
+class SlowBuilder:
+    def __init__(self, seconds, session):
+        self.seconds = seconds
+        self.session = session
+
+    def build(self, on_event=None):
+        time.sleep(self.seconds)
+        return self.session
+
+
+def test_the_screen_answers_keys_while_a_training_builds():
+    prepared = _session("baba")
+    builder = SlowBuilder(1.5, prepared)
+    command = Command(
+        "retrain x",
+        "slow model",
+        builder.build,
+        trains=True,
+    )
+    log = ChatLog()
+
+    def feeder(pipe):
+        pipe.send_text("\x10\r")
+        time.sleep(0.7)
+        pipe.send_text("\x10")
+        deadline = time.monotonic() + 10
+        while time.monotonic() < deadline:
+            if any("[session] swapped" in line for line in log.lines):
+                break
+            time.sleep(0.05)
+        pipe.send_text("\x03")
+
+    with create_pipe_input() as pipe:
+        thread = threading.Thread(target=feeder, args=(pipe,))
+        thread.start()
+        returned = run_chat(
+            _session(),
+            commands=[command],
+            input=pipe,
+            output=DummyOutput(),
+            observer=log,
+        )
+        thread.join()
+
+    lines = [line.split(" ", 1)[1] for line in log.lines]
+    picked = lines.index("[command] picked retrain x")
+    swapped = next(i for i, line in enumerate(lines) if line == "[session] swapped")
+    assert lines[picked:swapped].count("[panel] opened 1 commands") == 1
+    assert returned.text == prepared.text
+    assert returned is not prepared
 
 
 def test_ghost_chat_takes_a_new_session():

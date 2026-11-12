@@ -25,9 +25,9 @@ together.
   or ctrl-p closes it. The panel and the write pane share one vertical
   split, so their boxes align.
 - Picking a load command swaps the session in place. Picking a training
-  command starts it in the background (ADR-0005); a finished training is
-  a saved checkpoint, loaded by hand from the panel. A chat with no
-  trained model opens with the panel open.
+  command starts it in the background (ADR-0005); a finished training
+  saves its checkpoint and its built session replaces the chat's when it
+  lands. A chat with no trained model opens with the panel open.
 - A command is one selectable action. Composition builds the list of
   commands; presentation only shows them.
 

@@ -125,16 +125,15 @@ def _train_in_process(command, connection):
         connection.send(("step", event.step, event.total_steps))
 
     try:
-        command.build(on_event=on_event)
+        built = command.build(on_event=on_event)
+        connection.send(("done", built))
     except Exception as error:
         connection.send(("failed", str(error)))
-    else:
-        connection.send(("done",))
     finally:
         connection.close()
 
 
-def _pump(name, connection, status):
+def _pump(name, connection, status, on_built=None):
     on_event = status.track(name)
     while True:
         try:
@@ -145,6 +144,9 @@ def _pump(name, connection, status):
         if message[0] == "step":
             on_event(TrainingEvent(step=message[1], total_steps=message[2]))
         elif message[0] == "done":
+            built = message[1] if len(message) > 1 else None
+            if built is not None and on_built is not None:
+                on_built(built)
             status.finish(name)
             return
         else:
@@ -169,7 +171,7 @@ def _silenced_stdio():
             os.close(descriptor)
 
 
-def spawn_training(command, status):
+def spawn_training(command, status, on_built=None):
     context = multiprocessing.get_context("spawn")
     receive, send = context.Pipe(duplex=False)
     process = context.Process(
@@ -188,6 +190,6 @@ def spawn_training(command, status):
         send.close()
     threading.Thread(
         target=_pump,
-        args=(command.name, receive, status),
+        args=(command.name, receive, status, on_built),
         daemon=True,
     ).start()

@@ -44,3 +44,17 @@ def test_same_seed_same_generation(v):
 def test_different_seed_differs(v):
     b = Bigram.fit("aab", v)
     assert b.generate(20, seed=0) != b.generate(20, seed=1)
+
+
+def test_fit_reports_progress_chunk_by_chunk():
+    text = "aabbaabb" * 50
+    marks = []
+    Bigram.fit(
+        text,
+        Vocabulary.from_text("ab"),
+        on_progress=lambda counted, total: marks.append((counted, total)),
+    )
+    assert marks[-1] == (len(text), len(text))
+    counted = [counted for counted, _ in marks]
+    assert counted == sorted(counted)
+    assert all(total == len(text) for _, total in marks)
