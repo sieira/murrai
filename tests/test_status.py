@@ -42,3 +42,16 @@ def test_two_trainings_share_one_line():
     assert "neural bigram" in text
     assert "char gpt" in text
     assert "\n" not in text
+
+
+def test_a_running_training_shows_the_time_left():
+    now = {"t": 0.0}
+    status = TrainingStatus(clock=lambda: now["t"])
+    listener = status.track("char gpt")
+
+    listener(TrainingEvent(step=1, total_steps=100))
+    now["t"] = 10.0
+    listener(TrainingEvent(step=10, total_steps=100))
+
+    text = plain_text(status_fragments(status))
+    assert "eta 1:30" in text
