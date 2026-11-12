@@ -62,13 +62,14 @@ binds (AGENTS.md header).
 
 ## Generating
 
-- stage: one selectable model in the chat's stage menu; it names itself,
-  describes itself, and knows how to build a session (composition wires
-  the concrete ones).
+- command: one selectable action in the chat's command panel; it names
+  itself, describes itself, and knows how to build a session. A training
+  command runs in the background (composition wires the concrete ones).
 - story: the chat's shared text; the characters the user typed plus the
   characters the model generated, in order.
 - turn: one exchange; the user types their part and presses Enter to
-  hand over, the model answers by sampling one character.
+  commit it (Tab takes the model's offered shadow instead), then the model
+  answers by sampling one character.
 - sample: pick the next token from the predicted distribution.
 - temperature: flattens or sharpens the distribution before sampling.
 - top-k: sample only from the k most likely tokens.

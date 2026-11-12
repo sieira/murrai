@@ -1,41 +1,49 @@
-# ADR-0005: Training progress travels as events
+# ADR-0005: Training reports progress as events, from its own process
 
 - Status: Accepted
 - Date: 2026-11-11
 
-## Motivation
+## Context
 
-Training stages used to run silently. Picking one left the terminal dark
-for minutes. The author asked for a live line that names the current step
-and the time left. Two constraints shaped the answer. Trainers stay
-screen-blind, and the display must not slow training down.
+Training takes minutes and is pure Python, so it keeps the interpreter
+busy. The interface must show live progress and stay responsive while a
+training runs. Trainers must stay unaware of screens, and reporting must
+not change training results or slow training down.
 
 ## Decision
 
-- Trainers emit one event per step through an `EventBus` port
-  (`murrai/application/ports.py`). The event is a `TrainingEvent` and
-  carries step and total_steps. It is self-sufficient; its reader never
-  asks the trainer for anything. The reader computes pace and remaining
-  time from its own clock.
-- The bus is optional. Trainers take `bus=None` and do nothing when no bus
-  was given.
-- The concrete bus is `ListenerBus` (`murrai/adapters/events.py`).
-  Subscribe and unsubscribe replace the listener list under a lock. Emit
-  walks the list without a lock, so a listener is never seen
-  half-registered. Subscribing one listener twice delivers once; the bus
-  compares listeners by equality because bound methods are never identical
-  twice.
-- A listener never blocks. The chat's listener hands the event to a
-  progress bar; the bar's library owns the refresh thread and the terminal
-  output, and the bar closes when the run ends.
+- Trainers emit one `TrainingEvent` (step, total_steps) per step through
+  an optional `EventBus` port (`murrai/application/ports.py`). The event
+  is self-sufficient; a reader never asks the trainer for anything and
+  derives pace and time left from its own clock. Without a bus, a trainer
+  does nothing extra.
+- `ListenerBus` (`murrai/adapters/events.py`) is the concrete bus.
+  Subscribing replaces the listener list under a lock, emitting walks it
+  without one, and a listener subscribed twice is delivered once. A
+  listener never blocks.
+- A training runs in its own process, started with `spawn`. The child
+  sends `("step", step, total)`, then `("done",)` or `("failed", reason)`
+  over a pipe; a thread in the chat turns them into calls on the status
+  registry. A child that ends without a result counts as failed. The
+  child's standard output and error are silenced, because the chat owns
+  the terminal. A command that trains is therefore picklable (a
+  `functools.partial` of a module-level function, in composition) and
+  saves its own checkpoint.
+- The status registry (`murrai/presentation/chat/status.py`) holds one
+  entry per running training. The status bar renders one bar per entry
+  with its time left; a failed entry stays visible as "name failed". The
+  registry wakes the screen at most ten times a second, and always when a
+  run ends.
 
 ## Consequences
 
-- Trainers know nothing about screens. A new progress display changes no
+- Trainers know nothing about screens; a new progress display changes no
   trainer.
-- The same seed produces the identical loss curve with and without a
-  listening bus; a test pins this.
-- Overhead without a subscriber is one None check per step. The subscribed
-  overhead is measured, not asserted.
-- Rendering is the progress library's job; the adapter owns only the
-  mapping from event to bar.
+- The same seed produces the identical loss curve with and without a bus;
+  a test pins this.
+- The interface and the trainer do not share an interpreter, so training
+  load cannot delay a keystroke.
+- A training command cannot close over local state; whatever it needs
+  travels as picklable data.
+- Anything that must return an object to the chat (a built session) needs
+  a channel beyond this protocol, which carries progress only.

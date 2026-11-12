@@ -1,3 +1,5 @@
+from functools import partial
+
 from murrai.adapters.corpus import DirTextCorpus
 from murrai.adapters.events import ListenerBus
 from murrai.application.checkpoints import restore, snapshot_of
@@ -7,21 +9,26 @@ from murrai.application.runs import (
     train_neural_bigram,
     train_transformer_lm,
 )
-from murrai.presentation.chat.picker import Stage
-from murrai.presentation.chat.progress import ProgressLine
+from murrai.presentation.chat.panel import Command
 from murrai.presentation.chat.session import ChatSession
 
 
-def _trained_session(build):
+def _trained_session(build, listener=None):
     bus = ListenerBus()
-    line = ProgressLine()
-    bus.subscribe(line)
-    line.start()
+    if listener is not None:
+        bus.subscribe(listener)
     try:
         return build(bus=bus)
     finally:
-        line.stop()
-        bus.unsubscribe(line)
+        if listener is not None:
+            bus.unsubscribe(listener)
+
+
+def _retrain(builder, directory, seed, steps, store, on_event=None):
+    return _trained_session(
+        lambda bus: builder(directory, seed, steps=steps, store=store, bus=bus),
+        on_event,
+    )
 
 
 def chat_session_from_directory(directory, seed=0):
@@ -117,7 +124,7 @@ def chat_commands(
     if store is not None:
         for name in store.names():
             commands.append(
-                Stage(
+                Command(
                     f"load {name}",
                     "pick up this trained model",
                     lambda name=name: load_checkpoint_session(store, seed, name),
@@ -125,113 +132,50 @@ def chat_commands(
             )
     commands.extend(
         [
-            Stage(
+            Command(
+                "counted bigram",
+                "next-char odds tallied straight from the corpus",
+                lambda: chat_session_from_directory(directory, seed),
+            ),
+            Command(
                 "retrain neural bigram",
                 "same memory, trained by gradient descent",
-                lambda: _trained_session(
-                    lambda bus: neural_chat_session_from_directory(
-                        directory,
-                        seed,
-                        steps=neural_steps,
-                        store=store,
-                        bus=bus,
-                    ),
+                partial(
+                    _retrain,
+                    neural_chat_session_from_directory,
+                    directory,
+                    seed,
+                    neural_steps,
+                    store,
                 ),
+                trains=True,
             ),
-            Stage(
+            Command(
                 "retrain windowed mlp",
                 "eight chars of memory through a hidden layer",
-                lambda: _trained_session(
-                    lambda bus: mlp_chat_session_from_directory(
-                        directory,
-                        seed,
-                        steps=mlp_steps,
-                        store=store,
-                        bus=bus,
-                    ),
+                partial(
+                    _retrain,
+                    mlp_chat_session_from_directory,
+                    directory,
+                    seed,
+                    mlp_steps,
+                    store,
                 ),
+                trains=True,
             ),
-            Stage(
+            Command(
                 "retrain char gpt",
                 "attention over the last sixty-four chars",
-                lambda: _trained_session(
-                    lambda bus: char_gpt_chat_session_from_directory(
-                        directory,
-                        seed,
-                        steps=gpt_steps,
-                        store=store,
-                        bus=bus,
-                    ),
+                partial(
+                    _retrain,
+                    char_gpt_chat_session_from_directory,
+                    directory,
+                    seed,
+                    gpt_steps,
+                    store,
                 ),
+                trains=True,
             ),
         ],
     )
     return commands
-
-
-def chat_stages(
-    directory,
-    seed=0,
-    neural_steps=2000,
-    mlp_steps=10000,
-    gpt_steps=2000,
-    store=None,
-):
-    stages = [
-        Stage(
-            "counted bigram",
-            "next-char odds tallied straight from the corpus",
-            lambda: chat_session_from_directory(directory, seed),
-        ),
-        Stage(
-            "neural bigram",
-            "same memory, trained by gradient descent",
-            lambda: _trained_session(
-                lambda bus: neural_chat_session_from_directory(
-                    directory,
-                    seed,
-                    steps=neural_steps,
-                    store=store,
-                    bus=bus,
-                ),
-            ),
-            trains=True,
-        ),
-        Stage(
-            "windowed mlp",
-            "eight chars of memory through a hidden layer",
-            lambda: _trained_session(
-                lambda bus: mlp_chat_session_from_directory(
-                    directory,
-                    seed,
-                    steps=mlp_steps,
-                    store=store,
-                    bus=bus,
-                ),
-            ),
-            trains=True,
-        ),
-        Stage(
-            "char gpt",
-            "attention over the last sixty-four chars",
-            lambda: _trained_session(
-                lambda bus: char_gpt_chat_session_from_directory(
-                    directory,
-                    seed,
-                    steps=gpt_steps,
-                    store=store,
-                    bus=bus,
-                ),
-            ),
-            trains=True,
-        ),
-    ]
-    if store is not None and store.names():
-        stages.append(
-            Stage(
-                "load from checkpoint",
-                "pick up the most recent trained model",
-                lambda: load_checkpoint_session(store, seed),
-            ),
-        )
-    return stages

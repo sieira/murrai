@@ -1,16 +1,40 @@
+import contextlib
+
+from prompt_toolkit.application import Application
 from prompt_toolkit.auto_suggest import AutoSuggest, Suggestion
 from prompt_toolkit.cursor_shapes import CursorShape
-from prompt_toolkit.formatted_text import FormattedText
+from prompt_toolkit.filters import Condition
 from prompt_toolkit.key_binding import KeyBindings
-from prompt_toolkit.shortcuts import PromptSession, print_formatted_text
+from prompt_toolkit.layout import Dimension, HSplit, Layout, VSplit, Window
+from prompt_toolkit.layout.containers import ConditionalContainer
+from prompt_toolkit.layout.controls import FormattedTextControl
 from prompt_toolkit.styles import Style
+from prompt_toolkit.widgets import Frame, TextArea
 
-from murrai.presentation.chat.picker import select_stage
+from murrai.presentation.chat.lanes import (
+    SILENT,
+    CommandPicked,
+    SessionSwapped,
+)
+from murrai.presentation.chat.panel import (
+    CommandPanel,
+    description_fragments,
+    list_fragments,
+)
+from murrai.presentation.chat.status import (
+    TrainingStatus,
+    spawn_training,
+    status_fragments,
+)
 
 GHOST_CHARS = 20
 TOP = 5
-
-PALETTE = object()
+STORY_TAIL_LINES = 20
+PANEL_WIDTH = 36
+CURSOR_GREEN = "\x1b]12;#00ff00\x07"
+CURSOR_RESET = "\x1b]112\x07"
+TOP_WEIGHT = 3
+BOTTOM_WEIGHT = 1
 
 STYLE = Style.from_dict(
     {
@@ -20,7 +44,10 @@ STYLE = Style.from_dict(
         "die-row": "ansibrightblack",
         "die-hit": "ansibrightcyan bold",
         "more": "ansibrightblack",
-        "bottom-toolbar": "noreverse",
+        "hint": "ansibrightblack",
+        "selected": "ansibrightcyan bold",
+        "bar": "ansigreen",
+        "failed": "ansired bold",
     },
 )
 
@@ -31,7 +58,13 @@ class GhostChat:
         self.ghost_chars = ghost_chars
         self._synced = ""
 
+    def use(self, session):
+        self.session = session
+        self._synced = session.text
+
     def sync(self, buffer_text: str) -> None:
+        if self.session is None:
+            return
         common = 0
         for a, b in zip(self._synced, buffer_text, strict=False):
             if a != b:
@@ -41,27 +74,22 @@ class GhostChat:
         self.session.extend_user(buffer_text[common:])
         self._synced = buffer_text
 
-    def accept(self, buffer_text: str, char: str) -> None:
-        self.sync(buffer_text)
-        self.session.extend_generated(char)
-        self._synced = self.session.text
-
     def accept_rest(self, buffer_text: str, ghost: str) -> None:
         self.sync(buffer_text)
         self.session.extend_generated(ghost)
         self._synced = self.session.text
 
-    def use(self, session) -> None:
-        self.session = session
-        self._synced = ""
-
     def suggestions(self, buffer_text: str) -> str:
+        if self.session is None:
+            return ""
         try:
             return self.session.rollout(buffer_text, self.ghost_chars)
         except ValueError:
             return ""
 
     def die_bar(self, buffer_text: str, ghost: str = ""):
+        if self.session is None:
+            return []
         try:
             dice = self.session.preview(buffer_text)
         except ValueError:
@@ -95,109 +123,234 @@ class GhostSuggestions(AutoSuggest):
     def real_for(self, context: str) -> str:
         return self._roll_for(context)
 
-    def forget(self) -> None:
-        self._cache.clear()
-
     def get_suggestion(self, buffer, document):
         roll = self._roll_for(document.text)
         if not roll:
             return None
         return Suggestion(roll.replace("\n", "↵"))
 
+    def forget(self) -> None:
+        self._cache.clear()
 
-def _key_bindings(chat: GhostChat, suggestions: GhostSuggestions) -> KeyBindings:
-    kb = KeyBindings()
 
-    @kb.add("tab")
+def story_fragments(session, tail_lines=None):
+    if session is None:
+        return []
+    segments = session.segments()
+    if tail_lines is not None:
+        kept = []
+        lines_left = tail_lines
+        for segment, origin in reversed(segments):
+            pieces = segment.split("\n")
+            take = pieces[::-1] if lines_left >= len(pieces) else pieces[-lines_left:]
+            for piece in reversed(take):
+                kept.append((origin, piece))
+            lines_left -= len(pieces)
+            if lines_left <= 0:
+                break
+        segments = [(text, origin) for origin, text in reversed(kept)]
+    fragments = []
+    for segment, origin in segments:
+        style = "class:generated" if origin == "generated" else ""
+        fragments.append((style, segment))
+    return fragments
+
+
+def _die_fragments(chat, suggestions, buffer):
+    return chat.die_bar(buffer.text, suggestions.real_for(buffer.text))
+
+
+def run_chat(
+    session=None,
+    commands=(),
+    input=None,
+    output=None,
+    spawn=spawn_training,
+    observer=SILENT,
+):
+    chat = GhostChat(session)
+    suggestions = GhostSuggestions(chat)
+    status = TrainingStatus(observer=observer)
+    panel = CommandPanel(commands, observer)
+
+    editor = TextArea(
+        text=session.text if session else "",
+        auto_suggest=suggestions,
+        multiline=True,
+        complete_while_typing=False,
+    )
+    buffer = editor.buffer
+    if session:
+        buffer.cursor_position = len(session.text)
+
+    def swap(next_session):
+        observer.on_event(SessionSwapped())
+        chat.use(next_session)
+        suggestions.forget()
+        buffer.text = next_session.text
+        buffer.cursor_position = len(next_session.text)
+
+    editor_keys = KeyBindings()
+
+    @editor_keys.add("tab")
     def _(event):
-        buffer = event.current_buffer
-        if buffer.suggestion is None or not buffer.suggestion.text:
+        if chat.session is None:
             return
         real = suggestions.real_for(buffer.text)
         if not real:
             return
         try:
-            chat.accept(buffer.text, real[0])
-            buffer.text = buffer.text + real[0]
+            chat.accept_rest(buffer.text, real)
         except ValueError:
             return
+        buffer.text = chat.session.text
+        buffer.cursor_position = len(buffer.text)
 
-    @kb.add("enter")
+    @editor_keys.add("enter")
     def _(event):
-        buffer = event.current_buffer
-        if buffer.suggestion is not None and buffer.suggestion.text:
-            real = suggestions.real_for(buffer.text)
-            try:
-                chat.accept_rest(buffer.text, real)
-                buffer.text = buffer.text + real
-            except ValueError:
-                pass
-        buffer.validate_and_handle()
+        if chat.session is not None:
+            chat.sync(buffer.text)
 
-    @kb.add("c-p")
+    panel_keys = KeyBindings()
+
+    @panel_keys.add("down")
     def _(event):
-        event.app.exit(result=PALETTE)
+        panel.move(1)
 
-    return kb
+    @panel_keys.add("up")
+    def _(event):
+        panel.move(-1)
 
+    @panel_keys.add("enter")
+    def _(event):
+        command = panel.current
+        if command is None:
+            return
+        panel.close()
+        observer.on_event(CommandPicked(command.name))
+        event.app.layout.focus(buffer)
+        if command.trains:
+            spawn(command, status)
+        else:
+            swap(command.build())
 
-def _intro():
-    return [
-        (
-            "class:more",
-            "murrAI: write; Tab accepts a char; Enter lets it finish; ctrl-c quits\n",
+    global_keys = KeyBindings()
+
+    @global_keys.add("c-p")
+    def _(event):
+        if panel.visible:
+            panel.close()
+            event.app.layout.focus(buffer)
+        else:
+            panel.open()
+            event.app.layout.focus(panel_list)
+
+    @global_keys.add("escape", filter=Condition(lambda: panel.visible))
+    def _(event):
+        panel.close()
+        event.app.layout.focus(buffer)
+
+    @global_keys.add("c-c")
+    def _(event):
+        event.app.exit()
+
+    story = Window(
+        FormattedTextControl(
+            lambda: (
+                story_fragments(chat.session, tail_lines=STORY_TAIL_LINES)
+                if chat.session
+                else [("class:hint", "no model yet; ctrl-p opens commands")]
+            ),
         ),
-    ]
-
-
-def run_chat(session, commands=(), input=None, output=None):
-    chat = GhostChat(session)
-    suggestions = GhostSuggestions(chat)
-    holder = {}
-
-    def _toolbar():
-        current = holder.get("prompt")
-        if current is None:
-            return []
-        buffer = current.default_buffer
-        return chat.die_bar(buffer.text, suggestions.real_for(buffer.text))
-
-    prompt = PromptSession(
-        auto_suggest=suggestions,
-        key_bindings=_key_bindings(chat, suggestions),
+        wrap_lines=True,
+    )
+    die = Window(
+        FormattedTextControl(lambda: _die_fragments(chat, suggestions, buffer)),
+        height=1,
+    )
+    panel_list = Window(
+        FormattedTextControl(
+            lambda: list_fragments(panel),
+            focusable=True,
+            key_bindings=panel_keys,
+        ),
+    )
+    panel_column = HSplit(
+        [
+            Frame(panel_list, title="commands", height=Dimension(weight=TOP_WEIGHT)),
+            Frame(
+                Window(
+                    FormattedTextControl(
+                        lambda: description_fragments(panel, PANEL_WIDTH - 2),
+                    ),
+                ),
+                title="about",
+                height=Dimension(weight=BOTTOM_WEIGHT),
+            ),
+        ],
+        width=PANEL_WIDTH,
+    )
+    layout = Layout(
+        HSplit(
+            [
+                VSplit(
+                    [
+                        HSplit(
+                            [
+                                Frame(
+                                    story,
+                                    title="murrAI",
+                                    height=Dimension(weight=TOP_WEIGHT),
+                                ),
+                                Frame(
+                                    HSplit([editor, die]),
+                                    title="write",
+                                    height=Dimension(weight=BOTTOM_WEIGHT),
+                                ),
+                            ],
+                        ),
+                        ConditionalContainer(
+                            panel_column,
+                            Condition(lambda: panel.visible),
+                        ),
+                    ],
+                ),
+                Window(
+                    FormattedTextControl(
+                        lambda: (
+                            status_fragments(status)
+                            or [("class:hint", "ctrl-p commands")]
+                        ),
+                    ),
+                    height=1,
+                    dont_extend_height=True,
+                ),
+            ],
+        ),
+    )
+    editor.control.key_bindings = editor_keys
+    app = Application(
+        layout=layout,
+        key_bindings=global_keys,
         style=STYLE,
-        bottom_toolbar=_toolbar,
-        multiline=True,
-        complete_while_typing=False,
+        full_screen=True,
         cursor=CursorShape.BLOCK,
         input=input,
         output=output,
     )
-    holder["prompt"] = prompt
-    writer = prompt_writer(output)
-    writer(_intro())
-    while True:
-        try:
-            result = prompt.prompt(default=chat.session.text)
-        except EOFError, KeyboardInterrupt:
-            writer([("class:more", "bye\n")])
-            return
-        if result is PALETTE:
-            menu = commands() if callable(commands) else commands
-            command = select_stage(menu, input=input, output=output)
-            if command is not None:
-                writer([("class:more", f"{command.name}\n")])
-                chat.use(command.build())
-                suggestions.forget()
-            continue
-        chat.sync(result)
-
-
-def prompt_writer(output=None):
-    def write(fragments):
-        print_formatted_text(FormattedText(fragments), style=STYLE, output=output)
-
-    return write
+    status.redraw = app.invalidate
+    if session is None:
+        panel.open()
+        app.layout.focus(panel_list)
+    app.output.write_raw(CURSOR_GREEN)
+    app.output.flush()
+    try:
+        with contextlib.suppress(EOFError):
+            app.run()
+    finally:
+        app.output.write_raw(CURSOR_RESET)
+        app.output.flush()
+    return chat.session
 
 
 def plain_text(fragments):

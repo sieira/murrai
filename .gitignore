@@ -20,6 +20,7 @@ build/
 # checkpoints and datasets
 checkpoints/
 data/
+chat.log
 
 # macOS
 .DS_Store
