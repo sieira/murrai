@@ -3,36 +3,36 @@
 - Status: Accepted
 - Date: 2026-11-11
 
-## Context
+## Motivation
 
-Training stages run silently: the chat picks a stage and the terminal sits
-dark for minutes. The author wants a live line — which step, and how much
-time is left. The trainers are plain loops in the application layer; they
-must stay screen-blind, and the display must not slow training down.
+Training stages used to run silently. Picking one left the terminal dark
+for minutes. The author asked for a live line that names the current step
+and the time left. Two constraints shaped the answer. Trainers stay
+screen-blind, and the display must not slow training down.
 
 ## Decision
 
-- Trainers emit one event per step through an EventBus port
-  (`murrai/application/ports.py`). The event is a `TrainingEvent`: step,
-  total_steps, elapsed_ms — self-sufficient, so a listener never asks the
-  trainer for anything.
-- The bus is optional: trainers take `bus=None` and skip even the clock
-  read when nobody listens.
-- The concrete bus lives in adapters (`ListenerBus`). Subscribe and
-  unsubscribe replace the listener list under a lock; emit iterates without
-  a lock (copy-on-write), so emit can never observe a half-registered
-  subscriber. Subscribing the same listener twice delivers once; the bus
-  matches listeners by equality, since bound methods are never identical
+- Trainers emit one event per step through an `EventBus` port
+  (`murrai/application/ports.py`). The event is a `TrainingEvent` and
+  carries step, total_steps, and elapsed_ms. It is self-sufficient; its
+  reader never asks the trainer for anything.
+- The bus is optional. Trainers take `bus=None` and read no clock when no
+  bus was given.
+- The concrete bus is `ListenerBus` (`murrai/adapters/events.py`).
+  Subscribe and unsubscribe replace the listener list under a lock. Emit
+  walks the list without a lock, so a listener is never seen
+  half-registered. Subscribing one listener twice delivers once; the bus
+  compares listeners by equality because bound methods are never identical
   twice.
-- Listener contract: never blocks. The chat's listener only appends to a
-  one-slot buffer; a reader thread renders at its own pace and stops when
-  the training run ends.
+- A listener never blocks. The chat's listener appends to a one-slot
+  buffer. A reader thread renders in its own time and stops when the run
+  ends.
 
 ## Consequences
 
-- Trainers gain no knowledge of screens; new progress displays need no
-  trainer change.
-- A test pins determinism: the same seed produces the identical loss curve
-  with and without a listening bus.
-- The unsubscribed overhead is one None check per step; the subscribed
+- Trainers know nothing about screens. A new progress display changes no
+  trainer.
+- The same seed produces the identical loss curve with and without a
+  listening bus; a test pins this.
+- Overhead without a subscriber is one None check per step. The subscribed
   overhead is measured, not asserted.
