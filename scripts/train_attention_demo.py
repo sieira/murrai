@@ -1,6 +1,6 @@
 import sys
-from pathlib import Path
 
+from murrai.adapters.corpus import DirTextCorpus
 from murrai.application.runs import (
     train_bigram,
     train_mlp_lm,
@@ -8,7 +8,12 @@ from murrai.application.runs import (
 )
 
 
-class SliceSource:
+def sample(model):
+    lines = model.generate(200, seed=17).splitlines() or [""]
+    return "\n".join(lines[:3])
+
+
+class TextSlice:
     def __init__(self, text):
         self._text = text
 
@@ -16,15 +21,10 @@ class SliceSource:
         return self._text
 
 
-def sample(model):
-    lines = model.generate(200, seed=17).splitlines() or [""]
-    return "\n".join(lines[:3])
-
-
 def main():
-    text = (Path(sys.argv[1]) / "tinystories.txt").read_text()[:300_000]
+    text = DirTextCorpus(sys.argv[1]).text()[:300_000]
 
-    bigram = train_bigram(SliceSource(text), holdout=0.1)
+    bigram = train_bigram(TextSlice(text), holdout=0.1)
     mlp = train_mlp_lm(
         text,
         steps=10000,
