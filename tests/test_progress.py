@@ -10,34 +10,31 @@ def _console(file):
     return Console(file=file, width=80, force_terminal=True)
 
 
-def test_the_progress_bar_reaches_the_final_step():
+def test_the_bar_starts_at_the_first_event_and_shows_counts():
     file = io.StringIO()
     line = ProgressLine(console=_console(file))
-    line.start()
-    line(TrainingEvent(step=1999, total_steps=2000))
+    line(TrainingEvent(step=1, total_steps=2000))
+    line.stop()
+
+    text = file.getvalue()
+    assert "1/2000" in text
+    assert "None" not in text
+
+
+def test_the_bar_leaves_a_summary_instead_of_a_stuck_bar():
+    file = io.StringIO()
+    line = ProgressLine(console=_console(file))
     line(TrainingEvent(step=2000, total_steps=2000))
     line.stop()
 
     text = file.getvalue()
-    assert "2000/2000" in text
+    assert "finished in" in text
     assert "100%" in text
 
 
-def test_the_progress_bar_shows_the_step_it_sits_on():
+def test_stopping_before_any_event_renders_nothing():
     file = io.StringIO()
     line = ProgressLine(console=_console(file))
-    line.start()
-    line(TrainingEvent(step=500, total_steps=2000))
     line.stop()
 
-    assert "500/2000" in file.getvalue()
-
-
-def test_the_bar_starts_empty_and_fills_with_events():
-    file = io.StringIO()
-    line = ProgressLine(console=_console(file))
-    line(TrainingEvent(step=1, total_steps=2000))
-    line.start()
-    line.stop()
-
-    assert "1/2000" in file.getvalue()
+    assert file.getvalue() == ""

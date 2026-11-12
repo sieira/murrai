@@ -16,7 +16,6 @@ def _trained_session(build):
     bus = ListenerBus()
     line = ProgressLine()
     bus.subscribe(line)
-    line.start()
     try:
         return build(bus=bus)
     finally:

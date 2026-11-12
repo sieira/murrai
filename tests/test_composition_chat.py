@@ -119,15 +119,11 @@ class RecordingLine:
 
     def __init__(self):
         self.events = 0
-        self.started = False
         self.stopped = False
         RecordingLine.built.append(self)
 
     def __call__(self, event):
         self.events += 1
-
-    def start(self):
-        self.started = True
 
     def stop(self):
         self.stopped = True
@@ -143,7 +139,6 @@ def test_training_stages_stream_progress_into_the_eta_line(monkeypatch, corpus):
     assert len(RecordingLine.built) == 1
     line = RecordingLine.built[0]
     assert line.events == 20
-    assert line.started
     assert line.stopped
 
 
