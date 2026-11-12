@@ -328,9 +328,15 @@ def run_chat(
                         ),
                     ],
                 ),
-                ConditionalContainer(
-                    Window(FormattedTextControl(lambda: status_fragments(status))),
-                    Condition(lambda: status.has_lines()),
+                Window(
+                    FormattedTextControl(
+                        lambda: (
+                            status_fragments(status)
+                            or [("class:hint", "ctrl-p commands")]
+                        ),
+                    ),
+                    height=1,
+                    dont_extend_height=True,
                 ),
             ],
         ),

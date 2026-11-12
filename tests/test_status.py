@@ -30,3 +30,15 @@ def test_a_failed_training_says_so():
     status.fail("char gpt")
 
     assert "char gpt failed" in plain_text(status_fragments(status))
+
+
+def test_two_trainings_share_one_line():
+    status = TrainingStatus()
+    status.track("neural bigram")(TrainingEvent(step=1, total_steps=2))
+    status.track("char gpt")(TrainingEvent(step=1, total_steps=2))
+
+    text = plain_text(status_fragments(status))
+
+    assert "neural bigram" in text
+    assert "char gpt" in text
+    assert "\n" not in text

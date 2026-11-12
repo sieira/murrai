@@ -1,6 +1,6 @@
 import threading
 
-BAR_WIDTH = 24
+BAR_WIDTH = 16
 
 
 class TrainingStatus:
@@ -42,6 +42,8 @@ class TrainingStatus:
 def status_fragments(status):
     fragments = []
     for name, run in status.lines().items():
+        if fragments:
+            fragments.append(("class:hint", " │ "))
         if run is None:
             fragments.append(("class:failed", f"{name} failed"))
         else:
@@ -49,7 +51,6 @@ def status_fragments(status):
             filled = BAR_WIDTH * step // total if total else BAR_WIDTH
             bar = "█" * filled + "░" * (BAR_WIDTH - filled)
             fragments.append(("class:bar", f"{name} {bar} {step}/{total}"))
-        fragments.append(("", "\n"))
     return fragments
 
 
