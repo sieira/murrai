@@ -1,108 +1,43 @@
-import time
+import io
+
+from rich.console import Console
 
 from murrai.application.ports import TrainingEvent
-from murrai.presentation.chat.progress import EtaLine
+from murrai.presentation.chat.progress import ProgressLine
 
 
-def test_the_eta_line_renders_the_newest_event():
-    writes = []
-    line = EtaLine(write=writes.append)
-
-    line(TrainingEvent(step=10, total_steps=20, elapsed_ms=1000))
-    line.drain()
-    line(TrainingEvent(step=11, total_steps=20, elapsed_ms=1100))
-    line.drain()
-
-    assert writes == [
-        "step 10/20 (50%)  ETA 1s\n",
-        "step 11/20 (55%)  ETA 1s\n",
-    ]
+def _console(file):
+    return Console(file=file, width=80, force_terminal=True)
 
 
-def test_the_eta_line_says_nothing_without_an_event():
-    writes = []
-    line = EtaLine(write=writes.append)
-
-    line.drain()
-
-    assert writes == []
-
-
-def test_the_eta_line_keeps_the_last_write_when_nothing_new_arrives():
-    writes = []
-    line = EtaLine(write=writes.append)
-
-    line(TrainingEvent(step=10, total_steps=20, elapsed_ms=1000))
-    line.drain()
-    line.drain()
-
-    assert writes == ["step 10/20 (50%)  ETA 1s\n"]
-
-
-def test_the_reader_thread_renders_until_stopped():
-    writes = []
-    line = EtaLine(write=writes.append, interval=0.01)
+def test_the_progress_bar_reaches_the_final_step():
+    file = io.StringIO()
+    line = ProgressLine(console=_console(file))
     line.start()
-    try:
-        line(TrainingEvent(step=10, total_steps=20, elapsed_ms=1000))
-        for _ in range(100):
-            if writes:
-                break
-            time.sleep(0.01)
-        assert writes, "the reader thread never rendered the event"
-    finally:
-        line.stop()
-
+    line(TrainingEvent(step=1999, total_steps=2000))
+    line(TrainingEvent(step=2000, total_steps=2000))
     line.stop()
 
-
-def test_the_eta_line_refreshes_in_place_when_asked():
-    writes = []
-    line = EtaLine(write=writes.append, refresh=True)
-
-    line(TrainingEvent(step=10, total_steps=20, elapsed_ms=1000))
-    line.drain()
-    line(TrainingEvent(step=11, total_steps=20, elapsed_ms=1100))
-    line.drain()
-
-    assert writes == [
-        "\r\x1b[Kstep 10/20 (50%)  ETA 1s",
-        "\r\x1b[Kstep 11/20 (55%)  ETA 1s",
-    ]
+    text = file.getvalue()
+    assert "2000/2000" in text
+    assert "100%" in text
 
 
-def test_a_refreshing_line_ends_its_last_line_when_it_stops():
-    writes = []
-    line = EtaLine(write=writes.append, refresh=True)
-
-    line(TrainingEvent(step=10, total_steps=20, elapsed_ms=1000))
-    line.drain()
+def test_the_progress_bar_shows_the_step_it_sits_on():
+    file = io.StringIO()
+    line = ProgressLine(console=_console(file))
+    line.start()
+    line(TrainingEvent(step=500, total_steps=2000))
     line.stop()
 
-    assert writes == ["\r\x1b[Kstep 10/20 (50%)  ETA 1s", "\n"]
+    assert "500/2000" in file.getvalue()
 
 
-def test_the_default_follows_the_terminal():
-    import sys
-
-    stacked = EtaLine(write=lambda text: None)
-    assert stacked._refresh is sys.stdout.isatty()
-
-
-def test_stopping_renders_the_newest_event():
-    writes = []
-    line = EtaLine(write=writes.append)
-    line(TrainingEvent(step=1999, total_steps=2000, elapsed_ms=46000))
-    line(TrainingEvent(step=2000, total_steps=2000, elapsed_ms=46200))
+def test_the_bar_starts_empty_and_fills_with_events():
+    file = io.StringIO()
+    line = ProgressLine(console=_console(file))
+    line(TrainingEvent(step=1, total_steps=2000))
+    line.start()
     line.stop()
 
-    assert writes == ["step 2000/2000 (100%)  ETA 0s\n"]
-
-
-def test_stopping_renders_the_newest_event_in_place_then_closes():
-    writes = []
-    line = EtaLine(write=writes.append, refresh=True)
-    line(TrainingEvent(step=2000, total_steps=2000, elapsed_ms=46200))
-    line.stop()
-
-    assert writes == ["\r\x1b[Kstep 2000/2000 (100%)  ETA 0s", "\n"]
+    assert "1/2000" in file.getvalue()

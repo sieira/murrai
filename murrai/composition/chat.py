@@ -8,20 +8,20 @@ from murrai.application.runs import (
     train_transformer_lm,
 )
 from murrai.presentation.chat.picker import Stage
-from murrai.presentation.chat.progress import EtaLine
+from murrai.presentation.chat.progress import ProgressLine
 from murrai.presentation.chat.session import ChatSession
 
 
 def _trained_session(build):
     bus = ListenerBus()
-    eta = EtaLine()
-    bus.subscribe(eta)
-    eta.start()
+    line = ProgressLine()
+    bus.subscribe(line)
+    line.start()
     try:
         return build(bus=bus)
     finally:
-        eta.stop()
-        bus.unsubscribe(eta)
+        line.stop()
+        bus.unsubscribe(line)
 
 
 def chat_session_from_directory(directory, seed=0):

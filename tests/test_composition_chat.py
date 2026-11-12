@@ -135,7 +135,7 @@ class RecordingLine:
 
 def test_training_stages_stream_progress_into_the_eta_line(monkeypatch, corpus):
     RecordingLine.built = []
-    monkeypatch.setattr(chat_module, "EtaLine", RecordingLine)
+    monkeypatch.setattr(chat_module, "ProgressLine", RecordingLine)
 
     stage = _stage(corpus, "neural bigram", seed=0, neural_steps=20)
     stage.build()
@@ -149,7 +149,7 @@ def test_training_stages_stream_progress_into_the_eta_line(monkeypatch, corpus):
 
 def test_the_counted_stage_stays_quiet(monkeypatch, corpus):
     RecordingLine.built = []
-    monkeypatch.setattr(chat_module, "EtaLine", RecordingLine)
+    monkeypatch.setattr(chat_module, "ProgressLine", RecordingLine)
 
     _stage(corpus, "counted bigram", seed=0).build()
 

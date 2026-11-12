@@ -9,15 +9,15 @@ def test_the_bus_delivers_events_to_subscribers():
     bus.subscribe(first.append)
     bus.subscribe(second.append)
 
-    bus.emit(TrainingEvent(step=1, total_steps=10, elapsed_ms=5))
+    bus.emit(TrainingEvent(step=1, total_steps=10))
 
-    assert first == [TrainingEvent(step=1, total_steps=10, elapsed_ms=5)]
+    assert first == [TrainingEvent(step=1, total_steps=10)]
     assert second == first
 
     bus.unsubscribe(first.append)
-    bus.emit(TrainingEvent(step=2, total_steps=10, elapsed_ms=9))
+    bus.emit(TrainingEvent(step=2, total_steps=10))
 
-    assert first == [TrainingEvent(step=1, total_steps=10, elapsed_ms=5)]
+    assert first == [TrainingEvent(step=1, total_steps=10)]
     assert second[-1].step == 2
 
 
@@ -27,7 +27,7 @@ def test_subscribing_twice_delivers_once():
     bus.subscribe(seen.append)
     bus.subscribe(seen.append)
 
-    bus.emit(TrainingEvent(step=1, total_steps=1, elapsed_ms=0))
+    bus.emit(TrainingEvent(step=1, total_steps=1))
 
     assert len(seen) == 1
 
@@ -49,7 +49,6 @@ def test_the_trainer_emits_one_event_per_step():
     last = seen[-1]
     assert last.step == 20
     assert last.total_steps == 20
-    assert last.elapsed_ms >= 0
     assert [event.step for event in seen] == list(range(1, 21))
 
 

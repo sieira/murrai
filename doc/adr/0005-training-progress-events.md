@@ -14,19 +14,20 @@ screen-blind, and the display must not slow training down.
 
 - Trainers emit one event per step through an `EventBus` port
   (`murrai/application/ports.py`). The event is a `TrainingEvent` and
-  carries step, total_steps, and elapsed_ms. It is self-sufficient; its
-  reader never asks the trainer for anything.
-- The bus is optional. Trainers take `bus=None` and read no clock when no
-  bus was given.
+  carries step and total_steps. It is self-sufficient; its reader never
+  asks the trainer for anything. The reader computes pace and remaining
+  time from its own clock.
+- The bus is optional. Trainers take `bus=None` and do nothing when no bus
+  was given.
 - The concrete bus is `ListenerBus` (`murrai/adapters/events.py`).
   Subscribe and unsubscribe replace the listener list under a lock. Emit
   walks the list without a lock, so a listener is never seen
   half-registered. Subscribing one listener twice delivers once; the bus
   compares listeners by equality because bound methods are never identical
   twice.
-- A listener never blocks. The chat's listener appends to a one-slot
-  buffer. A reader thread renders in its own time and stops when the run
-  ends.
+- A listener never blocks. The chat's listener hands the event to a
+  progress bar; the bar's library owns the refresh thread and the terminal
+  output, and the bar closes when the run ends.
 
 ## Consequences
 
@@ -36,3 +37,5 @@ screen-blind, and the display must not slow training down.
   listening bus; a test pins this.
 - Overhead without a subscriber is one None check per step. The subscribed
   overhead is measured, not asserted.
+- Rendering is the progress library's job; the adapter owns only the
+  mapping from event to bar.

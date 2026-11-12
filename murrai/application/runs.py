@@ -1,6 +1,5 @@
 import itertools
 import random
-import time
 from dataclasses import dataclass
 
 import torch
@@ -58,7 +57,6 @@ def train_neural_bigram(
     pairs = [(prev, nxt) for prev, nxt in itertools.pairwise(ids)]
 
     rng = random.Random(seed)
-    started = time.monotonic()
     loss_curve = []
     for step in range(steps):
         rate = learning_rate + (final_learning_rate - learning_rate) * step / (
@@ -72,13 +70,7 @@ def train_neural_bigram(
         model.update(rate)
         loss_curve.append(loss.data)
         if bus is not None:
-            bus.emit(
-                TrainingEvent(
-                    step=step + 1,
-                    total_steps=steps,
-                    elapsed_ms=int((time.monotonic() - started) * 1000),
-                ),
-            )
+            bus.emit(TrainingEvent(step=step + 1, total_steps=steps))
     return NeuralTrainingResult(model=model, loss_curve=loss_curve)
 
 
@@ -130,7 +122,6 @@ def train_mlp_lm(
     best = float("inf")
     best_step = 0
     rate = learning_rate
-    started = time.monotonic()
     for step in range(steps):
         chosen = [rng.randrange(pairs) for _ in range(batch)]
         batch_targets = torch.tensor([targets[i] for i in chosen], dtype=torch.long)
@@ -149,13 +140,7 @@ def train_mlp_lm(
         loss_curve.append(value)
         rate_curve.append(rate)
         if bus is not None:
-            bus.emit(
-                TrainingEvent(
-                    step=step + 1,
-                    total_steps=steps,
-                    elapsed_ms=int((time.monotonic() - started) * 1000),
-                ),
-            )
+            bus.emit(TrainingEvent(step=step + 1, total_steps=steps))
 
     return MlpTrainingResult(
         model=model,
@@ -214,7 +199,6 @@ def train_transformer_lm(
     best = float("inf")
     best_step = 0
     rate = learning_rate
-    started = time.monotonic()
     for step in range(steps):
         chosen = torch.tensor([rng.randrange(last_start) for _ in range(batch)])
         rows = stream[chosen[:, None] + span]
@@ -232,13 +216,7 @@ def train_transformer_lm(
         loss_curve.append(value)
         rate_curve.append(rate)
         if bus is not None:
-            bus.emit(
-                TrainingEvent(
-                    step=step + 1,
-                    total_steps=steps,
-                    elapsed_ms=int((time.monotonic() - started) * 1000),
-                ),
-            )
+            bus.emit(TrainingEvent(step=step + 1, total_steps=steps))
 
     return TransformerTrainingResult(
         model=model,
