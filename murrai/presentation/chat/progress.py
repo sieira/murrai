@@ -1,3 +1,4 @@
+import sys
 import threading
 from collections import deque
 
@@ -5,13 +6,14 @@ from murrai.application.ports import TrainingEvent
 
 
 class EtaLine:
-    def __init__(self, write=print, interval=1.0):
-        self._write = write
+    def __init__(self, write=None, interval=1.0, refresh=None):
+        self._write = write or sys.stdout.write
         self._interval = interval
         self._latest: deque[TrainingEvent] = deque(maxlen=1)
         self._rendered: TrainingEvent | None = None
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
+        self._refresh = sys.stdout.isatty() if refresh is None else refresh
 
     def __call__(self, event: TrainingEvent) -> None:
         self._latest.append(event)
@@ -25,11 +27,17 @@ class EtaLine:
         if self._thread is not None:
             self._thread.join()
             self._thread = None
+        if self._refresh and self._rendered is not None:
+            self._write("\n")
 
     def drain(self) -> None:
         if self._latest and self._latest[0] is not self._rendered:
             self._rendered = self._latest[0]
-            self._write(_eta_line(self._rendered))
+            text = _eta_line(self._rendered)
+            if self._refresh:
+                self._write(f"\r\x1b[K{text}")
+            else:
+                self._write(f"{text}\n")
 
     def _loop(self) -> None:
         while not self._stop.wait(self._interval):
