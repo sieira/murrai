@@ -119,3 +119,16 @@ def test_picking_a_command_publishes_the_pick_and_the_swap():
         "[command] picked counted bigram",
         "[session] swapped",
     ]
+
+
+def test_beginning_a_run_publishes_started_once():
+    log = ChatLog(clock=lambda: 0.0)
+    status = TrainingStatus(observer=log)
+
+    status.begin("x")
+    status.track("x")(TrainingEvent(step=1, total_steps=2))
+
+    assert [line.split(" ", 1)[1] for line in log.lines] == [
+        "[train] x started",
+        "[train] x 1/2",
+    ]

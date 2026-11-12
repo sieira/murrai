@@ -84,3 +84,33 @@ def test_finishing_wakes_even_in_the_same_instant():
 
     status.finish("char gpt")
     assert len(wakes) == 2
+
+
+def test_a_training_shows_in_the_bar_before_its_first_step():
+    status = TrainingStatus()
+
+    status.begin("char gpt")
+
+    assert plain_text(status_fragments(status)) == "char gpt starting"
+
+
+def test_a_run_that_is_starting_sits_beside_one_that_is_running():
+    status = TrainingStatus()
+    status.track("neural bigram")(TrainingEvent(step=1, total_steps=2))
+    status.begin("char gpt")
+
+    text = plain_text(status_fragments(status))
+
+    assert text.startswith("neural bigram ")
+    assert text.endswith(" │ char gpt starting")
+
+
+def test_the_first_step_replaces_starting_with_the_bar():
+    status = TrainingStatus()
+    status.begin("char gpt")
+
+    status.track("char gpt")(TrainingEvent(step=1, total_steps=4))
+
+    text = plain_text(status_fragments(status))
+    assert "starting" not in text
+    assert "1/4" in text

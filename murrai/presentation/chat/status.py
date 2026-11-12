@@ -1,4 +1,6 @@
+import contextlib
 import multiprocessing
+import os
 import threading
 import time
 
@@ -24,14 +26,24 @@ class TrainingStatus:
         self._clock = clock
         self._last_wake = float("-inf")
 
+    def begin(self, name):
+        with self._lock:
+            self._runs[name] = (self._clock(), 0, 0)
+        self._observer.on_event(TrainingStarted(name))
+        self._wake(force=True)
+
     def track(self, name):
         def on_event(event):
             with self._lock:
-                first = name not in self._runs or self._runs[name] is None
-                start = self._clock() if first else self._runs[name][0]
+                run = self._runs.get(name)
+                known = run is not None
+            if not known:
+                self.begin(name)
+            with self._lock:
+                start, _, total = self._runs[name]
+                if total == 0:
+                    start = self._clock()
                 self._runs[name] = (start, event.step, event.total_steps)
-            if first:
-                self._observer.on_event(TrainingStarted(name))
             self._observer.on_event(
                 TrainingStepped(name, event.step, event.total_steps),
             )
@@ -89,6 +101,9 @@ def status_fragments(status):
             fragments.append(("class:failed", f"{name} failed"))
             continue
         step, total, eta = run
+        if total == 0:
+            fragments.append(("class:hint", f"{name} starting"))
+            continue
         filled = BAR_WIDTH * step // total if total else BAR_WIDTH
         bar = "█" * filled + "░" * (BAR_WIDTH - filled)
         text = f"{name} {bar} {step}/{total}"
@@ -141,6 +156,23 @@ def _pump(name, connection, status):
             return
 
 
+# The child imports torch while unpickling, before any code of ours runs there;
+# its warnings would print over the full-screen interface.
+@contextlib.contextmanager
+def _silenced_stdio():
+    saved = [os.dup(1), os.dup(2)]
+    devnull = os.open(os.devnull, os.O_WRONLY)
+    try:
+        os.dup2(devnull, 1)
+        os.dup2(devnull, 2)
+        yield
+    finally:
+        os.dup2(saved[0], 1)
+        os.dup2(saved[1], 2)
+        for descriptor in (*saved, devnull):
+            os.close(descriptor)
+
+
 def spawn_training(command, status):
     context = multiprocessing.get_context("spawn")
     receive, send = context.Pipe(duplex=False)
@@ -149,8 +181,10 @@ def spawn_training(command, status):
         args=(command, send),
         daemon=True,
     )
+    status.begin(command.name)
     try:
-        process.start()
+        with _silenced_stdio():
+            process.start()
     except Exception as error:
         status.fail(command.name, str(error))
         return

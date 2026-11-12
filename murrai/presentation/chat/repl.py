@@ -5,7 +5,7 @@ from prompt_toolkit.auto_suggest import AutoSuggest, Suggestion
 from prompt_toolkit.cursor_shapes import CursorShape
 from prompt_toolkit.filters import Condition
 from prompt_toolkit.key_binding import KeyBindings
-from prompt_toolkit.layout import HSplit, Layout, VSplit, Window
+from prompt_toolkit.layout import Dimension, HSplit, Layout, VSplit, Window
 from prompt_toolkit.layout.containers import ConditionalContainer
 from prompt_toolkit.layout.controls import FormattedTextControl
 from prompt_toolkit.styles import Style
@@ -31,6 +31,8 @@ GHOST_CHARS = 20
 TOP = 5
 STORY_TAIL_LINES = 20
 PANEL_WIDTH = 36
+TOP_WEIGHT = 3
+BOTTOM_WEIGHT = 1
 
 STYLE = Style.from_dict(
     {
@@ -277,20 +279,19 @@ def run_chat(
             key_bindings=panel_keys,
         ),
     )
-    panel_frame = Frame(
-        HSplit(
-            [
-                panel_list,
-                Window(height=1, char="─"),
+    panel_column = HSplit(
+        [
+            Frame(panel_list, title="commands", height=Dimension(weight=TOP_WEIGHT)),
+            Frame(
                 Window(
                     FormattedTextControl(
                         lambda: description_fragments(panel, PANEL_WIDTH - 2),
                     ),
-                    height=6,
                 ),
-            ],
-        ),
-        title="commands",
+                title="about",
+                height=Dimension(weight=BOTTOM_WEIGHT),
+            ),
+        ],
         width=PANEL_WIDTH,
     )
     layout = Layout(
@@ -300,12 +301,20 @@ def run_chat(
                     [
                         HSplit(
                             [
-                                Frame(story, title="murrAI"),
-                                Frame(HSplit([editor, die]), title="write"),
+                                Frame(
+                                    story,
+                                    title="murrAI",
+                                    height=Dimension(weight=TOP_WEIGHT),
+                                ),
+                                Frame(
+                                    HSplit([editor, die]),
+                                    title="write",
+                                    height=Dimension(weight=BOTTOM_WEIGHT),
+                                ),
                             ],
                         ),
                         ConditionalContainer(
-                            panel_frame,
+                            panel_column,
                             Condition(lambda: panel.visible),
                         ),
                     ],

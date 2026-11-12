@@ -1,3 +1,4 @@
+import os
 import time
 
 from murrai.adapters.checkpoint import FileCheckpointStore
@@ -46,3 +47,23 @@ def test_a_training_that_cannot_leave_the_process_is_reported_failed():
     _wait_for(log, "failed")
 
     assert "[train] local failed" in log.lines[-1]
+
+
+class Noisy:
+    name = "noisy"
+
+    def build(self, on_event=None):
+        os.write(2, b"a warning that would land on the screen\n")
+        os.write(1, b"print noise\n")
+
+
+def test_a_training_process_never_writes_over_the_screen(capfd):
+    log = ChatLog()
+    status = TrainingStatus(observer=log)
+
+    spawn_training(Noisy(), status)
+    _wait_for(log, "finished")
+
+    captured = capfd.readouterr()
+    assert captured.err == ""
+    assert captured.out == ""
