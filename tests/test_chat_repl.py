@@ -196,3 +196,27 @@ def test_the_story_pane_colors_generated_text():
 
     assert [style for style, _ in fragments] == ["", "class:generated"]
     assert "".join(text for _, text in fragments) == "ab"
+
+
+class _RecordingOutput(DummyOutput):
+    def __init__(self):
+        self.raw = []
+
+    def write_raw(self, data):
+        self.raw.append(data)
+
+
+def test_the_status_bars_are_green():
+    from murrai.presentation.chat.repl import STYLE
+
+    assert STYLE.get_attrs_for_style_str("class:bar").color == "ansigreen"
+
+
+def test_the_cursor_turns_green_while_chatting_and_resets_on_exit():
+    output = _RecordingOutput()
+    with create_pipe_input() as pipe:
+        pipe.send_text("\x03")
+        run_chat(_session(), commands=[], input=pipe, output=output)
+
+    assert output.raw[0] == "\x1b]12;#00ff00\x07"
+    assert output.raw[-1] == "\x1b]112\x07"

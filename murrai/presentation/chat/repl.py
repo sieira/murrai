@@ -31,6 +31,8 @@ GHOST_CHARS = 20
 TOP = 5
 STORY_TAIL_LINES = 20
 PANEL_WIDTH = 36
+CURSOR_GREEN = "\x1b]12;#00ff00\x07"
+CURSOR_RESET = "\x1b]112\x07"
 TOP_WEIGHT = 3
 BOTTOM_WEIGHT = 1
 
@@ -44,7 +46,7 @@ STYLE = Style.from_dict(
         "more": "ansibrightblack",
         "hint": "ansibrightblack",
         "selected": "ansibrightcyan bold",
-        "bar": "ansiwhite",
+        "bar": "ansigreen",
         "failed": "ansired bold",
     },
 )
@@ -346,8 +348,14 @@ def run_chat(
     if session is None:
         panel.open()
         app.layout.focus(panel_list)
-    with contextlib.suppress(EOFError):
-        app.run()
+    app.output.write_raw(CURSOR_GREEN)
+    app.output.flush()
+    try:
+        with contextlib.suppress(EOFError):
+            app.run()
+    finally:
+        app.output.write_raw(CURSOR_RESET)
+        app.output.flush()
     return chat.session
 
 
