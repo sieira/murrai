@@ -32,6 +32,14 @@ def test_reused_value_sums_gradients_from_every_path():
     assert a.grad == pytest.approx(5.0)
 
 
+def test_a_value_survives_a_trip_to_another_process():
+    import pickle
+
+    value = Value(2.5)
+    revived = pickle.loads(pickle.dumps(value))
+    assert revived.data == 2.5
+
+
 def test_subtract_passes_reversed_sign_to_the_right_parent():
     a = Value(10.0)
     b = Value(4.0)

@@ -27,13 +27,24 @@ class NeuralTrainingResult:
     loss_curve: list[float]
 
 
-def train_bigram(corpus: Corpus, holdout: float) -> TrainingResult:
+def train_bigram(
+    corpus: Corpus,
+    holdout: float,
+    bus: EventBus | None = None,
+) -> TrainingResult:
     text = corpus.text()
     cut = int(len(text) * (1 - holdout))
     train, held_out = text[:cut], text[cut:]
 
+    def report(counted, total):
+        bus.emit(TrainingEvent(step=counted, total_steps=total))
+
     vocabulary = Vocabulary.from_text(text)
-    model = Bigram.fit(train, vocabulary)
+    model = Bigram.fit(
+        train,
+        vocabulary,
+        on_progress=report if bus is not None else None,
+    )
     return TrainingResult(
         model=model,
         train_chars=len(train),

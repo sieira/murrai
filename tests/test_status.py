@@ -1,6 +1,31 @@
 from murrai.application.ports import TrainingEvent
-from murrai.presentation.chat.repl import plain_text
+from murrai.presentation.chat.repl import plain_text, status_line
 from murrai.presentation.chat.status import TrainingStatus, status_fragments
+
+
+def test_the_status_bar_names_the_selected_model():
+    assert plain_text(status_line(TrainingStatus(), "char-gpt")) == "char-gpt"
+
+
+def test_the_selected_model_sits_beside_running_trainings():
+    status = TrainingStatus()
+    status.track("retrain x")(TrainingEvent(step=1, total_steps=2))
+
+    text = plain_text(status_line(status, "char-gpt"))
+
+    assert text.startswith("char-gpt │ retrain x")
+    assert "1/2" in text
+
+
+def test_running_trainings_show_without_a_selected_model():
+    status = TrainingStatus()
+    status.track("retrain x")(TrainingEvent(step=1, total_steps=2))
+
+    assert plain_text(status_line(status)) == plain_text(status_fragments(status))
+
+
+def test_no_model_and_no_runs_leaves_the_hint():
+    assert plain_text(status_line(TrainingStatus())) == "ctrl-p commands"
 
 
 def test_a_running_training_shows_name_and_counts():

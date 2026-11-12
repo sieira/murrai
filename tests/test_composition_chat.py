@@ -26,7 +26,7 @@ def test_chat_commands_list_the_models(corpus):
         "retrain char gpt",
     ]
     counted, neural, mlp, gpt = commands
-    assert not counted.trains
+    assert counted.trains
     assert neural.trains
     assert mlp.trains
     assert gpt.trains
@@ -96,12 +96,19 @@ def test_training_commands_save_a_checkpoint(corpus):
         gpt_steps=20,
         store=store,
     )
+    _command(corpus, "counted bigram", store=store).build()
+    assert store.names() == ["counted-bigram"]
     _command(corpus, "retrain neural bigram", store=store, neural_steps=20).build()
-    assert store.names() == ["neural-bigram"]
+    assert store.names() == ["counted-bigram", "neural-bigram"]
     _command(corpus, "retrain windowed mlp", store=store, mlp_steps=20).build()
-    assert store.names() == ["neural-bigram", "windowed-mlp"]
+    assert store.names() == ["counted-bigram", "neural-bigram", "windowed-mlp"]
     _command(corpus, "retrain char gpt", store=store, gpt_steps=20).build()
-    assert store.names() == ["char-gpt", "neural-bigram", "windowed-mlp"]
+    assert store.names() == [
+        "char-gpt",
+        "counted-bigram",
+        "neural-bigram",
+        "windowed-mlp",
+    ]
 
 
 def test_the_load_command_restores_the_trained_model(corpus):
@@ -219,6 +226,12 @@ def test_training_commands_survive_a_trip_to_another_process(corpus):
 
     commands = chat_commands(corpus, seed=0, neural_steps=20)
     trains = [c for c in commands if c.trains]
+    assert [c.name for c in trains] == [
+        "counted bigram",
+        "retrain neural bigram",
+        "retrain windowed mlp",
+        "retrain char gpt",
+    ]
 
     for command in trains:
         assert pickle.loads(pickle.dumps(command)).name == command.name
