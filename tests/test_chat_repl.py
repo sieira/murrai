@@ -25,7 +25,7 @@ def test_ctrl_p_opens_the_command_menu_and_swaps_the_session():
     ]
 
     with create_pipe_input() as pipe:
-        pipe.send_text("\x10counted bigram\r\x03")
+        pipe.send_text("\x10\r\x03")
         returned = run_chat(
             _session(),
             commands=commands,
@@ -35,6 +35,20 @@ def test_ctrl_p_opens_the_command_menu_and_swaps_the_session():
 
     assert built == [1]
     assert returned is second
+
+
+def test_arrows_choose_which_command_runs():
+    built = []
+    commands = [
+        Command("first", "one", lambda: (built.append("first"), _session())[1]),
+        Command("second", "two", lambda: (built.append("second"), _session())[1]),
+    ]
+
+    with create_pipe_input() as pipe:
+        pipe.send_text("\x10\x1b[B\r\x03")
+        run_chat(_session(), commands=commands, input=pipe, output=DummyOutput())
+
+    assert built == ["second"]
 
 
 def test_ctrl_p_without_a_command_keeps_the_session():
@@ -70,7 +84,7 @@ def test_the_command_menu_rebuilds_each_time_it_opens():
         return menu
 
     with create_pipe_input() as pipe:
-        pipe.send_text("\x10retrain counted bigram\r\x10load counted-bigram\r\x03")
+        pipe.send_text("\x10\r\x10\r\x03")
         returned = run_chat(
             _session(),
             commands=commands,
@@ -94,7 +108,7 @@ def test_run_chat_without_a_session_opens_ready_to_pick():
     ]
 
     with create_pipe_input() as pipe:
-        pipe.send_text("counted bigram\r\x03")
+        pipe.send_text("\r\x03")
         returned = run_chat(None, commands=commands, input=pipe, output=DummyOutput())
 
     assert built == [1]
@@ -116,7 +130,7 @@ def test_a_picked_training_command_runs_in_the_background():
 
     first = _session()
     with create_pipe_input() as pipe:
-        pipe.send_text("\x10retrain x\r\x03")
+        pipe.send_text("\x10\r\x03")
         returned = run_chat(
             first,
             commands=[command],

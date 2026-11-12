@@ -19,9 +19,10 @@ training run took over the whole terminal until it finished.
 - The write pane at the bottom holds the live line. The model's offered
   shadow sits after the cursor. Tab takes the whole offered shadow.
   Enter commits the typed text alone and never takes the shadow.
-- ctrl-p opens a command panel on the right. The panel filters as you
-  type, moves with the arrow keys, and rebuilds its list every time it
-  opens. Escape or ctrl-p closes it.
+- ctrl-p opens a command panel on the right. The panel lists command
+  names, moves with the arrow keys, and rebuilds its list every time it
+  opens. A box under the list shows the highlighted command's
+  description. Escape or ctrl-p closes it.
 - Picking a load command swaps the session in place; the story and the
   live line follow the new model. Picking a training command starts it
   in the background. A status bar at the bottom shows one bar per

@@ -2,17 +2,20 @@ import contextlib
 
 from prompt_toolkit.application import Application
 from prompt_toolkit.auto_suggest import AutoSuggest, Suggestion
-from prompt_toolkit.buffer import Buffer
 from prompt_toolkit.cursor_shapes import CursorShape
 from prompt_toolkit.filters import Condition
 from prompt_toolkit.key_binding import KeyBindings
 from prompt_toolkit.layout import HSplit, Layout, VSplit, Window
 from prompt_toolkit.layout.containers import ConditionalContainer
-from prompt_toolkit.layout.controls import BufferControl, FormattedTextControl
+from prompt_toolkit.layout.controls import FormattedTextControl
 from prompt_toolkit.styles import Style
 from prompt_toolkit.widgets import Frame, TextArea
 
-from murrai.presentation.chat.panel import filter_commands
+from murrai.presentation.chat.panel import (
+    CommandPanel,
+    description_fragments,
+    list_fragments,
+)
 from murrai.presentation.chat.status import (
     TrainingStatus,
     spawn_training,
@@ -153,40 +156,6 @@ def _die_fragments(chat, suggestions, buffer):
     return chat.die_bar(buffer.text, suggestions.real_for(buffer.text))
 
 
-class CommandPanel:
-    def __init__(self, commands):
-        self._commands = commands
-        self._menu = []
-        self.menu = []
-        self.selected = 0
-        self.visible = False
-        self.query_buffer = Buffer(on_text_changed=self._narrow)
-
-    def open(self):
-        self._menu = self._commands() if callable(self._commands) else self._commands
-        self.selected = 0
-        self.visible = True
-        self.query_buffer.text = ""
-
-    def close(self):
-        self.visible = False
-
-    def _narrow(self, buffer):
-        self.menu = filter_commands(self._menu, buffer.text)
-        if self.selected >= len(self.menu):
-            self.selected = 0
-
-
-def _panel_fragments(panel):
-    fragments = []
-    for i, command in enumerate(panel.menu):
-        style = "class:selected" if i == panel.selected else ""
-        fragments.append((style, command.name))
-        fragments.append(("class:hint", f"  {command.description}"))
-        fragments.append(("", "\n"))
-    return fragments
-
-
 def run_chat(
     session=None,
     commands=(),
@@ -240,19 +209,17 @@ def run_chat(
 
     @panel_keys.add("down")
     def _(event):
-        if panel.menu:
-            panel.selected = (panel.selected + 1) % len(panel.menu)
+        panel.move(1)
 
     @panel_keys.add("up")
     def _(event):
-        if panel.menu:
-            panel.selected = (panel.selected - 1) % len(panel.menu)
+        panel.move(-1)
 
     @panel_keys.add("enter")
     def _(event):
-        if not panel.menu:
+        command = panel.current
+        if command is None:
             return
-        command = panel.menu[panel.selected]
         panel.close()
         event.app.layout.focus(buffer)
         if command.trains:
@@ -269,7 +236,7 @@ def run_chat(
             event.app.layout.focus(buffer)
         else:
             panel.open()
-            event.app.layout.focus(panel.query_buffer)
+            event.app.layout.focus(panel_list)
 
     @global_keys.add("escape", filter=Condition(lambda: panel.visible))
     def _(event):
@@ -294,18 +261,24 @@ def run_chat(
         FormattedTextControl(lambda: _die_fragments(chat, suggestions, buffer)),
         height=1,
     )
+    panel_list = Window(
+        FormattedTextControl(
+            lambda: list_fragments(panel),
+            focusable=True,
+            key_bindings=panel_keys,
+        ),
+    )
     panel_frame = Frame(
         HSplit(
             [
+                panel_list,
+                Window(height=1, char="─"),
                 Window(
-                    BufferControl(
-                        buffer=panel.query_buffer,
-                        key_bindings=panel_keys,
+                    FormattedTextControl(
+                        lambda: description_fragments(panel, PANEL_WIDTH - 2),
                     ),
-                    height=1,
-                    dont_extend_height=True,
+                    height=6,
                 ),
-                Window(FormattedTextControl(lambda: _panel_fragments(panel))),
             ],
         ),
         title="commands",
@@ -354,7 +327,7 @@ def run_chat(
     status.redraw = app.invalidate
     if session is None:
         panel.open()
-        app.layout.focus(panel.query_buffer)
+        app.layout.focus(panel_list)
     with contextlib.suppress(EOFError):
         app.run()
     return chat.session
