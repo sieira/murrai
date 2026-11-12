@@ -27,7 +27,9 @@ screen-blind, and the display must not slow training down.
   twice.
 - A listener never blocks. The chat's listener records the event in a
   status registry. The chat's status bar renders one bar per running
-  training, and the redraw hook wakes the screen. A training runs off the
+  training, and the redraw hook wakes the screen at most ten times a
+  second, so a fast trainer cannot flood the interface; a run ending
+  always wakes. A training runs off the
   main thread, so the chat stays usable while it trains. A finished run
   is saved as a checkpoint and leaves the status bar; a failed run stays
   visible as "name failed".

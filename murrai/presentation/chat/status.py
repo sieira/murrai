@@ -2,6 +2,7 @@ import threading
 import time
 
 BAR_WIDTH = 16
+WAKE_EVERY = 0.1
 
 
 class TrainingStatus:
@@ -10,6 +11,7 @@ class TrainingStatus:
         self._runs: dict[str, tuple[float, int, int] | None] = {}
         self.redraw = None
         self._clock = clock
+        self._last_wake = float("-inf")
 
     def track(self, name):
         def on_event(event):
@@ -26,12 +28,12 @@ class TrainingStatus:
     def finish(self, name):
         with self._lock:
             self._runs.pop(name, None)
-        self._wake()
+        self._wake(force=True)
 
     def fail(self, name):
         with self._lock:
             self._runs[name] = None
-        self._wake()
+        self._wake(force=True)
 
     def rows(self):
         with self._lock:
@@ -53,7 +55,11 @@ class TrainingStatus:
     def has_lines(self):
         return bool(self.rows())
 
-    def _wake(self):
+    def _wake(self, force=False):
+        now = self._clock()
+        if not force and now - self._last_wake < WAKE_EVERY:
+            return
+        self._last_wake = now
         if self.redraw is not None:
             self.redraw()
 

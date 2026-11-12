@@ -55,3 +55,32 @@ def test_a_running_training_shows_the_time_left():
 
     text = plain_text(status_fragments(status))
     assert "eta 1:30" in text
+
+
+def test_the_screen_wakes_at_most_ten_times_a_second():
+    now = {"t": 0.0}
+    status = TrainingStatus(clock=lambda: now["t"])
+    wakes = []
+    status.redraw = lambda: wakes.append(1)
+    listener = status.track("char gpt")
+
+    for step in range(1, 11):
+        listener(TrainingEvent(step=step, total_steps=10))
+    assert len(wakes) == 1
+
+    now["t"] = 0.2
+    listener(TrainingEvent(step=11, total_steps=20))
+    assert len(wakes) == 2
+
+
+def test_finishing_wakes_even_in_the_same_instant():
+    now = {"t": 0.0}
+    status = TrainingStatus(clock=lambda: now["t"])
+    wakes = []
+    status.redraw = lambda: wakes.append(1)
+    listener = status.track("char gpt")
+    listener(TrainingEvent(step=1, total_steps=10))
+    assert len(wakes) == 1
+
+    status.finish("char gpt")
+    assert len(wakes) == 2
