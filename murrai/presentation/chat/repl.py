@@ -4,8 +4,12 @@ from prompt_toolkit.key_binding import KeyBindings
 from prompt_toolkit.shortcuts import PromptSession, print_formatted_text
 from prompt_toolkit.styles import Style
 
+from murrai.presentation.chat.picker import select_stage
+
 GHOST_CHARS = 20
 TOP = 5
+
+PALETTE = object()
 
 STYLE = Style.from_dict(
     {
@@ -45,6 +49,10 @@ class GhostChat:
         self.sync(buffer_text)
         self.session.extend_generated(ghost)
         self._synced = self.session.text
+
+    def use(self, session) -> None:
+        self.session = session
+        self._synced = ""
 
     def suggestions(self, buffer_text: str) -> str:
         try:
@@ -86,6 +94,9 @@ class GhostSuggestions(AutoSuggest):
     def real_for(self, context: str) -> str:
         return self._roll_for(context)
 
+    def forget(self) -> None:
+        self._cache.clear()
+
     def get_suggestion(self, buffer, document):
         roll = self._roll_for(document.text)
         if not roll:
@@ -122,6 +133,10 @@ def _key_bindings(chat: GhostChat, suggestions: GhostSuggestions) -> KeyBindings
                 pass
         buffer.validate_and_handle()
 
+    @kb.add("c-p")
+    def _(event):
+        event.app.exit(result=PALETTE)
+
     return kb
 
 
@@ -134,7 +149,7 @@ def _intro():
     ]
 
 
-def run_chat(session, input=None, output=None):
+def run_chat(session, commands=(), input=None, output=None):
     chat = GhostChat(session)
     suggestions = GhostSuggestions(chat)
     holder = {}
@@ -161,11 +176,18 @@ def run_chat(session, input=None, output=None):
     writer(_intro())
     while True:
         try:
-            text = prompt.prompt(default=chat.session.text)
+            result = prompt.prompt(default=chat.session.text)
         except EOFError, KeyboardInterrupt:
             writer([("class:more", "bye\n")])
             return
-        chat.sync(text)
+        if result is PALETTE:
+            command = select_stage(commands, input=input, output=output)
+            if command is not None:
+                writer([("class:more", f"{command.name}\n")])
+                chat.use(command.build())
+                suggestions.forget()
+            continue
+        chat.sync(result)
 
 
 def prompt_writer(output=None):
