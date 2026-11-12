@@ -20,7 +20,7 @@ def test_ctrl_p_opens_the_command_menu_and_swaps_the_session():
             "retrain counted bigram",
             "odds tallied straight from the corpus",
             lambda: (built.append(1), second)[1],
-        )
+        ),
     ]
 
     with create_pipe_input() as pipe:

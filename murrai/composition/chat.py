@@ -121,7 +121,7 @@ def chat_commands(
                     f"load {name}",
                     "pick up this trained model",
                     lambda name=name: load_checkpoint_session(store, seed, name),
-                )
+                ),
             )
     commands.extend(
         [
@@ -135,7 +135,7 @@ def chat_commands(
                         steps=neural_steps,
                         store=store,
                         bus=bus,
-                    )
+                    ),
                 ),
             ),
             Stage(
@@ -148,7 +148,7 @@ def chat_commands(
                         steps=mlp_steps,
                         store=store,
                         bus=bus,
-                    )
+                    ),
                 ),
             ),
             Stage(
@@ -161,10 +161,10 @@ def chat_commands(
                         steps=gpt_steps,
                         store=store,
                         bus=bus,
-                    )
+                    ),
                 ),
             ),
-        ]
+        ],
     )
     return commands
 

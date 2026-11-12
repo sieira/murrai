@@ -162,7 +162,12 @@ def test_commands_offer_loading_and_retraining(corpus):
     next(s for s in stages if s.name == "neural bigram").build()
 
     commands = chat_commands(
-        corpus, seed=0, neural_steps=20, mlp_steps=20, gpt_steps=20, store=store
+        corpus,
+        seed=0,
+        neural_steps=20,
+        mlp_steps=20,
+        gpt_steps=20,
+        store=store,
     )
 
     names = [command.name for command in commands]
