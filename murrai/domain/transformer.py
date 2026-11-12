@@ -16,6 +16,7 @@ class TransformerLM(torch.nn.Module):
         depth: int,
         dimension: int,
         max_time: int,
+        heads: int = 1,
     ):
         super().__init__()
         self.vocabulary = vocabulary
@@ -24,7 +25,7 @@ class TransformerLM(torch.nn.Module):
         self.embed = torch.nn.Embedding(vocabulary.size + 1, dimension)
         self.position = torch.nn.Embedding(max_time, dimension)
         self.blocks = torch.nn.ModuleList(
-            TransformerBlock(dimension) for _ in range(depth)
+            TransformerBlock(dimension, heads) for _ in range(depth)
         )
         self.norm = torch.nn.LayerNorm(dimension)
         self.head = torch.nn.Linear(dimension, vocabulary.size)
@@ -34,6 +35,7 @@ class TransformerLM(torch.nn.Module):
             "depth": len(self.blocks),
             "dimension": self.embed.embedding_dim,
             "max_time": self.max_time,
+            "heads": self.blocks[0].attend.heads,
             "parameters": self.state_dict(),
         }
 
@@ -44,6 +46,7 @@ class TransformerLM(torch.nn.Module):
             depth=state["depth"],
             dimension=state["dimension"],
             max_time=state["max_time"],
+            heads=state.get("heads", 1),
         )
         model.load_state_dict(state["parameters"])
         return model

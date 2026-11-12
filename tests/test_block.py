@@ -26,3 +26,9 @@ def test_zeroing_the_edit_path_returns_the_input_unchanged(block):
     block.mlp_down.weight.data.zero_()
     block.mlp_down.bias.data.zero_()
     assert torch.equal(block(x), x)
+
+
+def test_the_block_passes_its_head_count_to_attention():
+    block = TransformerBlock(8, heads=4)
+    assert block.attend.heads == 4
+    assert block(torch.randn(2, 5, 8)).shape == (2, 5, 8)

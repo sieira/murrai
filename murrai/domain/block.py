@@ -4,10 +4,10 @@ from murrai.domain.attention import CausalSelfAttention
 
 
 class TransformerBlock(torch.nn.Module):
-    def __init__(self, dimension):
+    def __init__(self, dimension, heads=1):
         super().__init__()
         self.attend_norm = torch.nn.LayerNorm(dimension)
-        self.attend = CausalSelfAttention(dimension)
+        self.attend = CausalSelfAttention(dimension, heads)
         self.mlp_norm = torch.nn.LayerNorm(dimension)
         self.mlp_up = torch.nn.Linear(dimension, 4 * dimension)
         self.mlp_act = torch.nn.GELU()

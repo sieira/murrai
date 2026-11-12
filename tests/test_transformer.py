@@ -100,3 +100,33 @@ def test_the_plateau_schedule_shrinks_the_rate_during_a_stalled_run():
         patience=3,
     )
     assert result.rate_curve[-1] < result.rate_curve[0]
+
+
+def test_a_four_head_state_round_trips_to_identical_outputs(vocabulary):
+    torch.manual_seed(0)
+    model = TransformerLM(vocabulary, depth=2, dimension=16, max_time=8, heads=4)
+    rebuilt = TransformerLM.from_state(Vocabulary(vocabulary.chars), model.state())
+    assert rebuilt.blocks[0].attend.heads == 4
+    assert torch.equal(rebuilt.logits([0, 1, 0]), model.logits([0, 1, 0]))
+
+
+def test_a_state_saved_before_heads_existed_loads_as_one_head(model, vocabulary):
+    legacy = model.state()
+    del legacy["heads"]
+    rebuilt = TransformerLM.from_state(Vocabulary(vocabulary.chars), legacy)
+    assert rebuilt.blocks[0].attend.heads == 1
+    torch.testing.assert_close(rebuilt.logits([0, 1, 0]), model.logits([0, 1, 0]))
+
+
+def test_training_accepts_a_head_count():
+    result = train_transformer_lm(
+        "ab" * 200,
+        steps=10,
+        batch=8,
+        seed=0,
+        depth=1,
+        dimension=8,
+        max_time=8,
+        heads=2,
+    )
+    assert result.model.blocks[0].attend.heads == 2
