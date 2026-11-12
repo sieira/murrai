@@ -1,3 +1,6 @@
+from dataclasses import dataclass
+from typing import Any
+
 from murrai.adapters.corpus import DirTextCorpus
 from murrai.adapters.events import ListenerBus
 from murrai.application.checkpoints import restore, snapshot_of
@@ -20,6 +23,27 @@ def _trained_session(build, listener=None):
     finally:
         if listener is not None:
             bus.unsubscribe(listener)
+
+
+@dataclass(frozen=True)
+class Retrain:
+    builder: Any
+    directory: Any
+    seed: int
+    steps: int
+    store: Any
+
+    def __call__(self, on_event=None):
+        return _trained_session(
+            lambda bus: self.builder(
+                self.directory,
+                self.seed,
+                steps=self.steps,
+                store=self.store,
+                bus=bus,
+            ),
+            on_event,
+        )
 
 
 def chat_session_from_directory(directory, seed=0):
@@ -131,45 +155,36 @@ def chat_commands(
             Command(
                 "retrain neural bigram",
                 "same memory, trained by gradient descent",
-                lambda on_event=None: _trained_session(
-                    lambda bus: neural_chat_session_from_directory(
-                        directory,
-                        seed,
-                        steps=neural_steps,
-                        store=store,
-                        bus=bus,
-                    ),
-                    on_event,
+                Retrain(
+                    neural_chat_session_from_directory,
+                    directory,
+                    seed,
+                    neural_steps,
+                    store,
                 ),
                 trains=True,
             ),
             Command(
                 "retrain windowed mlp",
                 "eight chars of memory through a hidden layer",
-                lambda on_event=None: _trained_session(
-                    lambda bus: mlp_chat_session_from_directory(
-                        directory,
-                        seed,
-                        steps=mlp_steps,
-                        store=store,
-                        bus=bus,
-                    ),
-                    on_event,
+                Retrain(
+                    mlp_chat_session_from_directory,
+                    directory,
+                    seed,
+                    mlp_steps,
+                    store,
                 ),
                 trains=True,
             ),
             Command(
                 "retrain char gpt",
                 "attention over the last sixty-four chars",
-                lambda on_event=None: _trained_session(
-                    lambda bus: char_gpt_chat_session_from_directory(
-                        directory,
-                        seed,
-                        steps=gpt_steps,
-                        store=store,
-                        bus=bus,
-                    ),
-                    on_event,
+                Retrain(
+                    char_gpt_chat_session_from_directory,
+                    directory,
+                    seed,
+                    gpt_steps,
+                    store,
                 ),
                 trains=True,
             ),

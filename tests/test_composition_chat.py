@@ -212,3 +212,16 @@ def test_no_store_means_counted_and_retraining_commands(corpus):
         "retrain windowed mlp",
         "retrain char gpt",
     ]
+
+
+def test_training_commands_survive_a_trip_to_another_process(corpus):
+    import pickle
+
+    commands = chat_commands(corpus, seed=0, neural_steps=20)
+    trains = [c for c in commands if c.trains]
+
+    for command in trains:
+        assert pickle.loads(pickle.dumps(command)).name == command.name
+
+    revived = pickle.loads(pickle.dumps(trains[0]))
+    assert revived.build().rollout("a", 5)

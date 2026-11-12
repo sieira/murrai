@@ -29,10 +29,17 @@ screen-blind, and the display must not slow training down.
   status registry. The chat's status bar renders one bar per running
   training, and the redraw hook wakes the screen at most ten times a
   second, so a fast trainer cannot flood the interface; a run ending
-  always wakes. A training runs off the
-  main thread, so the chat stays usable while it trains. A finished run
-  is saved as a checkpoint and leaves the status bar; a failed run stays
-  visible as "name failed".
+  always wakes.
+- A training runs in its own process, started with `spawn`. A thread was
+  not enough: the trainer is pure Python and keeps the interpreter busy,
+  and on a real terminal a keystroke waited 1.2 to 2.9 seconds for its
+  turn. In the child process it waits 1 to 3 milliseconds. The child
+  sends `("step", step, total)`, then `("done",)` or `("failed", reason)`
+  over a pipe, and a thread in the chat feeds them to the status
+  registry. Commands that train must therefore be picklable (`Retrain`,
+  in composition). A child that dies without a result counts as failed.
+  A finished run is saved as a checkpoint by the child and leaves the
+  status bar; a failed run stays visible as "name failed".
 
 ## Consequences
 

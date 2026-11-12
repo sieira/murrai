@@ -1,6 +1,8 @@
+import multiprocessing
 import threading
 import time
 
+from murrai.application.ports import TrainingEvent
 from murrai.presentation.chat.lanes import (
     EventObserver,
     TrainingFailed,
@@ -107,15 +109,55 @@ def _clock_left(seconds):
     return f"{hours}:{minutes:02d}:{s:02d}"
 
 
-def _train(command, status):
-    listener = status.track(command.name)
+def _train_in_process(command, connection):
+    def on_event(event):
+        connection.send(("step", event.step, event.total_steps))
+
     try:
-        command.build(on_event=listener)
+        command.build(on_event=on_event)
     except Exception as error:
-        status.fail(command.name, str(error))
+        connection.send(("failed", str(error)))
     else:
-        status.finish(command.name)
+        connection.send(("done",))
+    finally:
+        connection.close()
+
+
+def _pump(name, connection, status):
+    on_event = status.track(name)
+    while True:
+        try:
+            message = connection.recv()
+        except EOFError:
+            status.fail(name, "the training process ended without a result")
+            return
+        if message[0] == "step":
+            on_event(TrainingEvent(step=message[1], total_steps=message[2]))
+        elif message[0] == "done":
+            status.finish(name)
+            return
+        else:
+            status.fail(name, message[1])
+            return
 
 
 def spawn_training(command, status):
-    threading.Thread(target=_train, args=(command, status), daemon=True).start()
+    context = multiprocessing.get_context("spawn")
+    receive, send = context.Pipe(duplex=False)
+    process = context.Process(
+        target=_train_in_process,
+        args=(command, send),
+        daemon=True,
+    )
+    try:
+        process.start()
+    except Exception as error:
+        status.fail(command.name, str(error))
+        return
+    finally:
+        send.close()
+    threading.Thread(
+        target=_pump,
+        args=(command.name, receive, status),
+        daemon=True,
+    ).start()
