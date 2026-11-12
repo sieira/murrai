@@ -116,44 +116,78 @@ bigram's letter soup.
 
 ### Heads
 
-Same corpus, split, seed, and config as the char gpt row above, with only
-the head count changed. Run it with `uv run python
-scripts/train_heads_demo.py <directory holding only tinystories.txt> <heads>`.
+Same split and seed as the char gpt row above, with only the head count
+changed. Everything below is one run per cell. We did not measure how much
+two seeds differ at one setting, so gaps of a few hundredths may be noise.
 
-| heads | slice width | held-out perplexity | train loss |
+**Small model** (4 blocks, 64 dimensions, window 64, 2,000 steps, batch
+256, about 220,000 parameters). Held-out perplexity, lower is better:
+
+| text | 1 head | 4 heads | 8 heads |
 |---|---|---|---|
-| 1 | 64 | **3.029** | 4.406 -> 0.915 |
-| 4 | 16 | 3.053 | 4.403 -> 0.913 |
-| 8 | 8 | 3.094 | 4.403 -> 0.968 |
+| first 300,000 characters of TinyStories | **3.029** | 3.053 | 3.094 |
+| all of TinyStories (2M characters) | **3.236** | 3.282 | 3.316 |
+| every file in `data/corpus` (26.5M characters) | 4.221 | **4.216** | 4.311 |
 
-More heads did not help at this size. With 4 heads the held-out
-perplexity is 0.024 worse than with 1, and with 8 heads it is 0.065
-worse, from one run each. We did not measure how much two seeds differ
-at one setting, so differences this small may be noise, but nothing here
-shows a gain. The 1-head row reproduces the char gpt row exactly. A
-plausible reason is that 64 dimensions and 2,000 steps leave little for
-extra patterns to learn, and 8 heads leave each head only 8 numbers. That
-is an untested guess.
+More heads did not help here. Four heads tied or lost on all three
+texts, and 8 heads lost on all three. With 64 numbers to share out, 4
+heads get 16 each and 8 heads get 8 each.
 
-Three-line samples at the same seed (17). The 1-head sample is the char
-gpt sample above.
+**Larger model** (6 blocks, 384 dimensions, window 256, batch 64, about
+10.9 million parameters), trained on every file in `data/corpus`, on the
+Apple GPU. The first two rows ran at the same time on one GPU:
+
+| heads | slice width | steps | held-out perplexity | train loss, last 100 steps |
+|---|---|---|---|---|
+| 1 | 384 | 2,000 | 3.216 | 1.190 |
+| 6 | 64 | 2,000 | 3.155 | 1.155 |
+| 6 | 64 | 4,000 | **2.951** | 1.058 |
+
+At this size 6 heads beat 1 head by 0.061 perplexity (1.9%) with exactly
+the same number of parameters. The 6-head loss curve sits below the 1-head
+curve at every 100-step mark from step 400 onward, by 0.03 to 0.04, so
+the gap is steady, not a lucky final number. Our reading is that a head
+needs room: 64 numbers per head work, 16 or 8 do not. That is untested
+beyond these two sizes.
+
+Doubling the steps lowered perplexity by a further 0.204. The loss
+stopped moving at about 1.055 from step 3,100 on. The plateau schedule
+shrinks the learning rate each time progress stalls, so the flat stretch
+may come from the schedule and not from the model's limit. That is
+untested.
+
+The held-out text is the end of the folder, which sorts to *Walden* and
+*Wealth of Nations*. The model never saw those books.
+
+Run any row with `uv run python scripts/train_heads_demo.py <directory of
+.txt files> --heads N`. It also takes `--steps`, `--depth`, `--dimension`,
+`--window`, `--batch`, `--chars` (use only the first N characters),
+`--device mps`, and `--save NAME` to keep the model in the checkpoint
+store. The larger model's flags are `--depth 6 --dimension 384 --window
+256 --batch 64 --device mps`.
+
+A 200-character sample from the 6-head, 4,000-step model, seed 17:
 
 ```
-4 heads:
-ir wasked and became. Tom looked asked her if whale hurt had to listen the hone next of the trivet."
-They found a pot on the mushroom with other some what was and joke coming and thanked her backy. Sh
+'s of living council so."
 
-8 heads:
-ing. Tim was friends. Tom looked at Mom know. Bambi her and a share. Timmy had an said, "Her mom. It say I want just okay hide it his pick other and told her hiddels the igvolc.
-Sadly and Ottay, Lily 
+
+28. Of the conclusions in some of this wrong and buting their floates
+of reason, does not enough give the justice of a corn nor
+the river, for both of political laws, turn
 ```
+
+Words are mostly real, short stretches read as English, and the meaning
+does not hold across a sentence.
 
 ## What it unlocks
 
 The window is gone: context length is now a parameter (`max_time`), and
-attention decides per position what to read. Phase 4's remaining work
-is making this trainable at scale — better schedules, longer windows,
-more data — toward the SPEC's chat target.
+attention decides per position what to read. Phase 4 builds our own
+tokenizer, which cuts text into frequent chunks instead of single
+characters. Phase 5 scales the model to 10 to 50 million parameters and
+scores it against GPT-2-small (ADR-0004). The 10.9 million parameter rows
+above are a first look at that size.
 
 ## Resources
 
