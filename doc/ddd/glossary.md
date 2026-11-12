@@ -29,7 +29,10 @@ binds (AGENTS.md header).
   an activation between them.
 - logits: raw scores, one per vocabulary entry, before normalization.
 - softmax: turns logits into probabilities that sum to one.
-- attention head: one learned pattern of "which tokens look at which".
+- attention head: one slice of the model's dimension with its own scores
+  and softmax, so it learns its own pattern of which positions read
+  which. The heads' blends are glued back together and mixed by the `out`
+  layer.
 - batch: a group of sequences trained on at once.
 
 ## Training

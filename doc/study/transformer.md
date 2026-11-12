@@ -72,11 +72,13 @@ the loss comes from every position, not only the last one.
 
 Vaswani et al. (2017) introduced the architecture with multi-head
 attention. Several attention patterns run in parallel inside each block
-and their outputs are concatenated. murrAI's char gpt keeps one head
-per block, 4 blocks, 64 dims, and a 64-character window, about 280k
-parameters. Multi-head is named here and deferred. It gets its own gate
-session before it exists. The rest of the shape, blocks, pre-norm,
-residuals, learned positions, is the paper's.
+and their outputs are concatenated. murrAI's char gpt does the same: the
+model's dimension is cut into equal slices, one per head, and each head
+scores and blends its own slice (see the Heads section of
+[attention.md](attention.md)). The default is 1 head per block, 4 blocks,
+64 dims, and a 64-character window, about 280k parameters. The head
+count does not change the parameter count. The rest of the shape, blocks,
+pre-norm, residuals, learned positions, is the paper's.
 
 ## Resources
 

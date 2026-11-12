@@ -19,10 +19,11 @@ forward, so a prediction never sees its own answer.
 
 ## The pieces
 
-- `murrai/domain/attention.py`: `CausalSelfAttention` — one head; the
-  match score between positions is a dot product, scaled down by √d so
-  long rows don't saturate the softmax; the mask sets future matches to
-  −∞ before the softmax, making them weigh zero.
+- `murrai/domain/attention.py`: `CausalSelfAttention` with `heads`
+  heads (default 1). The match score between positions is a dot product,
+  scaled down by the square root of the head's width so long rows don't
+  saturate the softmax. The mask sets future matches to −∞ before the
+  softmax, making them weigh zero.
 - `murrai/domain/block.py`: `TransformerBlock` — attention, then a
   small per-position network (one hidden layer, four times wider than
   the model, GELU (Gaussian error linear unit) instead of tanh), each
@@ -42,6 +43,25 @@ forward, so a prediction never sees its own answer.
   untouched.
 - `murrai/composition/chat.py`: the "char gpt" stage, saving
   checkpoints as `char-gpt`.
+
+## Heads
+
+The model's `dimension` numbers are cut into `heads` equal slices. Head
+i reads only slice i of the query and the key, builds its own table of
+scores with its own causal mask and softmax, and blends only slice i of
+the value. The blends from all heads are glued back into `dimension`
+numbers and pass through the `out` layer. The scale becomes one over the
+square root of the slice width (`dimension / heads`), not of `dimension`.
+The weights are the same four square layers as before, so the parameter
+count does not change with the head count. `dimension` must divide
+evenly by `heads`, or construction raises `ValueError`.
+
+The point of heads is that each one can learn a different pattern of
+which positions to read. `attention.shares` holds each head's table, with
+shape (batch, heads, time, time).
+
+Checkpoints store `heads`. A checkpoint saved before heads existed has no
+such entry and loads as 1 head.
 
 ## How scores are computed (the chunking convention)
 
@@ -68,7 +88,7 @@ last 10% held out, seed 0 for training, seed 17 for the samples.
 The char gpt beats the windowed mlp while scoring under a handicap, on
 the same split. Configs: char gpt is 4 blocks, 64 dims, window 64
 (~280k parameters, 68-char vocabulary), 2,000 steps, batch 256, Adam
-rate 1e-3 with the plateau shrink — about 70 ms per step on CPU, under
+rate 1e-3 with the plateau shrink, about 70 ms per step on CPU, under
 3 minutes. The mlp is the phase-2 config (window 8, 32 dims, 256
 hidden, 10,000 steps, batch 256, rate 0.5). Each model saw the same
 number of characters; the transformer saw fewer passes over them and
@@ -93,6 +113,40 @@ ing. Timmy said: "What's play!" her friends Max anymorry. Max was sad. When it w
 The gpt's text carries the corpus's shape — names, quoted dialogue,
 story openings — further than the mlp does, and both are far past the
 bigram's letter soup.
+
+### Heads
+
+Same corpus, split, seed, and config as the char gpt row above, with only
+the head count changed. Run it with `uv run python
+scripts/train_heads_demo.py <directory holding only tinystories.txt> <heads>`.
+
+| heads | slice width | held-out perplexity | train loss |
+|---|---|---|---|
+| 1 | 64 | **3.029** | 4.406 -> 0.915 |
+| 4 | 16 | 3.053 | 4.403 -> 0.913 |
+| 8 | 8 | 3.094 | 4.403 -> 0.968 |
+
+More heads did not help at this size. With 4 heads the held-out
+perplexity is 0.024 worse than with 1, and with 8 heads it is 0.065
+worse, from one run each. We did not measure how much two seeds differ
+at one setting, so differences this small may be noise, but nothing here
+shows a gain. The 1-head row reproduces the char gpt row exactly. A
+plausible reason is that 64 dimensions and 2,000 steps leave little for
+extra patterns to learn, and 8 heads leave each head only 8 numbers. That
+is an untested guess.
+
+Three-line samples at the same seed (17). The 1-head sample is the char
+gpt sample above.
+
+```
+4 heads:
+ir wasked and became. Tom looked asked her if whale hurt had to listen the hone next of the trivet."
+They found a pot on the mushroom with other some what was and joke coming and thanked her backy. Sh
+
+8 heads:
+ing. Tim was friends. Tom looked at Mom know. Bambi her and a share. Timmy had an said, "Her mom. It say I want just okay hide it his pick other and told her hiddels the igvolc.
+Sadly and Ottay, Lily 
+```
 
 ## What it unlocks
 
