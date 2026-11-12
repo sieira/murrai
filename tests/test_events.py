@@ -1,5 +1,3 @@
-import pytest
-
 from murrai.adapters.events import ListenerBus
 from murrai.application.ports import TrainingEvent
 from murrai.application.runs import train_neural_bigram
@@ -59,7 +57,11 @@ def test_training_is_identical_with_a_listening_bus():
     quiet = train_neural_bigram("ab" * 50, steps=30, batch=8, seed=7)
     loud_bus = ListenerBus()
     loud = train_neural_bigram(
-        "ab" * 50, steps=30, batch=8, seed=7, bus=loud_bus
+        "ab" * 50,
+        steps=30,
+        batch=8,
+        seed=7,
+        bus=loud_bus,
     )
 
     assert loud.loss_curve == quiet.loss_curve

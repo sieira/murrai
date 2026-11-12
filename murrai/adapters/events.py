@@ -15,9 +15,7 @@ class ListenerBus:
 
     def unsubscribe(self, listener) -> None:
         with self._lock:
-            self._listeners = [
-                known for known in self._listeners if known != listener
-            ]
+            self._listeners = [known for known in self._listeners if known != listener]
 
     def emit(self, event: TrainingEvent) -> None:
         for listener in self._listeners:
