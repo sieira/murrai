@@ -108,6 +108,36 @@ def test_the_file_store_rejects_a_missing_name(tmp_path):
         store.load("windowed-mlp")
 
 
+def test_an_interrupted_save_keeps_the_previous_checkpoint(
+    tmp_path,
+    neural,
+    monkeypatch,
+):
+    store = FileCheckpointStore(tmp_path)
+    store.save("neural-bigram", snapshot_of(neural))
+
+    def interrupted_save(payload, destination):
+        if hasattr(destination, "write"):
+            destination.write(b"half-written")
+        else:
+            with open(destination, "wb") as file:
+                file.write(b"half-written")
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr("murrai.adapters.checkpoint.torch.save", interrupted_save)
+    with pytest.raises(KeyboardInterrupt):
+        store.save("neural-bigram", snapshot_of(neural))
+    assert store.names() == ["neural-bigram"]
+    rebuilt = restore(store.load("neural-bigram"))
+    torch.testing.assert_close(rebuilt.probs([0]), neural.probs([0]))
+
+
+def test_names_skips_an_unfinished_file(tmp_path):
+    store = FileCheckpointStore(tmp_path)
+    (tmp_path / "half-written.pt.tmp").write_bytes(b"junk")
+    assert store.names() == []
+
+
 class FakeCorpus:
     def text(self):
         return "abab" * 40
