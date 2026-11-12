@@ -8,7 +8,6 @@ from murrai.domain.bigram import Bigram
 from murrai.domain.vocabulary import Vocabulary
 from murrai.presentation.chat import ChatSession
 from murrai.presentation.chat.repl import (
-    STYLE,
     GhostChat,
     GhostSuggestions,
     plain_text,
@@ -105,13 +104,6 @@ def test_accept_rest_lands_the_whole_suggestion(chat):
     chat.accept_rest("a", ghost)
     assert chat.session.text == "a" + ghost
     assert chat.session.segments()[-1] == (ghost, "generated")
-
-
-def test_the_style_leaves_the_terminal_background_alone():
-    assert any(
-        name == "bottom-toolbar" and "noreverse" in rule
-        for name, rule in STYLE.style_rules
-    )
 
 
 def test_the_die_bar_marks_what_tab_will_accept(chat):

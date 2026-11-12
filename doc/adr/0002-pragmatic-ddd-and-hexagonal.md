@@ -24,7 +24,7 @@ architecture:
    - `adapters/` — port implementations: dataset download, checkpoint
      files, and fakes for tests.
    - `presentation/` — renders state and samples; it computes no math.
-     The chat (REPL, stage picker, chat session) is a separable unit
+     The chat (screen app, command panel, chat session) is a separable unit
      inside it, `presentation/chat/`, touching the core only through the
      `LanguageModel` port, so it could later be extracted into its own
      project.

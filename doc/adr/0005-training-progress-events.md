@@ -25,9 +25,12 @@ screen-blind, and the display must not slow training down.
   half-registered. Subscribing one listener twice delivers once; the bus
   compares listeners by equality because bound methods are never identical
   twice.
-- A listener never blocks. The chat's listener hands the event to a
-  progress bar; the bar's library owns the refresh thread and the terminal
-  output, and the bar closes when the run ends.
+- A listener never blocks. The chat's listener records the event in a
+  status registry. The chat's status bar renders one bar per running
+  training, and the redraw hook wakes the screen. A training runs off the
+  main thread, so the chat stays usable while it trains. A finished run
+  is saved as a checkpoint and leaves the status bar; a failed run stays
+  visible as "name failed".
 
 ## Consequences
 
@@ -37,5 +40,5 @@ screen-blind, and the display must not slow training down.
   listening bus; a test pins this.
 - Overhead without a subscriber is one None check per step. The subscribed
   overhead is measured, not asserted.
-- Rendering is the progress library's job; the adapter owns only the
-  mapping from event to bar.
+- Rendering belongs to the chat's status bar; the adapter owns only the
+  mapping from event to bar line.
