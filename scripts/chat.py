@@ -28,4 +28,7 @@ else:
         print(f"training {stage.name}...")
     session = stage.build()
 
-run_chat(session, commands=chat_commands(corpus, seed=seed, store=store))
+run_chat(
+    session,
+    commands=lambda: chat_commands(corpus, seed=seed, store=store),
+)

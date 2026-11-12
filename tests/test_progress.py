@@ -87,3 +87,22 @@ def test_the_default_follows_the_terminal():
 
     stacked = EtaLine(write=lambda text: None)
     assert stacked._refresh is sys.stdout.isatty()
+
+
+def test_stopping_renders_the_newest_event():
+    writes = []
+    line = EtaLine(write=writes.append)
+    line(TrainingEvent(step=1999, total_steps=2000, elapsed_ms=46000))
+    line(TrainingEvent(step=2000, total_steps=2000, elapsed_ms=46200))
+    line.stop()
+
+    assert writes == ["step 2000/2000 (100%)  ETA 0s\n"]
+
+
+def test_stopping_renders_the_newest_event_in_place_then_closes():
+    writes = []
+    line = EtaLine(write=writes.append, refresh=True)
+    line(TrainingEvent(step=2000, total_steps=2000, elapsed_ms=46200))
+    line.stop()
+
+    assert writes == ["\r\x1b[Kstep 2000/2000 (100%)  ETA 0s", "\n"]

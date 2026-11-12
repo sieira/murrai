@@ -27,6 +27,7 @@ class EtaLine:
         if self._thread is not None:
             self._thread.join()
             self._thread = None
+        self.drain()
         if self._refresh and self._rendered is not None:
             self._write("\n")
 

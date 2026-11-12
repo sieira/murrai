@@ -56,3 +56,33 @@ def test_ghost_suggestions_forgets_the_old_model():
     suggestions.forget()
 
     assert suggestions._cache == {}
+
+
+def test_the_command_menu_rebuilds_each_time_it_opens():
+    state = {"trained": False}
+    trained = _session("baba")
+
+    def commands():
+        menu = [
+            Stage(
+                "retrain counted bigram",
+                "odds tallied straight from the corpus",
+                lambda: (state.update(trained=True), trained)[1],
+            ),
+        ]
+        if state["trained"]:
+            menu.insert(
+                0,
+                Stage(
+                    "load counted-bigram",
+                    "pick up this trained model",
+                    lambda: trained,
+                ),
+            )
+        return menu
+
+    with create_pipe_input() as pipe:
+        pipe.send_text("\x10retrain counted bigram\r\x10load counted-bigram\r\x04")
+        run_chat(_session(), commands=commands, input=pipe, output=DummyOutput())
+
+    assert state["trained"]

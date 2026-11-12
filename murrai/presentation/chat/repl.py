@@ -1,4 +1,5 @@
 from prompt_toolkit.auto_suggest import AutoSuggest, Suggestion
+from prompt_toolkit.cursor_shapes import CursorShape
 from prompt_toolkit.formatted_text import FormattedText
 from prompt_toolkit.key_binding import KeyBindings
 from prompt_toolkit.shortcuts import PromptSession, print_formatted_text
@@ -168,6 +169,7 @@ def run_chat(session, commands=(), input=None, output=None):
         bottom_toolbar=_toolbar,
         multiline=True,
         complete_while_typing=False,
+        cursor=CursorShape.BLOCK,
         input=input,
         output=output,
     )
@@ -181,7 +183,8 @@ def run_chat(session, commands=(), input=None, output=None):
             writer([("class:more", "bye\n")])
             return
         if result is PALETTE:
-            command = select_stage(commands, input=input, output=output)
+            menu = commands() if callable(commands) else commands
+            command = select_stage(menu, input=input, output=output)
             if command is not None:
                 writer([("class:more", f"{command.name}\n")])
                 chat.use(command.build())
