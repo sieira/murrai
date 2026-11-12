@@ -181,6 +181,7 @@ def train_transformer_lm(
     depth=4,
     dimension=64,
     max_time=64,
+    heads=1,
     learning_rate=1e-3,
     patience=200,
     shrink=0.5,
@@ -197,6 +198,7 @@ def train_transformer_lm(
         depth=depth,
         dimension=dimension,
         max_time=max_time,
+        heads=heads,
     )
     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
 
