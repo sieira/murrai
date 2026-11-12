@@ -2,6 +2,8 @@ import textwrap
 from collections.abc import Callable
 from dataclasses import dataclass
 
+from murrai.presentation.chat.lanes import EventObserver, PanelClosed, PanelOpened
+
 
 @dataclass
 class Command:
@@ -12,8 +14,9 @@ class Command:
 
 
 class CommandPanel:
-    def __init__(self, commands):
+    def __init__(self, commands, observer=None):
         self._commands = commands
+        self._observer = observer or EventObserver()
         self.menu = []
         self.selected = 0
         self.visible = False
@@ -28,9 +31,11 @@ class CommandPanel:
         )
         self.selected = 0
         self.visible = True
+        self._observer.on_event(PanelOpened(len(self.menu)))
 
     def close(self):
         self.visible = False
+        self._observer.on_event(PanelClosed())
 
     def move(self, step):
         if self.menu:

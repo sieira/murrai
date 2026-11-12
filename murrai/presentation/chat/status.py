@@ -1,12 +1,21 @@
 import threading
 import time
 
+from murrai.presentation.chat.lanes import (
+    EventObserver,
+    TrainingFailed,
+    TrainingFinished,
+    TrainingStarted,
+    TrainingStepped,
+)
+
 BAR_WIDTH = 16
 WAKE_EVERY = 0.1
 
 
 class TrainingStatus:
-    def __init__(self, clock=time.monotonic):
+    def __init__(self, clock=time.monotonic, observer=None):
+        self._observer = observer or EventObserver()
         self._lock = threading.Lock()
         self._runs: dict[str, tuple[float, int, int] | None] = {}
         self.redraw = None
@@ -16,11 +25,14 @@ class TrainingStatus:
     def track(self, name):
         def on_event(event):
             with self._lock:
-                if name not in self._runs or self._runs[name] is None:
-                    start = self._clock()
-                else:
-                    start = self._runs[name][0]
+                first = name not in self._runs or self._runs[name] is None
+                start = self._clock() if first else self._runs[name][0]
                 self._runs[name] = (start, event.step, event.total_steps)
+            if first:
+                self._observer.on_event(TrainingStarted(name))
+            self._observer.on_event(
+                TrainingStepped(name, event.step, event.total_steps),
+            )
             self._wake()
 
         return on_event
@@ -28,11 +40,13 @@ class TrainingStatus:
     def finish(self, name):
         with self._lock:
             self._runs.pop(name, None)
+        self._observer.on_event(TrainingFinished(name))
         self._wake(force=True)
 
-    def fail(self, name):
+    def fail(self, name, reason=""):
         with self._lock:
             self._runs[name] = None
+        self._observer.on_event(TrainingFailed(name, reason))
         self._wake(force=True)
 
     def rows(self):
@@ -97,8 +111,8 @@ def _train(command, status):
     listener = status.track(command.name)
     try:
         command.build(on_event=listener)
-    except Exception:
-        status.fail(command.name)
+    except Exception as error:
+        status.fail(command.name, str(error))
     else:
         status.finish(command.name)
 

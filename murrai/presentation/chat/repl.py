@@ -11,6 +11,11 @@ from prompt_toolkit.layout.controls import FormattedTextControl
 from prompt_toolkit.styles import Style
 from prompt_toolkit.widgets import Frame, TextArea
 
+from murrai.presentation.chat.lanes import (
+    CommandPicked,
+    EventObserver,
+    SessionSwapped,
+)
 from murrai.presentation.chat.panel import (
     CommandPanel,
     description_fragments,
@@ -162,11 +167,13 @@ def run_chat(
     input=None,
     output=None,
     spawn=spawn_training,
+    observer=None,
 ):
+    observer = observer or EventObserver()
     chat = GhostChat(session)
     suggestions = GhostSuggestions(chat)
-    status = TrainingStatus()
-    panel = CommandPanel(commands)
+    status = TrainingStatus(observer=observer)
+    panel = CommandPanel(commands, observer)
 
     editor = TextArea(
         text=session.text if session else "",
@@ -179,6 +186,7 @@ def run_chat(
         buffer.cursor_position = len(session.text)
 
     def swap(next_session):
+        observer.on_event(SessionSwapped())
         chat.use(next_session)
         suggestions.forget()
         buffer.text = next_session.text
@@ -221,6 +229,7 @@ def run_chat(
         if command is None:
             return
         panel.close()
+        observer.on_event(CommandPicked(command.name))
         event.app.layout.focus(buffer)
         if command.trains:
             spawn(command, status)
