@@ -11,7 +11,6 @@ from murrai.application.ports import TrainingEvent
 from murrai.application.runs import training_device
 from murrai.composition.chat import chat_commands
 from murrai.domain.transformer import TransformerLM
-from murrai.presentation.chat.form import Field
 
 
 @pytest.fixture
@@ -483,18 +482,23 @@ def _capturing(monkeypatch, name, **capture):
     return capture
 
 
-def test_the_counted_command_only_asks_for_the_holdout(corpus):
+def test_the_counted_command_offers_its_knobs(corpus):
     counted = _command(corpus, "counted bigram", seed=0)
 
-    assert counted.fields == (
-        Field("holdout", "holdout", "float", 0.1, check="from zero below one"),
-    )
+    assert [(f.name, f.label, f.kind, f.default) for f in counted.fields] == [
+        ("text", "text", "choice", corpus.name),
+        ("size", "size", "choice", "all"),
+        ("holdout", "holdout", "float", 0.1),
+    ]
+    assert counted.fields[-1].check == "from zero below one"
 
 
 def test_the_neural_command_offers_its_knobs(corpus):
     fields = _command(corpus, "retrain neural bigram", seed=0, neural_steps=20).fields
 
     assert [(f.name, f.label, f.kind, f.default) for f in fields] == [
+        ("text", "text", "choice", corpus.name),
+        ("size", "size", "choice", "all"),
         ("steps", "steps", "int", 20),
         ("batch", "batch", "int", 64),
         ("learning_rate", "learning rate", "float", 3.0),
@@ -529,6 +533,8 @@ def test_the_mlp_command_offers_its_knobs(corpus):
     fields = _command(corpus, "retrain windowed mlp", seed=0, mlp_steps=20).fields
 
     assert [(f.name, f.label, f.default) for f in fields] == [
+        ("text", "text", corpus.name),
+        ("size", "size", "all"),
         ("steps", "steps", 20),
         ("batch", "batch", 256),
         ("learning_rate", "learning rate", 0.5),
@@ -550,6 +556,8 @@ def test_the_gpt_command_offers_its_knobs(corpus):
     fields = _command(corpus, "retrain char gpt", seed=0, gpt_steps=20).fields
 
     assert [(f.name, f.label, f.default) for f in fields] == [
+        ("text", "text", corpus.name),
+        ("size", "size", "all"),
         ("steps", "steps", 20),
         ("batch", "batch", 256),
         ("learning_rate", "learning rate", 0.001),
