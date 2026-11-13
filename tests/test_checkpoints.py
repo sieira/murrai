@@ -81,6 +81,48 @@ def test_restore_rebuilds_each_model(counted, neural, mlp, transformer):
         assert torch.allclose(torch.as_tensor(after), torch.as_tensor(original))
 
 
+def test_a_snapshot_starts_with_an_empty_info(counted):
+    assert snapshot_of(counted).info == {}
+
+
+def test_the_file_store_round_trips_the_info(tmp_path, counted):
+    store = FileCheckpointStore(tmp_path)
+    store.save(
+        "counted-bigram",
+        snapshot_of(
+            counted,
+            info={"steps": 3, "saved_at": "2027-01-15T08:00:00+00:00"},
+        ),
+    )
+    assert store.load("counted-bigram").info == {
+        "steps": 3,
+        "saved_at": "2027-01-15T08:00:00+00:00",
+    }
+
+
+def test_the_file_store_loads_an_old_file_without_info(tmp_path, counted):
+    path = tmp_path / "old.pt"
+    with open(path, "wb") as file:
+        torch.save(
+            {
+                "kind": counted.kind,
+                "chars": counted.vocabulary.chars,
+                "state": counted.state(),
+            },
+            file,
+        )
+    store = FileCheckpointStore(tmp_path)
+    snapshot = store.load("old")
+    assert snapshot.info == {}
+    torch.testing.assert_close(restore(snapshot).probs([0]), counted.probs([0]))
+
+
+def test_the_memory_store_carries_the_info(counted):
+    store = InMemoryCheckpointStore()
+    store.save("counted-bigram", snapshot_of(counted, info={"steps": 3}))
+    assert store.load("counted-bigram").info == {"steps": 3}
+
+
 def test_restore_rejects_an_unknown_kind():
     snapshot = Snapshot(kind="nonsense", chars=("a",), state={})
     with pytest.raises(ValueError):
