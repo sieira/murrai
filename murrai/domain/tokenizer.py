@@ -26,10 +26,12 @@ class TokenizerEncoderDecoder:
         self.merges = tuple(merges)
         return self
 
-    def encode(self, text):
+    def encode(self, text, on_progress=None):
         ids = array("i", iter(text.encode("utf-8")))
         for rank, pair in enumerate(self.merges):
             ids = _merge_best(ids, pair, 256 + rank, None)
+            if on_progress is not None:
+                on_progress(rank + 1, len(self.merges))
         return list(ids)
 
     @property

@@ -172,3 +172,10 @@ def test_encode_on_a_large_corpus_does_not_replay_merge_by_merge():
     start = time.perf_counter()
     t.encode(text)
     assert time.perf_counter() - start < 1.5
+
+
+def test_encode_reports_progress_per_merge_replay():
+    t = TokenizerEncoderDecoder().fit(CORPUS, num_merges=3)
+    seen = []
+    t.encode(CORPUS, on_progress=lambda done, total: seen.append((done, total)))
+    assert seen == [(1, 3), (2, 3), (3, 3)]

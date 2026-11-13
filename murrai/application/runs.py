@@ -27,6 +27,16 @@ class NeuralTrainingResult:
     loss_curve: list[float]
 
 
+def _phase_reporter(bus, phase):
+    if bus is None:
+        return None
+
+    def report(done, total):
+        bus.emit(TrainingEvent(step=done, total_steps=total, phase=phase))
+
+    return report
+
+
 def train_bigram(
     corpus: Corpus,
     holdout: float,
@@ -38,21 +48,15 @@ def train_bigram(
     cut = int(len(text) * (1 - holdout))
     train, held_out = text[:cut], text[cut:]
 
-    def report(counted, total):
-        bus.emit(TrainingEvent(step=counted, total_steps=total, phase="counting"))
-
-    def report_tokenising(done, total):
-        bus.emit(TrainingEvent(step=done, total_steps=total, phase="tokenising"))
-
     tokenizer = TokenizerEncoderDecoder().fit(
         train,
         merges,
-        on_progress=report_tokenising if bus is not None else None,
+        on_progress=_phase_reporter(bus, "tokenising"),
     )
     model = Bigram.fit(
         train,
         tokenizer,
-        on_progress=report if bus is not None else None,
+        on_progress=_phase_reporter(bus, "counting"),
     )
     if keeper is not None:
         keeper(model)
@@ -75,16 +79,16 @@ def train_neural_bigram(
     keeper=None,
     merges: int = 300,
 ):
-    def report_tokenising(done, total):
-        bus.emit(TrainingEvent(step=done, total_steps=total, phase="tokenising"))
-
     tokenizer = TokenizerEncoderDecoder().fit(
         train,
         merges,
-        on_progress=report_tokenising if bus is not None else None,
+        on_progress=_phase_reporter(bus, "tokenising"),
     )
     model = NeuralBigram(tokenizer)
-    ids = [tokenizer.vocab_size, *tokenizer.encode(train)]
+    ids = [
+        tokenizer.vocab_size,
+        *tokenizer.encode(train, on_progress=_phase_reporter(bus, "encoding")),
+    ]
     pairs = [(prev, nxt) for prev, nxt in itertools.pairwise(ids)]
 
     rng = random.Random(seed)
@@ -152,13 +156,10 @@ def train_mlp_lm(
     cut = int(len(text) * (1 - holdout))
     train, held_out = text[:cut], text[cut:]
 
-    def report_tokenising(done, total):
-        bus.emit(TrainingEvent(step=done, total_steps=total, phase="tokenising"))
-
     tokenizer = TokenizerEncoderDecoder().fit(
         train,
         merges,
-        on_progress=report_tokenising if bus is not None else None,
+        on_progress=_phase_reporter(bus, "tokenising"),
     )
     torch.manual_seed(seed)
     model = MlpLM(tokenizer, window=window, dimension=dimension, hidden=hidden).to(
@@ -166,7 +167,10 @@ def train_mlp_lm(
     )
     optimizer = torch.optim.SGD(model.parameters(), lr=learning_rate)
 
-    ids = [model.start, *tokenizer.encode(train)]
+    ids = [
+        model.start,
+        *tokenizer.encode(train, on_progress=_phase_reporter(bus, "encoding")),
+    ]
     contexts = [ids[max(0, i - window) : i] for i in range(1, len(ids))]
     targets = ids[1:]
     pairs = len(targets)
@@ -244,13 +248,10 @@ def train_transformer_lm(
     cut = int(len(text) * (1 - holdout))
     train, held_out = text[:cut], text[cut:]
 
-    def report_tokenising(done, total):
-        bus.emit(TrainingEvent(step=done, total_steps=total, phase="tokenising"))
-
     tokenizer = TokenizerEncoderDecoder().fit(
         train,
         merges,
-        on_progress=report_tokenising if bus is not None else None,
+        on_progress=_phase_reporter(bus, "tokenising"),
     )
     torch.manual_seed(seed)
     model = TransformerLM(
@@ -262,7 +263,10 @@ def train_transformer_lm(
     ).to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
 
-    ids = [model.start, *tokenizer.encode(train)]
+    ids = [
+        model.start,
+        *tokenizer.encode(train, on_progress=_phase_reporter(bus, "encoding")),
+    ]
     stream = torch.tensor(ids, dtype=torch.long, device=device)
     if len(stream) < 2:
         raise ValueError("corpus encodes to fewer than two tokens")
