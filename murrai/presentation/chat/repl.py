@@ -11,6 +11,7 @@ from prompt_toolkit.layout.controls import FormattedTextControl
 from prompt_toolkit.styles import Style
 from prompt_toolkit.widgets import Frame, TextArea
 
+from murrai.presentation.chat.form import FormOverlay, TrainingForm
 from murrai.presentation.chat.lanes import (
     SILENT,
     CommandPicked,
@@ -185,6 +186,7 @@ def run_chat(
     suggestions = GhostSuggestions(chat)
     status = TrainingStatus(observer=observer)
     panel = CommandPanel(commands, observer)
+    remembered: dict[str, dict] = {}
 
     editor = TextArea(
         text=session.text if session else "",
@@ -207,6 +209,29 @@ def run_chat(
         with contextlib.suppress(RuntimeError):
             # the app can quit before a build lands
             app.loop.call_soon_threadsafe(lambda: swap(load(name)))
+
+    def focus(control):
+        app.layout.focus(control)
+
+    def accept_form(form, values):
+        remembered[form.command.name] = values
+        spawn(form.command.bake(values), status, schedule_swap)
+        app.layout.focus(buffer)
+
+    overlay = FormOverlay(
+        on_accept=accept_form,
+        on_cancel=lambda: focus(buffer),
+        focus=focus,
+    )
+
+    def open_form(command):
+        overlay.open(
+            TrainingForm(
+                command,
+                remembered=remembered.get(command.name),
+                observer=observer,
+            ),
+        )
 
     editor_keys = KeyBindings()
 
@@ -250,6 +275,8 @@ def run_chat(
         if command.trains:
             if load is None:
                 status.fail(command.name, "no load function")
+            elif command.fields:
+                open_form(command)
             else:
                 spawn(command, status, schedule_swap)
         else:
@@ -262,6 +289,8 @@ def run_chat(
         if panel.visible:
             panel.close()
             event.app.layout.focus(buffer)
+        elif overlay.visible:
+            return
         else:
             panel.open()
             event.app.layout.focus(panel_list)
@@ -334,6 +363,7 @@ def run_chat(
                             panel_column,
                             Condition(lambda: panel.visible),
                         ),
+                        overlay.container,
                     ],
                 ),
                 Window(

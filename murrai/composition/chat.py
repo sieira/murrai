@@ -13,6 +13,7 @@ from murrai.application.runs import (
     train_transformer_lm,
     training_device,
 )
+from murrai.presentation.chat.form import FRESH, START_FROM, Field
 from murrai.presentation.chat.panel import Command
 from murrai.presentation.chat.session import ChatSession
 
@@ -51,14 +52,7 @@ def _load_description(info):
     return " · ".join(parts)
 
 
-def _trained_chat_session(
-    builder,
-    directory,
-    seed,
-    store,
-    clock=time.time,
-    on_event=None,
-):
+def _trained_chat_session(run, directory, seed, store, clock, values, on_event=None):
     bus = ListenerBus()
     if on_event is not None:
         bus.subscribe(on_event)
@@ -80,7 +74,7 @@ def _trained_chat_session(
         store.save(model.kind, kept)
 
     try:
-        result = builder(directory, seed, bus=bus, keeper=keep)
+        result = run(directory, seed, store, values, bus=bus, keeper=keep)
     finally:
         if on_event is not None:
             bus.unsubscribe(on_event)
@@ -93,94 +87,323 @@ def _trained_chat_session(
     return ChatSession(result.model, seed)
 
 
-def counted_from_directory(directory, seed=0, bus=None, keeper=None):
+def _keep_with(keeper, settings):
     def keep(model):
         if keeper is not None:
-            keeper(model, {})
+            keeper(model, settings)
 
+    return keep
+
+
+def _start_snapshot(store, values):
+    if store is None:
+        return None
+    name = values.get(START_FROM, FRESH)
+    if name == FRESH:
+        return None
+    return store.load(name)
+
+
+def _device(values, prefer_mps):
+    return training_device(
+        prefer_mps=prefer_mps,
+        choice=values.get("device", "auto"),
+    )
+
+
+def _run_counted(directory, seed, store, values, bus=None, keeper=None):
     return train_bigram(
         DirTextCorpus(directory),
-        holdout=0.1,
+        holdout=values["holdout"],
         bus=bus,
-        keeper=keep,
+        keeper=_keep_with(keeper, {}),
     )
 
 
-def neural_from_directory(
-    directory,
-    seed=0,
-    steps=2000,
-    batch=64,
-    bus=None,
-    keeper=None,
-):
-    settings = {"steps": steps, "batch": batch, "learning_rate": 3.0}
-
-    def keep(model):
-        if keeper is not None:
-            keeper(model, settings)
-
+def _run_neural(directory, seed, store, values, bus=None, keeper=None):
+    settings = {
+        "steps": values["steps"],
+        "batch": values["batch"],
+        "learning_rate": values["learning_rate"],
+    }
     return train_neural_bigram(
         DirTextCorpus(directory).text(),
-        seed=seed,
+        steps=values["steps"],
+        batch=values["batch"],
+        learning_rate=values["learning_rate"],
+        final_learning_rate=values["final_learning_rate"],
+        seed=values.get("seed", seed),
+        start=_start_snapshot(store, values),
         bus=bus,
-        keeper=keep,
-        **settings,
+        keeper=_keep_with(keeper, settings),
     )
 
 
-def mlp_from_directory(
-    directory,
-    seed=0,
-    steps=10000,
-    batch=256,
-    bus=None,
-    keeper=None,
-):
-    settings = {"steps": steps, "batch": batch, "learning_rate": 0.5}
-
-    def keep(model):
-        if keeper is not None:
-            keeper(model, settings)
-
+def _run_mlp(directory, seed, store, values, bus=None, keeper=None):
+    settings = {
+        "steps": values["steps"],
+        "batch": values["batch"],
+        "learning_rate": values["learning_rate"],
+    }
+    start = _start_snapshot(store, values)
+    kwargs = {
+        "steps": values["steps"],
+        "batch": values["batch"],
+        "learning_rate": values["learning_rate"],
+        "patience": values["patience"],
+        "shrink": values["shrink"],
+        "holdout": values["holdout"],
+        "device": _device(values, prefer_mps=False),
+        "seed": values.get("seed", seed),
+        "start": start,
+    }
+    if start is None:
+        kwargs.update(
+            window=values["window"],
+            dimension=values["dimension"],
+            hidden=values["hidden"],
+        )
     return train_mlp_lm(
         DirTextCorpus(directory).text(),
-        seed=seed,
-        patience=1000,
-        window=8,
-        dimension=32,
-        hidden=256,
-        device=training_device(prefer_mps=False),
         bus=bus,
-        keeper=keep,
-        **settings,
+        keeper=_keep_with(keeper, settings),
+        **kwargs,
     )
 
 
-def gpt_from_directory(
-    directory,
-    seed=0,
-    steps=2000,
-    batch=256,
-    bus=None,
-    keeper=None,
-):
-    settings = {"steps": steps, "batch": batch, "learning_rate": 1e-3}
-
-    def keep(model):
-        if keeper is not None:
-            keeper(model, settings)
-
+def _run_gpt(directory, seed, store, values, bus=None, keeper=None):
+    settings = {
+        "steps": values["steps"],
+        "batch": values["batch"],
+        "learning_rate": values["learning_rate"],
+    }
+    start = _start_snapshot(store, values)
+    kwargs = {
+        "steps": values["steps"],
+        "batch": values["batch"],
+        "learning_rate": values["learning_rate"],
+        "patience": values["patience"],
+        "shrink": values["shrink"],
+        "holdout": values["holdout"],
+        "device": _device(values, prefer_mps=True),
+        "seed": values.get("seed", seed),
+        "start": start,
+    }
+    if start is None:
+        kwargs.update(
+            depth=values["depth"],
+            dimension=values["dimension"],
+            max_time=values["max_time"],
+            heads=values["heads"],
+        )
     return train_transformer_lm(
         DirTextCorpus(directory).text(),
-        seed=seed,
-        depth=4,
-        dimension=64,
-        max_time=64,
-        device=training_device(prefer_mps=True),
         bus=bus,
-        keeper=keep,
-        **settings,
+        keeper=_keep_with(keeper, settings),
+        **kwargs,
+    )
+
+
+def _bake_counted(directory, seed, store, clock, values):
+    return Command(
+        "counted bigram",
+        "next-char odds tallied straight from the corpus",
+        partial(
+            _trained_chat_session,
+            _run_counted,
+            directory,
+            seed,
+            store,
+            clock,
+            values,
+        ),
+        trains=True,
+        given=values,
+    )
+
+
+def _bake_neural(directory, seed, store, clock, values):
+    return Command(
+        "retrain neural bigram",
+        "same memory, trained by gradient descent",
+        partial(
+            _trained_chat_session,
+            _run_neural,
+            directory,
+            seed,
+            store,
+            clock,
+            values,
+        ),
+        trains=True,
+        given=values,
+    )
+
+
+def _bake_mlp(directory, seed, store, clock, values):
+    return Command(
+        "retrain windowed mlp",
+        "eight chars of memory through a hidden layer",
+        partial(
+            _trained_chat_session,
+            _run_mlp,
+            directory,
+            seed,
+            store,
+            clock,
+            values,
+        ),
+        trains=True,
+        given=values,
+    )
+
+
+def _bake_gpt(directory, seed, store, clock, values):
+    return Command(
+        "retrain char gpt",
+        "attention over the last sixty-four chars",
+        partial(
+            _trained_chat_session,
+            _run_gpt,
+            directory,
+            seed,
+            store,
+            clock,
+            values,
+        ),
+        trains=True,
+        given=values,
+    )
+
+
+def _holdout_field():
+    return Field("holdout", "holdout", "float", 0.1, check="from zero below one")
+
+
+def _seed_field(seed):
+    return Field("seed", "seed", "int", seed, check="whole number")
+
+
+def _start_field(store):
+    names = store.names() if store is not None else ()
+    return Field(START_FROM, "start from", "choice", FRESH, choices=(FRESH, *names))
+
+
+def _device_field(default):
+    return Field(
+        "device",
+        "device",
+        "choice",
+        default,
+        choices=("auto", "prefer gpu", "cpu"),
+    )
+
+
+def _counted_fields():
+    return (_holdout_field(),)
+
+
+def _neural_fields(seed, store, steps):
+    return (
+        Field("steps", "steps", "int", steps, check="whole above zero"),
+        Field("batch", "batch", "int", 64, check="whole above zero"),
+        Field(
+            "learning_rate",
+            "learning rate",
+            "float",
+            3.0,
+            check="number above zero",
+        ),
+        Field(
+            "final_learning_rate",
+            "final learning rate",
+            "float",
+            0.1,
+            check="number above zero",
+        ),
+        _seed_field(seed),
+        _start_field(store),
+    )
+
+
+def _mlp_fields(seed, store, steps):
+    return (
+        Field("steps", "steps", "int", steps, check="whole above zero"),
+        Field("batch", "batch", "int", 256, check="whole above zero"),
+        Field(
+            "learning_rate",
+            "learning rate",
+            "float",
+            0.5,
+            check="number above zero",
+        ),
+        Field("window", "window", "int", 8, check="whole above zero", shape=True),
+        Field(
+            "dimension",
+            "dimension",
+            "int",
+            32,
+            check="whole above zero",
+            shape=True,
+        ),
+        Field("hidden", "hidden", "int", 256, check="whole above zero", shape=True),
+        Field("patience", "patience", "int", 1000, check="whole zero or more"),
+        Field("shrink", "shrink", "float", 0.5, check="between zero and one"),
+        _holdout_field(),
+        _seed_field(seed),
+        _device_field("auto"),
+        _start_field(store),
+    )
+
+
+def _gpt_fields(seed, store, steps):
+    return (
+        Field("steps", "steps", "int", steps, check="whole above zero"),
+        Field("batch", "batch", "int", 256, check="whole above zero"),
+        Field(
+            "learning_rate",
+            "learning rate",
+            "float",
+            0.001,
+            check="number above zero",
+        ),
+        Field("depth", "depth", "int", 4, check="whole above zero", shape=True),
+        Field(
+            "dimension",
+            "dimension",
+            "int",
+            64,
+            check="whole above zero",
+            shape=True,
+        ),
+        Field("heads", "heads", "int", 1, check="whole above zero", shape=True),
+        Field(
+            "max_time",
+            "context length",
+            "int",
+            64,
+            check="whole above zero",
+            shape=True,
+        ),
+        Field("patience", "patience", "int", 200, check="whole zero or more"),
+        Field("shrink", "shrink", "float", 0.5, check="between zero and one"),
+        _holdout_field(),
+        _seed_field(seed),
+        _device_field("auto"),
+        _start_field(store),
+    )
+
+
+def _training_command(bake, directory, seed, store, clock, fields):
+    defaults = {field.name: field.default for field in fields}
+    baked = bake(directory, seed, store, clock, defaults)
+    return Command(
+        baked.name,
+        baked.description,
+        baked.build,
+        trains=True,
+        fields=fields,
+        bake=partial(bake, directory, seed, store, clock),
     )
 
 
@@ -212,57 +435,37 @@ def chat_commands(
             )
     commands.extend(
         [
-            Command(
-                "counted bigram",
-                "next-char odds tallied straight from the corpus",
-                partial(
-                    _trained_chat_session,
-                    counted_from_directory,
-                    directory,
-                    seed,
-                    store,
-                    clock,
-                ),
-                trains=True,
+            _training_command(
+                _bake_counted,
+                directory,
+                seed,
+                store,
+                clock,
+                _counted_fields(),
             ),
-            Command(
-                "retrain neural bigram",
-                "same memory, trained by gradient descent",
-                partial(
-                    _trained_chat_session,
-                    partial(neural_from_directory, steps=neural_steps),
-                    directory,
-                    seed,
-                    store,
-                    clock,
-                ),
-                trains=True,
+            _training_command(
+                _bake_neural,
+                directory,
+                seed,
+                store,
+                clock,
+                _neural_fields(seed, store, neural_steps),
             ),
-            Command(
-                "retrain windowed mlp",
-                "eight chars of memory through a hidden layer",
-                partial(
-                    _trained_chat_session,
-                    partial(mlp_from_directory, steps=mlp_steps),
-                    directory,
-                    seed,
-                    store,
-                    clock,
-                ),
-                trains=True,
+            _training_command(
+                _bake_mlp,
+                directory,
+                seed,
+                store,
+                clock,
+                _mlp_fields(seed, store, mlp_steps),
             ),
-            Command(
-                "retrain char gpt",
-                "attention over the last sixty-four chars",
-                partial(
-                    _trained_chat_session,
-                    partial(gpt_from_directory, steps=gpt_steps),
-                    directory,
-                    seed,
-                    store,
-                    clock,
-                ),
-                trains=True,
+            _training_command(
+                _bake_gpt,
+                directory,
+                seed,
+                store,
+                clock,
+                _gpt_fields(seed, store, gpt_steps),
             ),
         ],
     )
