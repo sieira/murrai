@@ -27,7 +27,6 @@ def main():
     parser.add_argument("--store", default="checkpoints")
     args = parser.parse_args()
 
-    torch.set_default_device(args.device)
     text = DirTextCorpus(args.corpus).text()[: args.chars]
     started = time.time()
 
@@ -56,6 +55,7 @@ def main():
         dimension=args.dimension,
         max_time=args.window,
         heads=args.heads,
+        device=args.device,
         bus=bus,
         keeper=keeper,
     )

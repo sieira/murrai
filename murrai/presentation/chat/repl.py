@@ -204,8 +204,6 @@ def run_chat(
         buffer.cursor_position = len(next_session.text)
 
     def schedule_swap(name):
-        if load is None:
-            return
         with contextlib.suppress(RuntimeError):
             # the app can quit before a build lands
             app.loop.call_soon_threadsafe(lambda: swap(load(name)))
@@ -250,7 +248,10 @@ def run_chat(
         observer.on_event(CommandPicked(command.name))
         event.app.layout.focus(buffer)
         if command.trains:
-            spawn(command, status, schedule_swap)
+            if load is None:
+                status.fail(command.name, "no load function")
+            else:
+                spawn(command, status, schedule_swap)
         else:
             swap(command.build())
 

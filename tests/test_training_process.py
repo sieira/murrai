@@ -45,6 +45,36 @@ def test_a_training_runs_in_its_own_process_and_reports_over_a_pipe(tmp_path):
     assert pytest.approx(sum(probabilities)) == 1.0
 
 
+class BrokenStore:
+    def save(self, name, snapshot):
+        raise OSError("disk full")
+
+    def load(self, name):
+        raise KeyError(name)
+
+    def names(self):
+        return []
+
+
+def test_a_failing_checkpoint_save_reports_failed(tmp_path):
+    (tmp_path / "story.txt").write_text("aabbaabb" * 20)
+    store = BrokenStore()
+    command = next(
+        c
+        for c in chat_commands(tmp_path, seed=0, store=store)
+        if c.name == "counted bigram"
+    )
+    log = ChatLog()
+    status = TrainingStatus(observer=log)
+    delivered = []
+
+    spawn_training(command, status, delivered.append)
+    _wait_for(log, "failed")
+
+    assert delivered == []
+    assert "disk full" in log.lines[-1]
+
+
 def test_a_training_that_cannot_leave_the_process_is_reported_failed():
     from murrai.presentation.chat import Command
 

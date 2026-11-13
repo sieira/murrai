@@ -119,6 +119,29 @@ def test_run_chat_without_a_session_opens_ready_to_pick():
     assert returned is model
 
 
+def test_a_training_command_without_a_load_function_fails_loudly():
+    spawned = []
+    log = ChatLog()
+    command = Command("retrain x", "slow model", lambda: _session(), trains=True)
+
+    def spawn(cmd, status, on_built):
+        spawned.append(cmd)
+
+    with create_pipe_input() as pipe:
+        pipe.send_text("\x10\r\x03")
+        run_chat(
+            _session(),
+            commands=[command],
+            input=pipe,
+            output=DummyOutput(),
+            spawn=spawn,
+            observer=log,
+        )
+
+    assert spawned == []
+    assert any("[train] retrain x failed" in line for line in log.lines)
+
+
 def test_a_picked_training_command_swaps_in_the_loaded_checkpoint():
     calls = []
     names = []
