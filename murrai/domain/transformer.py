@@ -54,6 +54,27 @@ class TransformerLM(torch.nn.Module):
         model.load_state_dict(state["parameters"])
         return model
 
+    def grown_to(self, vocabulary: Vocabulary) -> TransformerLM:
+        grown = TransformerLM(
+            vocabulary,
+            depth=len(self.blocks),
+            dimension=self.embed.embedding_dim,
+            max_time=self.max_time,
+            heads=self.blocks[0].attend.heads,
+        )
+        size = self.vocabulary.size
+        with torch.no_grad():
+            for old_block, new_block in zip(self.blocks, grown.blocks, strict=True):
+                new_block.load_state_dict(old_block.state_dict())
+            grown.position.weight.copy_(self.position.weight)
+            grown.norm.weight.copy_(self.norm.weight)
+            grown.norm.bias.copy_(self.norm.bias)
+            grown.embed.weight[:size] = self.embed.weight[:size]
+            grown.embed.weight[vocabulary.size] = self.embed.weight[size]
+            grown.head.weight[:size] = self.head.weight
+            grown.head.bias[:size] = self.head.bias
+        return grown
+
     def _device(self):
         return self.embed.weight.device
 

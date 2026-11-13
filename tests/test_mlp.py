@@ -3,6 +3,7 @@ import math
 import pytest
 import torch
 
+from murrai.application.checkpoints import snapshot_of
 from murrai.application.runs import plateau_rate, train_mlp_lm
 from murrai.domain.mlp import MlpLM
 from murrai.domain.vocabulary import Vocabulary
@@ -103,3 +104,82 @@ def test_the_requested_device_trains_the_same_curve():
         device=torch.device("cpu"),
     )
     assert explicit.loss_curve == default.loss_curve
+
+
+def test_growth_fits_the_new_vocabulary(model):
+    grown = model.grown_to(Vocabulary.from_text("abc"))
+    assert grown.vocabulary.chars == ("a", "b", "c")
+    assert grown.start == 3
+    assert grown.embed.weight.shape == (4, 8)
+    assert grown.output.weight.shape == (3, 16)
+
+
+def test_growth_moves_the_learned_start_row_to_the_new_last_index(model):
+    grown = model.grown_to(Vocabulary.from_text("abc"))
+    assert torch.equal(grown.embed.weight[3], model.embed.weight[2])
+
+
+def test_growth_keeps_old_raw_scores_for_every_old_context(model):
+    grown = model.grown_to(Vocabulary.from_text("abc"))
+    for context in ([], [0], [1], [0, 1], [1, 0, 1, 0]):
+        old_row = model.logits(context)[: model.vocabulary.size]
+        new_row = grown.logits(context)[: model.vocabulary.size]
+        assert torch.equal(old_row, new_row)
+
+
+def test_training_continues_from_a_snapshot():
+    first = train_mlp_lm("ab" * 200, steps=15, batch=16, seed=0, learning_rate=0.1)
+    second = train_mlp_lm(
+        "ab" * 200,
+        steps=15,
+        batch=16,
+        seed=0,
+        learning_rate=0.1,
+        start=snapshot_of(first.model),
+    )
+    assert second.loss_curve[0] < first.loss_curve[0]
+    assert second.loss_curve[0] == pytest.approx(first.loss_curve[-1], abs=0.01)
+    assert second.loss_curve[-1] < second.loss_curve[0]
+
+
+def test_training_continuation_grows_the_vocabulary():
+    first = train_mlp_lm("ab" * 200, steps=30, batch=16, seed=0)
+    second = train_mlp_lm(
+        "ab" * 150 + "c" * 100,
+        steps=30,
+        batch=16,
+        seed=0,
+        start=snapshot_of(first.model),
+    )
+    assert second.model.vocabulary.chars == ("a", "b", "c")
+    assert second.loss_curve[0] < math.log(3)
+
+
+def test_continuing_from_an_untrained_snapshot_repeats_the_fresh_run():
+    torch.manual_seed(0)
+    fresh_model = MlpLM(
+        Vocabulary.from_text("ab" * 200),
+        window=2,
+        dimension=8,
+        hidden=16,
+    )
+    fresh = train_mlp_lm(
+        "ab" * 200,
+        steps=10,
+        batch=16,
+        seed=0,
+        window=2,
+        dimension=8,
+        hidden=16,
+        start=snapshot_of(fresh_model),
+    )
+    plain = train_mlp_lm(
+        "ab" * 200,
+        steps=10,
+        batch=16,
+        seed=0,
+        window=2,
+        dimension=8,
+        hidden=16,
+    )
+    assert fresh.loss_curve == plain.loss_curve

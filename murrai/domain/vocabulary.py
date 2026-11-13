@@ -11,6 +11,10 @@ class Vocabulary:
     def size(self):
         return len(self.chars)
 
+    def grown_with(self, chars):
+        fresh = sorted(set(chars) - set(self.chars))
+        return Vocabulary(self.chars + tuple(fresh))
+
     def encode(self, text):
         try:
             return [self._ids[c] for c in text]

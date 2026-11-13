@@ -29,6 +29,16 @@ class NeuralBigram:
                 value.data = data
         return model
 
+    def grown_to(self, vocabulary):
+        grown = NeuralBigram(vocabulary)
+        size = self.vocabulary.size
+        for prev in range(size):
+            for nxt in range(size):
+                grown.weights[prev][nxt].data = self.weights[prev][nxt].data
+        for nxt in range(size):
+            grown.weights[vocabulary.size][nxt].data = self.weights[size][nxt].data
+        return grown
+
     def batch_loss(self, prev_ids, next_ids):
         loss = Value(0.0)
         rows = {}

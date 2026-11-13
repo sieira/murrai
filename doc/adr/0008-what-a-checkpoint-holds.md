@@ -31,6 +31,22 @@ crosses the pipe to the chat (ADR-0005).
 
 A file without `info` keeps loading; its record reads as empty.
 
+## Growing the character list on continuation
+
+A checkpoint can seed more training on text that brings characters the
+saved model never saw. The character list then grows append-only: every
+old character keeps its id, and new characters join at the end, sorted
+among themselves. Each trainer accepts a checkpoint as its optional
+starting point; it rebuilds the model from the record, grows it to cover
+the new text's characters, and trains on. Old weights stay at their old
+positions, and the start token's learned row moves with it to the new
+last index, so an empty context behaves exactly as before. New
+characters begin from fresh, untrained rows. Raw scores for old contexts
+stay identical across growth; probabilities over the larger outcome set
+renormalize, which is inherent and not a defect. The optimizer's memory
+does not travel in the record: a continued run starts with empty
+momentum and adaptive-rate state, so its first steps can wobble.
+
 ## Consequences
 
 - Old checkpoints load unchanged and keep their generic menu line.
@@ -39,5 +55,8 @@ A file without `info` keeps loading; its record reads as empty.
   second write costs the same as the first.
 - A run whose metrics fail keeps its checkpoint, with the record
   missing the numbers the failed metrics would have supplied.
+- A continued run's record carries the grown character list, because the
+  trainer hands its keeper the finished model with its vocabulary
+  already grown.
 - The menu reads the whole file to show one line, so a store of large
   checkpoints makes opening the menu slower.

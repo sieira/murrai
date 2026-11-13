@@ -43,6 +43,23 @@ class MlpLM(torch.nn.Module):
         model.load_state_dict(state["parameters"])
         return model
 
+    def grown_to(self, vocabulary: Vocabulary) -> MlpLM:
+        grown = MlpLM(
+            vocabulary,
+            window=self.window,
+            dimension=self.embed.embedding_dim,
+            hidden=self.input.out_features,
+        )
+        size = self.vocabulary.size
+        with torch.no_grad():
+            grown.embed.weight[:size] = self.embed.weight[:size]
+            grown.embed.weight[vocabulary.size] = self.embed.weight[size]
+            grown.input.weight.copy_(self.input.weight)
+            grown.input.bias.copy_(self.input.bias)
+            grown.output.weight[:size] = self.output.weight
+            grown.output.bias[:size] = self.output.bias
+        return grown
+
     def _device(self):
         return self.embed.weight.device
 
