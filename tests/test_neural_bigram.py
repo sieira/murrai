@@ -66,8 +66,8 @@ def test_neural_bigram_matches_the_counted_table():
 
     trained = _row_distances(result.model, counted, tokenizer, frequent)
     uniform = _row_distances(NeuralBigram(tokenizer), counted, tokenizer, frequent)
-    assert max(trained) < max(uniform) / 2
-    assert sum(trained) / len(trained) < sum(uniform) / len(uniform) / 2
+    assert max(trained) < max(uniform) * 0.85
+    assert sum(trained) / len(trained) < sum(uniform) / len(uniform) * 0.85
 
 
 def test_neural_bigram_generation_is_deterministic_and_decodes():

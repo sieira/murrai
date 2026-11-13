@@ -39,4 +39,9 @@ in the minbpe style. That is also where GPT-2, our ADR-0004 target, sits.
   merges on the full corpus.
 - The chat must render single-token bytes that are not valid UTF-8 on
   their own; how is decided in code.
+- The neural bigram's convergence test compares the trained table against
+  the counted one. Its bar is relative to the uniform baseline, not an
+  absolute distance: under BPE the counted rows are estimated from fewer
+  examples over more classes, and descent lands near the data rather than
+  on the noisy table.
 - The char vocabulary class is deleted, not deprecated.
