@@ -16,6 +16,10 @@ class ChatSession:
         return self._model.kind
 
     @property
+    def chars(self) -> tuple:
+        return self._model.vocabulary.chars
+
+    @property
     def text(self) -> str:
         return self._model.vocabulary.decode(self._ids)
 
@@ -33,6 +37,12 @@ class ChatSession:
         fresh = list(self._model.vocabulary.encode(chars))
         self._ids.extend(fresh)
         self._origins.extend([origin] * len(fresh))
+
+    def grow(self, chars: str) -> None:
+        grown = self._model.vocabulary.grown_with(chars)
+        if grown.chars == self._model.vocabulary.chars:
+            return
+        self._model = self._model.grown_to(grown)
 
     def dice(self):
         return self._dice(self._ids)

@@ -77,8 +77,10 @@ class GhostChat:
             if a != b:
                 break
             common += 1
+        fresh = buffer_text[common:]
+        self.session.grow(fresh)
         self.session.truncate(common)
-        self.session.extend_user(buffer_text[common:])
+        self.session.extend_user(fresh)
         self._synced = buffer_text
 
     def accept_rest(self, buffer_text: str, ghost: str) -> None:
@@ -91,7 +93,8 @@ class GhostChat:
             return ""
         try:
             return self.session.rollout(buffer_text, self.ghost_chars)
-        except ValueError:
+        except Exception:
+            # a render must never kill the chat; prompt_toolkit wedges on any escape
             return ""
 
     def die_bar(self, buffer_text: str, ghost: str = ""):
@@ -99,7 +102,8 @@ class GhostChat:
             return []
         try:
             dice = self.session.preview(buffer_text)
-        except ValueError:
+        except Exception:
+            # a render must never kill the chat; prompt_toolkit wedges on any escape
             return []
         fragments = []
         hit = ghost[0] if ghost else None
@@ -116,8 +120,13 @@ class GhostSuggestions(AutoSuggest):
     def __init__(self, chat: GhostChat):
         self._chat = chat
         self._cache: dict[str, str] = {}
+        self._chars: tuple = ()
 
     def _roll_for(self, context: str) -> str:
+        chars = self._chat.session.chars if self._chat.session else ()
+        if chars != self._chars:
+            self._chars = chars
+            self._cache.clear()
         if context not in self._cache:
             roll = self._chat.suggestions(context)
             if not roll:
