@@ -23,8 +23,7 @@ def report(name, text, merges):
     start = time.perf_counter()
     ids = tokenizer.encode(text)
     print(
-        f"  encode: {len(ids):,} tokens"
-        f" in {time.perf_counter() - start:.2f}s",
+        f"  encode: {len(ids):,} tokens in {time.perf_counter() - start:.2f}s",
     )
 
 

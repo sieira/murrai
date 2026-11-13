@@ -89,9 +89,7 @@ def _merge_best(ids, best, new_id, counts):
         left_old = ids[pos - 1] if pos > 0 else None
         left_new = new_id if previous == pos - 2 else left_old
         right = ids[pos + 2] if pos + 2 < length else None
-        followed = (
-            right == first and pos + 3 < length and ids[pos + 3] == second
-        )
+        followed = right == first and pos + 3 < length and ids[pos + 3] == second
         if counts is not None:
             if left_old is not None:
                 pair = (left_old, first)
