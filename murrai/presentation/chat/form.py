@@ -185,7 +185,7 @@ class TrainingForm:
 
 def label_fragments(form, field):
     if form.locked(field.name):
-        return [("class:hint", f"   {field.label}: (from savegame)")]
+        return [("class:hint", f"   {field.label}: (from checkpoint)")]
     if field is form.current:
         return [("class:selected", f" » {field.label}:")]
     return [("", f"   {field.label}:")]
@@ -195,7 +195,8 @@ def choice_fragments(form, field):
     fragments = list(label_fragments(form, field))
     for choice in field.choices:
         if choice == form.chosen(field.name):
-            fragments.append(("class:selected", f" [{choice}]"))
+            fragments.append(("", " "))
+            fragments.append(("class:selected", f"[{choice}]"))
         else:
             fragments.append(("", f" {choice}"))
     return fragments
