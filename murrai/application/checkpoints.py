@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from murrai.domain.bigram import Bigram
 from murrai.domain.mlp import MlpLM
@@ -12,10 +12,16 @@ class Snapshot:
     kind: str
     chars: tuple
     state: dict
+    info: dict = field(default_factory=dict)
 
 
-def snapshot_of(model):
-    return Snapshot(kind=model.kind, chars=model.vocabulary.chars, state=model.state())
+def snapshot_of(model, info=None):
+    return Snapshot(
+        kind=model.kind,
+        chars=model.vocabulary.chars,
+        state=model.state(),
+        info=info or {},
+    )
 
 
 def restore(snapshot: Snapshot):

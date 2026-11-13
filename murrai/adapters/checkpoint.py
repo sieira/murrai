@@ -31,6 +31,7 @@ class FileCheckpointStore:
             kind=snapshot.kind,
             chars=snapshot.chars,
             state=_state_to_cpu(snapshot.state),
+            info=snapshot.info,
         )
         self._root.mkdir(parents=True, exist_ok=True)
         descriptor, temp = tempfile.mkstemp(dir=self._root, suffix=".tmp")
@@ -41,6 +42,7 @@ class FileCheckpointStore:
                         "kind": snapshot.kind,
                         "chars": snapshot.chars,
                         "state": snapshot.state,
+                        "info": snapshot.info,
                     },
                     file,
                 )
@@ -56,7 +58,12 @@ class FileCheckpointStore:
         if not path.exists():
             raise KeyError(name)
         data = torch.load(path)
-        return Snapshot(kind=data["kind"], chars=data["chars"], state=data["state"])
+        return Snapshot(
+            kind=data["kind"],
+            chars=data["chars"],
+            state=data["state"],
+            info=data.get("info", {}),
+        )
 
     def names(self):
         return sorted(path.stem for path in self._root.glob("*.pt"))
