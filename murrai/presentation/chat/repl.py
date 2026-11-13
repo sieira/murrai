@@ -52,6 +52,9 @@ STYLE = Style.from_dict(
         "selected": "ansibrightcyan bold",
         "bar": "ansigreen",
         "failed": "ansired bold",
+        "dialog.body": "bg:default fg:default",
+        "dialog.body text-area": "bg:default fg:default",
+        "dialog.body text-area last-line": "nounderline",
     },
 )
 
