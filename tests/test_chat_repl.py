@@ -582,3 +582,114 @@ def test_the_left_arrow_moves_to_the_previous_choice():
         _form_chat([_form_command(fields)], spawn)(pipe)
 
     assert spawned[0].given == {"steps": 2000, "start_from": "fresh"}
+
+
+def _broken_line_session(text):
+    vocabulary = Vocabulary.from_text(text)
+    return ChatSession(Bigram.fit(text, vocabulary), 0)
+
+
+def test_the_story_renders_typed_line_breaks_as_lines():
+    from murrai.presentation.chat.repl import story_fragments
+
+    session = _broken_line_session("ab\ncd")
+    session.extend_user("ab\ncd")
+
+    fragments = story_fragments(session)
+
+    assert "".join(text for _, text in fragments) == "ab\ncd"
+
+
+def test_the_story_tail_keeps_the_last_lines_intact():
+    from murrai.presentation.chat.repl import story_fragments
+
+    session = _broken_line_session("ab\ncd\nef")
+    session.extend_user("ab\ncd\nef")
+
+    fragments = story_fragments(session, tail_lines=2)
+
+    assert "".join(text for _, text in fragments) == "cd\nef"
+
+
+class _ScreenOutput(DummyOutput):
+    def __init__(self):
+        self.chunks = []
+        self.snapshots = []
+        self._calls = 0
+
+    def get_size(self):
+        self._calls += 1
+        from prompt_toolkit.data_structures import Size
+
+        return Size(rows=40, columns=80 + self._calls)
+
+    def write(self, data):
+        self.chunks.append(data)
+
+    def flush(self):
+        if self.chunks:
+            self.snapshots.append("".join(self.chunks))
+            self.chunks = []
+
+
+def test_the_story_fills_the_box_with_one_row_per_line():
+    session = _broken_line_session("a\nb\nc\nd\ne\nf")
+    session.extend_user("a\nb\nc\nd\ne\nf")
+    output = _ScreenOutput()
+    with create_pipe_input() as pipe:
+        failures = []
+
+        def chat():
+            try:
+                run_chat(session, input=pipe, output=output)
+            except BaseException as error:
+                failures.append(error)
+
+        thread = threading.Thread(target=chat)
+        thread.start()
+        time.sleep(0.4)
+        pipe.send_text("\x03")
+        thread.join(timeout=10)
+    if failures:
+        raise failures[0]
+
+    full = [s for s in output.snapshots if len(s) > 1000][-1]
+    shown = [row.strip("│ \r") for row in full.split("\r\n")]
+    for letter in "abcdef":
+        assert letter in shown
+
+
+def test_the_story_box_uses_its_height_not_a_fixed_twenty_lines():
+    first = "\n".join("abcd")
+    session = _broken_line_session(
+        "abcd"
+        + "\n"
+        + "e\nf\ng\nh\ni\nj\nk\nl\nm\nn\no\np\nq\nr\ns\nt\nu\nv\nw\nx\ny\nz",
+    )
+    session.extend_user(first)
+    output = _ScreenOutput()
+    with create_pipe_input() as pipe:
+        failures = []
+
+        def chat():
+            try:
+                run_chat(session, input=pipe, output=output)
+            except BaseException as error:
+                failures.append(error)
+
+        thread = threading.Thread(target=chat)
+        thread.start()
+        time.sleep(0.4)
+        sequence = "\x1b[13;2u"
+        typed = "".join(sequence + letter for letter in "fghijklmnopqrstuvwxyz")
+        pipe.send_text("e" + typed + "\r")
+        time.sleep(0.5)
+        pipe.send_text("\x03")
+        thread.join(timeout=10)
+    if failures:
+        raise failures[0]
+
+    full = [s for s in output.snapshots if len(s) > 1000][-1]
+    shown = [row.strip("│ \r") for row in full.split("\r\n")]
+    visible = [c for c in "abcdefghijklmnopqrstuvwx" if c in shown]
+    assert len(visible) >= 21
