@@ -37,6 +37,22 @@ class SessionSwapped(ChatEvent):
 
 
 @dataclass(frozen=True)
+class FormOpened(ChatEvent):
+    name: str
+
+    def lane_line(self):
+        return f"[form] opened {self.name}"
+
+
+@dataclass(frozen=True)
+class FormCancelled(ChatEvent):
+    name: str
+
+    def lane_line(self):
+        return f"[form] cancelled {self.name}"
+
+
+@dataclass(frozen=True)
 class TrainingStarted(ChatEvent):
     name: str
 
