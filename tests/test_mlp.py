@@ -5,23 +5,23 @@ import torch
 
 from murrai.application.runs import plateau_rate, train_mlp_lm
 from murrai.domain.mlp import MlpLM
-from murrai.domain.vocabulary import Vocabulary
+from murrai.domain.tokenizer import TokenizerEncoderDecoder
 
 
 @pytest.fixture
-def vocabulary():
-    return Vocabulary.from_text("ab")
+def tokenizer():
+    return TokenizerEncoderDecoder()
 
 
 @pytest.fixture
-def model(vocabulary):
+def model(tokenizer):
     torch.manual_seed(0)
-    return MlpLM(vocabulary, window=2, dimension=8, hidden=16)
+    return MlpLM(tokenizer, window=2, dimension=8, hidden=16)
 
 
-def test_fresh_model_answers_the_port(model, vocabulary):
+def test_fresh_model_answers_the_port(model, tokenizer):
     row = model.probs([0])
-    assert row.shape == (vocabulary.size,)
+    assert row.shape == (tokenizer.vocab_size,)
     assert float(row.sum()) == pytest.approx(1.0, abs=1e-5)
 
 
@@ -38,10 +38,10 @@ def test_empty_history_uses_the_start(model):
     assert float(row.sum()) == pytest.approx(1.0, abs=1e-5)
 
 
-def test_generation_is_deterministic_and_in_vocabulary(model):
+def test_generation_is_deterministic_and_decodes(model):
     first = model.generate(12, seed=3)
     assert first == model.generate(12, seed=3)
-    assert set(first) <= set(model.vocabulary.chars)
+    assert len(first) >= 12
 
 
 def test_held_out_perplexity_is_finite_and_above_one(model):
@@ -78,6 +78,7 @@ def test_the_plateau_schedule_shrinks_the_rate_during_a_stalled_run():
         seed=0,
         learning_rate=1.0,
         patience=3,
+        merges=0,
     )
     assert result.rate_curve[-1] < result.rate_curve[0]
 

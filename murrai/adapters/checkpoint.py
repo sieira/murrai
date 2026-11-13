@@ -39,7 +39,7 @@ class FileCheckpointStore:
                 torch.save(
                     {
                         "kind": snapshot.kind,
-                        "chars": snapshot.chars,
+                        "merges": snapshot.merges,
                         "state": snapshot.state,
                     },
                     file,
@@ -56,7 +56,7 @@ class FileCheckpointStore:
         if not path.exists():
             raise KeyError(name)
         data = torch.load(path)
-        return Snapshot(kind=data["kind"], chars=data["chars"], state=data["state"])
+        return Snapshot(kind=data["kind"], merges=data["merges"], state=data["state"])
 
     def names(self):
         return sorted(path.stem for path in self._root.glob("*.pt"))

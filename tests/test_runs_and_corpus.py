@@ -43,7 +43,7 @@ def test_run_perplexity_matches_domain_math():
     result = train_bigram(FakeCorpus(), holdout=0.2)
     expected = Bigram.fit(
         "aabbaabbaabbaabb"[: int(len("aabbaabbaabbaabb") * 0.8)],
-        result.model.vocabulary,
+        result.model.tokenizer,
     ).perplexity("aabbaabbaabbaabb"[int(len("aabbaabbaabbaabb") * 0.8) :])
     assert result.held_out_perplexity == expected
 

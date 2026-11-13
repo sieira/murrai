@@ -10,7 +10,7 @@ from murrai.domain.bigram import Bigram
 from murrai.domain.mlp import MlpLM
 from murrai.domain.neural_bigram import NeuralBigram
 from murrai.domain.transformer import TransformerLM
-from murrai.domain.vocabulary import Vocabulary
+from murrai.domain.tokenizer import TokenizerEncoderDecoder
 
 
 @dataclass
@@ -32,6 +32,7 @@ def train_bigram(
     holdout: float,
     bus: EventBus | None = None,
     keeper=None,
+    merges: int = 300,
 ) -> TrainingResult:
     text = corpus.text()
     cut = int(len(text) * (1 - holdout))
@@ -40,10 +41,10 @@ def train_bigram(
     def report(counted, total):
         bus.emit(TrainingEvent(step=counted, total_steps=total))
 
-    vocabulary = Vocabulary.from_text(text)
+    tokenizer = TokenizerEncoderDecoder().fit(train, merges)
     model = Bigram.fit(
         train,
-        vocabulary,
+        tokenizer,
         on_progress=report if bus is not None else None,
     )
     if keeper is not None:
@@ -65,10 +66,11 @@ def train_neural_bigram(
     final_learning_rate=0.1,
     bus: EventBus | None = None,
     keeper=None,
+    merges: int = 300,
 ):
-    vocabulary = Vocabulary.from_text(train)
-    model = NeuralBigram(vocabulary)
-    ids = [vocabulary.size, *vocabulary.encode(train)]
+    tokenizer = TokenizerEncoderDecoder().fit(train, merges)
+    model = NeuralBigram(tokenizer)
+    ids = [tokenizer.vocab_size, *tokenizer.encode(train)]
     pairs = [(prev, nxt) for prev, nxt in itertools.pairwise(ids)]
 
     rng = random.Random(seed)
@@ -130,19 +132,20 @@ def train_mlp_lm(
     device=None,
     bus: EventBus | None = None,
     keeper=None,
+    merges: int = 300,
 ):
     device = torch.device(device) if device is not None else torch.device("cpu")
     cut = int(len(text) * (1 - holdout))
     train, held_out = text[:cut], text[cut:]
 
-    vocabulary = Vocabulary.from_text(text)
+    tokenizer = TokenizerEncoderDecoder().fit(train, merges)
     torch.manual_seed(seed)
-    model = MlpLM(vocabulary, window=window, dimension=dimension, hidden=hidden).to(
+    model = MlpLM(tokenizer, window=window, dimension=dimension, hidden=hidden).to(
         device,
     )
     optimizer = torch.optim.SGD(model.parameters(), lr=learning_rate)
 
-    ids = [model.start, *vocabulary.encode(train)]
+    ids = [model.start, *tokenizer.encode(train)]
     contexts = [ids[max(0, i - window) : i] for i in range(1, len(ids))]
     targets = ids[1:]
     pairs = len(targets)
@@ -214,15 +217,16 @@ def train_transformer_lm(
     device=None,
     bus: EventBus | None = None,
     keeper=None,
+    merges: int = 300,
 ):
     device = torch.device(device) if device is not None else torch.device("cpu")
     cut = int(len(text) * (1 - holdout))
     train, held_out = text[:cut], text[cut:]
 
-    vocabulary = Vocabulary.from_text(text)
+    tokenizer = TokenizerEncoderDecoder().fit(train, merges)
     torch.manual_seed(seed)
     model = TransformerLM(
-        vocabulary,
+        tokenizer,
         depth=depth,
         dimension=dimension,
         max_time=max_time,
@@ -230,10 +234,13 @@ def train_transformer_lm(
     ).to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
 
-    ids = [model.start, *vocabulary.encode(train)]
+    ids = [model.start, *tokenizer.encode(train)]
     stream = torch.tensor(ids, dtype=torch.long, device=device)
-    span = torch.arange(max_time, device=device)
-    last_start = len(stream) - max_time - 1
+    if len(stream) < 2:
+        raise ValueError("corpus encodes to fewer than two tokens")
+    window = min(max_time, len(stream) - 1)
+    span = torch.arange(window, device=device)
+    last_start = len(stream) - window - 1
 
     rng = random.Random(seed)
     loss_curve, rate_curve = [], []
@@ -242,13 +249,13 @@ def train_transformer_lm(
     rate = learning_rate
     for step in range(steps):
         chosen = torch.tensor(
-            [rng.randrange(last_start) for _ in range(batch)],
+            [rng.randrange(max(last_start, 1)) for _ in range(batch)],
             device=device,
         )
         rows = stream[chosen[:, None] + span]
         targets = stream[chosen[:, None] + span + 1]
         logits = model(rows)
-        loss = F.cross_entropy(logits.reshape(-1, vocabulary.size), targets.reshape(-1))
+        loss = F.cross_entropy(logits.reshape(-1, tokenizer.vocab_size), targets.reshape(-1))
         loss.backward()
         optimizer.step()
         optimizer.zero_grad()

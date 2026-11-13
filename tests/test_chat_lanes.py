@@ -3,7 +3,7 @@ from prompt_toolkit.output import DummyOutput
 
 from murrai.application.ports import TrainingEvent
 from murrai.domain.bigram import Bigram
-from murrai.domain.vocabulary import Vocabulary
+from murrai.domain.tokenizer import TokenizerEncoderDecoder
 from murrai.presentation.chat import ChatSession, Command, run_chat
 from murrai.presentation.chat.lanes import (
     ChatLog,
@@ -21,7 +21,7 @@ from murrai.presentation.chat.status import TrainingStatus
 
 
 def _session(text="abab"):
-    return ChatSession(Bigram.fit(text, Vocabulary.from_text("ab")), 0)
+    return ChatSession(Bigram.fit(text, TokenizerEncoderDecoder()), 0)
 
 
 def test_each_event_renders_its_own_lane_line():

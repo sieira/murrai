@@ -8,13 +8,13 @@ from murrai.domain.bigram import Bigram
 from murrai.domain.mlp import MlpLM
 from murrai.domain.neural_bigram import NeuralBigram
 from murrai.domain.transformer import TransformerLM
-from murrai.domain.vocabulary import Vocabulary
+from murrai.domain.tokenizer import TokenizerEncoderDecoder
 from murrai.presentation.chat import ChatSession
 
 
 @pytest.fixture
 def counted():
-    return Bigram.fit("abab", Vocabulary.from_text("ab"))
+    return Bigram.fit("abab", TokenizerEncoderDecoder())
 
 
 @pytest.fixture
@@ -31,7 +31,7 @@ def mlp():
 def transformer():
     torch.manual_seed(0)
     return TransformerLM(
-        Vocabulary.from_text("ababab"),
+        TokenizerEncoderDecoder(),
         depth=2,
         dimension=8,
         max_time=4,
@@ -39,35 +39,35 @@ def transformer():
 
 
 def test_the_counted_bigram_round_trips_through_its_state(counted):
-    vocabulary = Vocabulary(counted.vocabulary.chars)
-    rebuilt = Bigram.from_state(vocabulary, counted.state())
+    tokenizer = TokenizerEncoderDecoder(counted.tokenizer.merges)
+    rebuilt = Bigram.from_state(tokenizer, counted.state())
     torch.testing.assert_close(rebuilt.probs([0]), counted.probs([0]))
     torch.testing.assert_close(rebuilt.probs([]), counted.probs([]))
 
 
 def test_the_neural_bigram_round_trips_through_its_state(neural):
-    vocabulary = Vocabulary(neural.vocabulary.chars)
-    rebuilt = NeuralBigram.from_state(vocabulary, neural.state())
+    tokenizer = TokenizerEncoderDecoder(neural.tokenizer.merges)
+    rebuilt = NeuralBigram.from_state(tokenizer, neural.state())
     assert rebuilt.probs([0]) == pytest.approx(neural.probs([0]))
 
 
 def test_the_mlp_round_trips_through_its_state(mlp):
-    vocabulary = Vocabulary(mlp.vocabulary.chars)
-    rebuilt = MlpLM.from_state(vocabulary, mlp.state())
+    tokenizer = TokenizerEncoderDecoder(mlp.tokenizer.merges)
+    rebuilt = MlpLM.from_state(tokenizer, mlp.state())
     torch.testing.assert_close(rebuilt.probs([0, 1]), mlp.probs([0, 1]))
 
 
 def test_the_transformer_round_trips_through_its_state(transformer):
-    vocabulary = Vocabulary(transformer.vocabulary.chars)
-    rebuilt = TransformerLM.from_state(vocabulary, transformer.state())
+    tokenizer = TokenizerEncoderDecoder(transformer.tokenizer.merges)
+    rebuilt = TransformerLM.from_state(tokenizer, transformer.state())
     torch.testing.assert_close(rebuilt.probs([0, 1]), transformer.probs([0, 1]))
 
 
-def test_a_snapshot_carries_kind_chars_and_state(counted, neural, mlp, transformer):
+def test_a_snapshot_carries_kind_merges_and_state(counted, neural, mlp, transformer):
     for model in (counted, neural, mlp, transformer):
         snapshot = snapshot_of(model)
         assert snapshot.kind == model.kind
-        assert snapshot.chars == model.vocabulary.chars
+        assert snapshot.merges == model.tokenizer.merges
         assert snapshot.state
 
 
@@ -81,8 +81,17 @@ def test_restore_rebuilds_each_model(counted, neural, mlp, transformer):
         assert torch.allclose(torch.as_tensor(after), torch.as_tensor(original))
 
 
+def test_a_snapshot_round_trips_the_tokenizer_merges():
+    tokenizer = TokenizerEncoderDecoder().fit("abab", num_merges=2)
+    model = Bigram.fit("abab", tokenizer)
+    restored = restore(snapshot_of(model))
+    assert restored.tokenizer.merges == tokenizer.merges
+    assert restored.tokenizer.encode("abab") == tokenizer.encode("abab")
+    torch.testing.assert_close(restored.probs([ord("a")]), model.probs([ord("a")]))
+
+
 def test_restore_rejects_an_unknown_kind():
-    snapshot = Snapshot(kind="nonsense", chars=("a",), state={})
+    snapshot = Snapshot(kind="nonsense", merges=(), state={})
     with pytest.raises(ValueError):
         restore(snapshot)
 

@@ -2,13 +2,13 @@ import pytest
 
 from murrai.application.runs import train_neural_bigram
 from murrai.domain.bigram import Bigram
-from murrai.domain.vocabulary import Vocabulary
+from murrai.domain.tokenizer import TokenizerEncoderDecoder
 from murrai.presentation.chat import ChatSession
 
 
 @pytest.fixture
 def model():
-    return Bigram.fit("abab", Vocabulary.from_text("ab"))
+    return Bigram.fit("abab", TokenizerEncoderDecoder())
 
 
 def test_user_and_generated_chars_build_the_story(model):
@@ -28,19 +28,17 @@ def test_truncate_rolls_the_story_back(model):
     assert session.segments() == [("ab", "entered")]
 
 
-def test_unknown_chars_raise_without_corrupting(model):
+def test_text_absent_from_the_corpus_extends_without_corrupting(model):
     session = ChatSession(model, seed=0)
     session.extend_user("a")
-    with pytest.raises(ValueError):
-        session.extend_user("az")
-    assert session.text == "a"
+    session.extend_user("z🚀中")
+    assert session.text == "az🚀中"
 
 
-def test_rollout_samples_the_next_n_chars(model):
+def test_rollout_samples_the_next_n_tokens(model):
     session = ChatSession(model, seed=0)
     ghost = session.rollout("a", 5)
-    assert len(ghost) == 5
-    assert set(ghost) <= set(model.vocabulary.chars)
+    assert len(ghost) >= 5
 
 
 def test_rollout_is_deterministic_per_seed(model):
@@ -74,8 +72,34 @@ def test_the_die_reflects_the_whole_story(model):
     assert dice != dice_after
 
 
+class _Forcing:
+    kind = "forced"
+
+    def __init__(self, tokenizer):
+        self.tokenizer = tokenizer
+
+    def probs(self, context_ids):
+        row = [0.0] * self.tokenizer.vocab_size
+        row[256] = 1.0
+        return row
+
+
+def test_the_die_renders_a_partial_utf8_token_as_replacement_characters():
+    tokenizer = TokenizerEncoderDecoder(merges=((0xC3, 0x41),))
+    model = Bigram.fit("ab", tokenizer)
+    session = ChatSession(model, seed=0)
+    session.extend_user("a")
+    dice = session.dice()
+    assert "�A" in [piece for piece, _ in dice]
+
+
+def test_rollout_renders_a_partial_utf8_token_without_crashing():
+    session = ChatSession(_Forcing(TokenizerEncoderDecoder(merges=((0xC3, 0x41),))), seed=0)
+    assert session.rollout("", 3) == "�A�A�A"
+
+
 class Recording:
-    vocabulary = Vocabulary.from_text("ab")
+    tokenizer = TokenizerEncoderDecoder()
 
     def __init__(self):
         self.contexts = []
@@ -91,7 +115,7 @@ def test_the_die_feeds_the_whole_story_to_the_port():
     session.extend_user("a")
     session.extend_generated("b")
     session.dice()
-    assert recorder.contexts == [[0, 1]]
+    assert recorder.contexts == [[ord("a"), ord("b")]]
 
 
 @pytest.fixture

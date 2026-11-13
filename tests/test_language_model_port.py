@@ -6,12 +6,12 @@ from murrai.application.runs import train_neural_bigram
 from murrai.domain.bigram import Bigram
 from murrai.domain.mlp import MlpLM
 from murrai.domain.transformer import TransformerLM
-from murrai.domain.vocabulary import Vocabulary
+from murrai.domain.tokenizer import TokenizerEncoderDecoder
 
 
 @pytest.fixture
 def counted():
-    return Bigram.fit("abab", Vocabulary.from_text("ab"))
+    return Bigram.fit("abab", TokenizerEncoderDecoder())
 
 
 @pytest.fixture
@@ -22,14 +22,14 @@ def neural():
 @pytest.fixture
 def mlp():
     torch.manual_seed(0)
-    return MlpLM(Vocabulary.from_text("abab"), window=2, dimension=8, hidden=16)
+    return MlpLM(TokenizerEncoderDecoder(), window=2, dimension=8, hidden=16)
 
 
 @pytest.fixture
 def transformer():
     torch.manual_seed(0)
     return TransformerLM(
-        Vocabulary.from_text("ababab"),
+        TokenizerEncoderDecoder(),
         depth=2,
         dimension=8,
         max_time=4,
@@ -42,16 +42,22 @@ def test_all_models_satisfy_the_language_model_port(counted, neural, mlp, transf
 
 
 def test_a_one_char_history_conditions_the_answer(counted):
-    torch.testing.assert_close(counted.probs([0]), torch.tensor([0.25, 0.75]))
+    expected = torch.full((256,), 1 / 258)
+    expected[ord("b")] = 3 / 258
+    torch.testing.assert_close(counted.probs([ord("a")]), expected)
 
 
 def test_an_empty_history_means_the_start(counted):
-    torch.testing.assert_close(counted.probs([]), torch.tensor([2 / 3, 1 / 3]))
+    expected = torch.full((256,), 1 / 257)
+    expected[ord("a")] = 2 / 257
+    torch.testing.assert_close(counted.probs([]), expected)
 
 
 def test_the_counted_bigram_uses_the_last_char_only(counted):
-    torch.testing.assert_close(counted.probs([1, 0]), counted.probs([0]))
-    torch.testing.assert_close(counted.probs([1, 0, 1]), torch.tensor([2 / 3, 1 / 3]))
+    torch.testing.assert_close(counted.probs([ord("b"), ord("a")]), counted.probs([ord("a")]))
+    expected = torch.full((256,), 1 / 257)
+    expected[ord("a")] = 2 / 257
+    torch.testing.assert_close(counted.probs([ord("b"), ord("a"), ord("b")]), expected)
 
 
 def test_the_neural_bigram_answers_the_port(neural):

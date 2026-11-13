@@ -4,45 +4,53 @@ import pytest
 import torch
 
 from murrai.domain.bigram import Bigram
-from murrai.domain.vocabulary import Vocabulary
+from murrai.domain.tokenizer import TokenizerEncoderDecoder
+
+A = ord("a")
+B = ord("b")
 
 
 @pytest.fixture
-def v():
-    return Vocabulary.from_text("ab")
+def tokenizer():
+    return TokenizerEncoderDecoder()
 
 
-def test_fit_uses_smoothing(v):
-    b = Bigram.fit("aab", v)
-    torch.testing.assert_close(b.probs([0]), torch.tensor([0.5, 0.5]))
+def test_fit_uses_smoothing(tokenizer):
+    b = Bigram.fit("aab", tokenizer)
+    expected = torch.full((tokenizer.vocab_size,), 1 / 258)
+    expected[A] = 2 / 258
+    expected[B] = 2 / 258
+    torch.testing.assert_close(b.probs([A]), expected)
 
 
-def test_rows_sum_to_one(v):
-    b = Bigram.fit("aab", v)
-    for i in range(v.size):
+def test_rows_sum_to_one(tokenizer):
+    b = Bigram.fit("aab", tokenizer)
+    for i in range(tokenizer.vocab_size):
         torch.testing.assert_close(b.probs([i]).sum(), torch.tensor(1.0))
     torch.testing.assert_close(b.probs([]).sum(), torch.tensor(1.0))
 
 
-def test_start_row_counts_first_char(v):
-    b = Bigram.fit("aab", v)
-    torch.testing.assert_close(b.probs([]), torch.tensor([2 / 3, 1 / 3]))
+def test_start_row_counts_first_char(tokenizer):
+    b = Bigram.fit("aab", tokenizer)
+    expected = torch.full((tokenizer.vocab_size,), 1 / 257)
+    expected[A] = 2 / 257
+    torch.testing.assert_close(b.probs([]), expected)
 
 
-def test_nll_and_perplexity_hand_computed(v):
-    b = Bigram.fit("aab", v)
-    expected = -(math.log(2 / 3) + math.log(0.5)) / 2
+def test_nll_and_perplexity_hand_computed(tokenizer):
+    b = Bigram.fit("aab", tokenizer)
+    expected = -(math.log(2 / 257) + math.log(2 / 258)) / 2
     assert b.nll("ab") == pytest.approx(expected)
     assert b.perplexity("ab") == pytest.approx(math.exp(expected))
 
 
-def test_same_seed_same_generation(v):
-    b = Bigram.fit("aab", v)
+def test_same_seed_same_generation(tokenizer):
+    b = Bigram.fit("aab", tokenizer)
     assert b.generate(20, seed=0) == b.generate(20, seed=0)
 
 
-def test_different_seed_differs(v):
-    b = Bigram.fit("aab", v)
+def test_different_seed_differs(tokenizer):
+    b = Bigram.fit("aab", tokenizer)
     assert b.generate(20, seed=0) != b.generate(20, seed=1)
 
 
@@ -51,7 +59,7 @@ def test_fit_reports_progress_chunk_by_chunk():
     marks = []
     Bigram.fit(
         text,
-        Vocabulary.from_text("ab"),
+        TokenizerEncoderDecoder(),
         on_progress=lambda counted, total: marks.append((counted, total)),
     )
     assert marks[-1] == (len(text), len(text))

@@ -82,27 +82,30 @@ class GhostChat:
     def suggestions(self, buffer_text: str) -> str:
         if self.session is None:
             return ""
-        try:
-            return self.session.rollout(buffer_text, self.ghost_chars)
-        except ValueError:
-            return ""
+        return self.session.rollout(buffer_text, self.ghost_chars)
 
     def die_bar(self, buffer_text: str, ghost: str = ""):
         if self.session is None:
             return []
-        try:
-            dice = self.session.preview(buffer_text)
-        except ValueError:
-            return []
+        dice = self.session.preview(buffer_text)
+        hit = _ghost_piece([piece for piece, _ in dice], ghost)
+        shown = dice[:TOP]
         fragments = []
-        hit = ghost[0] if ghost else None
-        for char, p in dice[:TOP]:
-            mark = "»" if char == hit else " "
-            style = "class:die-hit" if char == hit else "class:die-row"
-            fragments.append((style, f" {mark} {char} {p:6.1%}"))
+        for piece, p in shown:
+            mark = "»" if piece == hit else " "
+            style = "class:die-hit" if piece == hit else "class:die-row"
+            fragments.append((style, f" {mark} {piece} {p:6.1%}"))
+        if hit is not None and hit not in [piece for piece, _ in shown]:
+            p = next(p for piece, p in dice if piece == hit)
+            fragments.append(("class:die-hit", f" » {hit} {p:6.1%}"))
         if len(dice) > TOP:
             fragments.append(("class:more", f"   ... {len(dice) - TOP} more"))
         return fragments
+
+
+def _ghost_piece(pieces, ghost):
+    matches = [piece for piece in pieces if piece and ghost.startswith(piece)]
+    return max(matches, key=len) if matches else None
 
 
 class GhostSuggestions(AutoSuggest):
@@ -217,10 +220,7 @@ def run_chat(
         real = suggestions.real_for(buffer.text)
         if not real:
             return
-        try:
-            chat.accept_rest(buffer.text, real)
-        except ValueError:
-            return
+        chat.accept_rest(buffer.text, real)
         buffer.text = chat.session.text
         buffer.cursor_position = len(buffer.text)
 
