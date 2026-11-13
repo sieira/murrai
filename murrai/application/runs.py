@@ -99,7 +99,11 @@ def train_neural_bigram(
     return NeuralTrainingResult(model=model, loss_curve=loss_curve)
 
 
-def training_device(prefer_mps=True):
+def training_device(prefer_mps=True, choice="auto"):
+    if choice == "cpu":
+        return torch.device("cpu")
+    if choice == "prefer gpu":
+        prefer_mps = True
     if torch.cuda.is_available():
         return torch.device("cuda")
     if prefer_mps and torch.backends.mps.is_available():

@@ -8,6 +8,8 @@ from murrai.presentation.chat import ChatSession, Command, run_chat
 from murrai.presentation.chat.lanes import (
     ChatLog,
     CommandPicked,
+    FormCancelled,
+    FormOpened,
     PanelClosed,
     PanelOpened,
     SessionSwapped,
@@ -35,6 +37,12 @@ def test_each_event_renders_its_own_lane_line():
     assert TrainingStepped("x", 3, 50).lane_line() == "[train] x 3/50"
     assert TrainingFinished("x").lane_line() == "[train] x finished"
     assert TrainingFailed("x", "boom").lane_line() == "[train] x failed: boom"
+    assert FormOpened("retrain char gpt").lane_line() == (
+        "[form] opened retrain char gpt"
+    )
+    assert FormCancelled("retrain char gpt").lane_line() == (
+        "[form] cancelled retrain char gpt"
+    )
 
 
 def test_the_log_stamps_each_lane_line_with_the_clock():

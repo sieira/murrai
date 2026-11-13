@@ -6,11 +6,15 @@ from prompt_toolkit.cursor_shapes import CursorShape
 from prompt_toolkit.filters import Condition
 from prompt_toolkit.key_binding import KeyBindings
 from prompt_toolkit.layout import Dimension, HSplit, Layout, VSplit, Window
-from prompt_toolkit.layout.containers import ConditionalContainer
+from prompt_toolkit.layout.containers import (
+    ConditionalContainer,
+    FloatContainer,
+)
 from prompt_toolkit.layout.controls import FormattedTextControl
 from prompt_toolkit.styles import Style
 from prompt_toolkit.widgets import Frame, TextArea
 
+from murrai.presentation.chat.form import FormOverlay, TrainingForm
 from murrai.presentation.chat.lanes import (
     SILENT,
     CommandPicked,
@@ -48,6 +52,9 @@ STYLE = Style.from_dict(
         "selected": "ansibrightcyan bold",
         "bar": "ansigreen",
         "failed": "ansired bold",
+        "dialog.body": "bg:default fg:default",
+        "dialog.body text-area": "bg:default fg:default",
+        "dialog.body text-area last-line": "nounderline",
     },
 )
 
@@ -172,6 +179,65 @@ def status_line(status, model_kind=None):
     return fragments or [("class:hint", "ctrl-p commands")]
 
 
+def chat_layout(story, editor, die, panel_list, panel, overlay, status, chat):
+    panel_column = HSplit(
+        [
+            Frame(panel_list, title="commands", height=Dimension(weight=TOP_WEIGHT)),
+            Frame(
+                Window(
+                    FormattedTextControl(
+                        lambda: description_fragments(panel, PANEL_WIDTH - 2),
+                    ),
+                ),
+                title="about",
+                height=Dimension(weight=BOTTOM_WEIGHT),
+            ),
+        ],
+        width=PANEL_WIDTH,
+    )
+    return Layout(
+        FloatContainer(
+            HSplit(
+                [
+                    VSplit(
+                        [
+                            HSplit(
+                                [
+                                    Frame(
+                                        story,
+                                        title="murrAI",
+                                        height=Dimension(weight=TOP_WEIGHT),
+                                    ),
+                                    Frame(
+                                        HSplit([editor, die]),
+                                        title="write",
+                                        height=Dimension(weight=BOTTOM_WEIGHT),
+                                    ),
+                                ],
+                            ),
+                            ConditionalContainer(
+                                panel_column,
+                                Condition(lambda: panel.visible),
+                            ),
+                        ],
+                    ),
+                    Window(
+                        FormattedTextControl(
+                            lambda: status_line(
+                                status,
+                                chat.session.kind if chat.session else None,
+                            ),
+                        ),
+                        height=1,
+                        dont_extend_height=True,
+                    ),
+                ],
+            ),
+            floats=[overlay.float],
+        ),
+    )
+
+
 def run_chat(
     session=None,
     commands=(),
@@ -185,6 +251,7 @@ def run_chat(
     suggestions = GhostSuggestions(chat)
     status = TrainingStatus(observer=observer)
     panel = CommandPanel(commands, observer)
+    remembered: dict[str, dict] = {}
 
     editor = TextArea(
         text=session.text if session else "",
@@ -207,6 +274,29 @@ def run_chat(
         with contextlib.suppress(RuntimeError):
             # the app can quit before a build lands
             app.loop.call_soon_threadsafe(lambda: swap(load(name)))
+
+    def focus(control):
+        app.layout.focus(control)
+
+    def accept_form(form, values):
+        remembered[form.command.name] = values
+        spawn(form.command.bake(values), status, schedule_swap)
+        app.layout.focus(buffer)
+
+    overlay = FormOverlay(
+        on_accept=accept_form,
+        on_cancel=lambda: focus(buffer),
+        focus=focus,
+    )
+
+    def open_form(command):
+        overlay.open(
+            TrainingForm(
+                command,
+                remembered=remembered.get(command.name),
+                observer=observer,
+            ),
+        )
 
     editor_keys = KeyBindings()
 
@@ -250,6 +340,8 @@ def run_chat(
         if command.trains:
             if load is None:
                 status.fail(command.name, "no load function")
+            elif command.fields:
+                open_form(command)
             else:
                 spawn(command, status, schedule_swap)
         else:
@@ -262,6 +354,8 @@ def run_chat(
         if panel.visible:
             panel.close()
             event.app.layout.focus(buffer)
+        elif overlay.visible:
+            return
         else:
             panel.open()
             event.app.layout.focus(panel_list)
@@ -296,58 +390,15 @@ def run_chat(
             key_bindings=panel_keys,
         ),
     )
-    panel_column = HSplit(
-        [
-            Frame(panel_list, title="commands", height=Dimension(weight=TOP_WEIGHT)),
-            Frame(
-                Window(
-                    FormattedTextControl(
-                        lambda: description_fragments(panel, PANEL_WIDTH - 2),
-                    ),
-                ),
-                title="about",
-                height=Dimension(weight=BOTTOM_WEIGHT),
-            ),
-        ],
-        width=PANEL_WIDTH,
-    )
-    layout = Layout(
-        HSplit(
-            [
-                VSplit(
-                    [
-                        HSplit(
-                            [
-                                Frame(
-                                    story,
-                                    title="murrAI",
-                                    height=Dimension(weight=TOP_WEIGHT),
-                                ),
-                                Frame(
-                                    HSplit([editor, die]),
-                                    title="write",
-                                    height=Dimension(weight=BOTTOM_WEIGHT),
-                                ),
-                            ],
-                        ),
-                        ConditionalContainer(
-                            panel_column,
-                            Condition(lambda: panel.visible),
-                        ),
-                    ],
-                ),
-                Window(
-                    FormattedTextControl(
-                        lambda: status_line(
-                            status,
-                            chat.session.kind if chat.session else None,
-                        ),
-                    ),
-                    height=1,
-                    dont_extend_height=True,
-                ),
-            ],
-        ),
+    layout = chat_layout(
+        story=story,
+        editor=editor,
+        die=die,
+        panel_list=panel_list,
+        panel=panel,
+        overlay=overlay,
+        status=status,
+        chat=chat,
     )
     editor.control.key_bindings = editor_keys
     app = Application(

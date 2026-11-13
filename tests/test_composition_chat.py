@@ -1,4 +1,8 @@
+import pickle
+from types import SimpleNamespace
+
 import pytest
+import torch
 
 import murrai.composition.chat as murrai_composition_chat
 from murrai.adapters.checkpoint import FileCheckpointStore, InMemoryCheckpointStore
@@ -7,6 +11,7 @@ from murrai.application.ports import TrainingEvent
 from murrai.application.runs import training_device
 from murrai.composition.chat import chat_commands
 from murrai.domain.transformer import TransformerLM
+from murrai.presentation.chat.form import Field
 
 
 @pytest.fixture
@@ -440,3 +445,245 @@ def test_the_mlp_command_trains_on_the_policy_device(corpus, monkeypatch):
     monkeypatch.setattr(murrai_composition_chat, "train_mlp_lm", recorder)
     _command(corpus, "retrain windowed mlp", seed=0, mlp_steps=20).build()
     assert captured["device"] == training_device(prefer_mps=False)
+
+
+def _defaults(command):
+    return {field.name: field.default for field in command.fields}
+
+
+def _field(corpus, command_name, field_name, **kwargs):
+    command = _command(corpus, command_name, **kwargs)
+    return next(field for field in command.fields if field.name == field_name)
+
+
+def _available(monkeypatch, cuda, mps):
+    def fake(available):
+        return type("_", (), {"is_available": staticmethod(lambda: available)})
+
+    monkeypatch.setattr(torch, "cuda", fake(cuda))
+    monkeypatch.setattr(torch.backends, "mps", fake(mps))
+
+
+def _stub_trainer(monkeypatch, name, captured):
+    def stub(text, **kwargs):
+        captured.update(kwargs)
+        return SimpleNamespace(model=SimpleNamespace(kind="stub"), loss_curve=[1.0])
+
+    monkeypatch.setattr(murrai_composition_chat, name, stub)
+
+
+def _capturing(monkeypatch, name, **capture):
+    real = getattr(murrai_composition_chat, name)
+
+    def recorder(*args, **kwargs):
+        capture["kwargs"] = kwargs
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(murrai_composition_chat, name, recorder)
+    return capture
+
+
+def test_the_counted_command_only_asks_for_the_holdout(corpus):
+    counted = _command(corpus, "counted bigram", seed=0)
+
+    assert counted.fields == (
+        Field("holdout", "holdout", "float", 0.1, check="from zero below one"),
+    )
+
+
+def test_the_neural_command_offers_its_knobs(corpus):
+    fields = _command(corpus, "retrain neural bigram", seed=0, neural_steps=20).fields
+
+    assert [(f.name, f.label, f.kind, f.default) for f in fields] == [
+        ("steps", "steps", "int", 20),
+        ("batch", "batch", "int", 64),
+        ("learning_rate", "learning rate", "float", 3.0),
+        ("final_learning_rate", "final learning rate", "float", 0.1),
+        ("seed", "seed", "int", 0),
+        ("start_from", "start from", "choice", "fresh"),
+    ]
+    assert fields[-1].choices == ("fresh",)
+
+
+def test_the_start_from_choice_lists_the_saved_models(corpus):
+    store = InMemoryCheckpointStore()
+    store.save("char-gpt", Snapshot(kind="char-gpt", chars=("a", "b"), state={}))
+    store.save(
+        "neural-bigram",
+        Snapshot(kind="neural-bigram", chars=("a", "b"), state={}),
+    )
+
+    field = _field(
+        corpus,
+        "retrain neural bigram",
+        "start_from",
+        seed=0,
+        neural_steps=20,
+        store=store,
+    )
+
+    assert field.choices == ("fresh", "char-gpt", "neural-bigram")
+
+
+def test_the_mlp_command_offers_its_knobs(corpus):
+    fields = _command(corpus, "retrain windowed mlp", seed=0, mlp_steps=20).fields
+
+    assert [(f.name, f.label, f.default) for f in fields] == [
+        ("steps", "steps", 20),
+        ("batch", "batch", 256),
+        ("learning_rate", "learning rate", 0.5),
+        ("window", "window", 8),
+        ("dimension", "dimension", 32),
+        ("hidden", "hidden", 256),
+        ("patience", "patience", 1000),
+        ("shrink", "shrink", 0.5),
+        ("holdout", "holdout", 0.1),
+        ("seed", "seed", 0),
+        ("device", "device", "auto"),
+        ("start_from", "start from", "fresh"),
+    ]
+    assert [f.name for f in fields if f.shape] == ["window", "dimension", "hidden"]
+    assert fields[-2].choices == ("auto", "prefer gpu", "cpu")
+
+
+def test_the_gpt_command_offers_its_knobs(corpus):
+    fields = _command(corpus, "retrain char gpt", seed=0, gpt_steps=20).fields
+
+    assert [(f.name, f.label, f.default) for f in fields] == [
+        ("steps", "steps", 20),
+        ("batch", "batch", 256),
+        ("learning_rate", "learning rate", 0.001),
+        ("depth", "depth", 4),
+        ("dimension", "dimension", 64),
+        ("heads", "heads", 1),
+        ("max_time", "context length", 64),
+        ("patience", "patience", 200),
+        ("shrink", "shrink", 0.5),
+        ("holdout", "holdout", 0.1),
+        ("seed", "seed", 0),
+        ("device", "device", "auto"),
+        ("start_from", "start from", "fresh"),
+    ]
+    assert [f.name for f in fields if f.shape] == [
+        "depth",
+        "dimension",
+        "heads",
+        "max_time",
+    ]
+    assert fields[-2].choices == ("auto", "prefer gpu", "cpu")
+
+
+def test_the_baked_command_carries_the_values(corpus):
+    command = _command(corpus, "retrain neural bigram", seed=0, neural_steps=20)
+    values = {**_defaults(command), "steps": 5}
+
+    baked = command.bake(values)
+
+    assert baked.given == values
+    assert baked.name == command.name
+    assert baked.trains
+
+
+def test_the_baked_command_trains_with_the_given_values(corpus, monkeypatch):
+    captured = _capturing(monkeypatch, "train_neural_bigram")
+    command = _command(corpus, "retrain neural bigram", seed=0, neural_steps=20)
+
+    command.bake(
+        {**_defaults(command), "steps": 5, "batch": 7, "learning_rate": 1.5},
+    ).build()
+
+    assert captured["kwargs"]["steps"] == 5
+    assert captured["kwargs"]["batch"] == 7
+    assert captured["kwargs"]["learning_rate"] == 1.5
+    assert captured["kwargs"]["final_learning_rate"] == 0.1
+    assert captured["kwargs"]["seed"] == 0
+
+
+def test_a_chosen_savegame_flows_to_the_trainer_by_its_name(corpus, monkeypatch):
+    captured = _capturing(monkeypatch, "train_neural_bigram")
+    store = InMemoryCheckpointStore()
+    trainer = _command(
+        corpus,
+        "retrain neural bigram",
+        seed=0,
+        neural_steps=20,
+        store=store,
+    )
+    trainer.build()
+
+    baked = trainer.bake({**_defaults(trainer), "start_from": "neural-bigram"})
+    assert baked.given["start_from"] == "neural-bigram"
+    assert "start" not in baked.given
+
+    baked.build()
+    assert captured["kwargs"]["start"].kind == "neural-bigram"
+
+
+def test_a_fresh_start_hands_the_trainer_no_snapshot(corpus, monkeypatch):
+    captured = _capturing(monkeypatch, "train_neural_bigram")
+    command = _command(corpus, "retrain neural bigram", seed=0, neural_steps=20)
+
+    command.bake(_defaults(command)).build()
+
+    assert captured["kwargs"]["start"] is None
+
+
+def test_a_saved_start_leaves_the_shape_to_the_savegame(corpus, monkeypatch):
+    gpt_captured = _capturing(monkeypatch, "train_transformer_lm")
+    mlp_captured = _capturing(monkeypatch, "train_mlp_lm")
+    store = InMemoryCheckpointStore()
+    gpt = _command(corpus, "retrain char gpt", seed=0, gpt_steps=20, store=store)
+    mlp = _command(corpus, "retrain windowed mlp", seed=0, mlp_steps=20, store=store)
+    gpt.build()
+    mlp.build()
+
+    gpt.bake(
+        {**_defaults(gpt), "start_from": "char-gpt", "depth": 9, "max_time": 128},
+    ).build()
+    mlp.bake(
+        {**_defaults(mlp), "start_from": "windowed-mlp", "window": 3, "hidden": 9},
+    ).build()
+
+    for captured in (gpt_captured, mlp_captured):
+        assert captured["kwargs"]["start"].kind in ("char-gpt", "windowed-mlp")
+        for shape in ("depth", "dimension", "heads", "max_time", "window", "hidden"):
+            assert shape not in captured["kwargs"]
+
+
+def test_a_baked_command_survives_the_trip_to_another_process(corpus):
+    command = _command(corpus, "retrain neural bigram", seed=0, neural_steps=20)
+    baked = command.bake({**_defaults(command), "steps": 5})
+
+    revived = pickle.loads(pickle.dumps(baked))
+
+    assert revived.given == baked.given
+    assert revived.build().rollout("a", 5)
+
+
+def test_the_device_choice_picks_where_the_training_runs(corpus, monkeypatch):
+    _available(monkeypatch, cuda=False, mps=True)
+    mlp_captured, gpt_captured = {}, {}
+    _stub_trainer(monkeypatch, "train_mlp_lm", mlp_captured)
+    _stub_trainer(monkeypatch, "train_transformer_lm", gpt_captured)
+    mlp = _command(corpus, "retrain windowed mlp", seed=0, mlp_steps=20)
+    gpt = _command(corpus, "retrain char gpt", seed=0, gpt_steps=20)
+
+    mlp.bake(_defaults(mlp)).build()
+    gpt.bake(_defaults(gpt)).build()
+    assert mlp_captured["device"] == torch.device("cpu")
+    assert gpt_captured["device"] == torch.device("mps")
+
+    mlp.bake({**_defaults(mlp), "device": "prefer gpu"}).build()
+    assert mlp_captured["device"] == torch.device("mps")
+
+    gpt.bake({**_defaults(gpt), "device": "cpu"}).build()
+    assert gpt_captured["device"] == torch.device("cpu")
+
+
+def test_the_counted_bake_takes_the_holdout(corpus, monkeypatch):
+    captured = _capturing(monkeypatch, "train_bigram")
+    counted = _command(corpus, "counted bigram", seed=0)
+
+    counted.bake({**_defaults(counted), "holdout": 0.5}).build()
+
+    assert captured["kwargs"]["holdout"] == 0.5

@@ -8,6 +8,7 @@ from murrai.application.ports import TrainingEvent
 from murrai.domain.bigram import Bigram
 from murrai.domain.vocabulary import Vocabulary
 from murrai.presentation.chat import ChatSession, Command, run_chat
+from murrai.presentation.chat.form import Field
 from murrai.presentation.chat.lanes import ChatLog
 from murrai.presentation.chat.repl import GhostChat, GhostSuggestions
 
@@ -313,3 +314,271 @@ def test_the_cursor_turns_green_while_chatting_and_resets_on_exit():
 
     assert output.raw[0] == "\x1b]12;#00ff00\x07"
     assert output.raw[-1] == "\x1b]112\x07"
+
+
+def _form_session(text="abab5x"):
+    return ChatSession(Bigram.fit(text, Vocabulary.from_text(text)), 0)
+
+
+def _steps_field(**extra):
+    return Field("steps", "steps", "int", 2000, check="whole above zero", **extra)
+
+
+def _form_command(fields=None):
+    def bake(values):
+        return Command(
+            "retrain x",
+            "knobs",
+            lambda: _form_session(),
+            trains=True,
+            given=values,
+        )
+
+    return Command(
+        "retrain x",
+        "knobs",
+        lambda: None,
+        trains=True,
+        fields=fields or (_steps_field(),),
+        bake=bake,
+    )
+
+
+def _form_chat(commands, spawn, log=None, load=None):
+    def run(pipe):
+        return run_chat(
+            _form_session(),
+            commands=commands,
+            input=pipe,
+            output=DummyOutput(),
+            spawn=spawn,
+            observer=log or ChatLog(),
+            load=load or (lambda name: _form_session()),
+        )
+
+    return run
+
+
+def test_picking_a_retrain_command_opens_a_form_and_escape_returns_to_the_editor():
+    spawned = []
+    log = ChatLog(clock=lambda: 0.0)
+    command = _form_command()
+
+    def spawn(cmd, status, on_built):
+        spawned.append(cmd)
+
+    with create_pipe_input() as pipe:
+        pipe.send_text("\x10\r")
+        time.sleep(0.2)
+        pipe.send_text("\x10")
+        time.sleep(0.2)
+        pipe.send_text("\x1b")
+        time.sleep(0.2)
+        pipe.send_text("\x10")
+        time.sleep(0.2)
+        pipe.send_text("\x03")
+        _form_chat([command], spawn, log)(pipe)
+
+    assert spawned == []
+    assert [line.split(" ", 1)[1] for line in log.lines] == [
+        "[panel] opened 1 commands",
+        "[panel] closed",
+        "[command] picked retrain x",
+        "[form] opened retrain x",
+        "[form] cancelled retrain x",
+        "[panel] opened 1 commands",
+    ]
+
+
+def test_the_form_spawns_the_command_with_the_edited_values():
+    spawned = []
+
+    def spawn(cmd, status, on_built):
+        spawned.append(cmd)
+
+    with create_pipe_input() as pipe:
+        pipe.send_text("\x10\r")
+        time.sleep(0.2)
+        pipe.send_text("\x7f\x7f\x7f\x7f5")
+        time.sleep(0.2)
+        pipe.send_text("\r")
+        time.sleep(0.2)
+        pipe.send_text("\x03")
+        _form_chat([_form_command()], spawn)(pipe)
+
+    assert len(spawned) == 1
+    assert spawned[0].given == {"steps": 5}
+    assert spawned[0].name == "retrain x"
+    assert spawned[0].trains
+
+
+def test_the_form_remembers_edited_values_for_the_session():
+    spawned = []
+
+    def spawn(cmd, status, on_built):
+        spawned.append(cmd)
+
+    with create_pipe_input() as pipe:
+        pipe.send_text("\x10\r")
+        time.sleep(0.2)
+        pipe.send_text("\x7f\x7f\x7f\x7f5\r")
+        time.sleep(0.2)
+        pipe.send_text("\x10\r")
+        time.sleep(0.2)
+        pipe.send_text("\r")
+        time.sleep(0.2)
+        pipe.send_text("\x03")
+        _form_chat([_form_command()], spawn)(pipe)
+
+    assert [run.given for run in spawned] == [{"steps": 5}, {"steps": 5}]
+
+
+def test_a_bad_value_keeps_the_form_open_and_spawns_nothing():
+    spawned = []
+    log = ChatLog(clock=lambda: 0.0)
+
+    def spawn(cmd, status, on_built):
+        spawned.append(cmd)
+
+    with create_pipe_input() as pipe:
+        pipe.send_text("\x10\r")
+        time.sleep(0.2)
+        pipe.send_text("x")
+        time.sleep(0.2)
+        pipe.send_text("\r")
+        time.sleep(0.2)
+        pipe.send_text("\x1b")
+        time.sleep(0.2)
+        pipe.send_text("\x03")
+        _form_chat([_form_command()], spawn, log)(pipe)
+
+    assert spawned == []
+    assert [line.split(" ", 1)[1] for line in log.lines][-2:] == [
+        "[form] opened retrain x",
+        "[form] cancelled retrain x",
+    ]
+
+
+def test_the_form_leaves_the_shape_out_of_a_savegame_run():
+    spawned = []
+    fields = (
+        _steps_field(),
+        Field(
+            "start_from",
+            "start from",
+            "choice",
+            "fresh",
+            choices=("fresh", "char-gpt"),
+        ),
+        Field("depth", "depth", "int", 4, check="whole above zero", shape=True),
+    )
+
+    def spawn(cmd, status, on_built):
+        spawned.append(cmd)
+
+    with create_pipe_input() as pipe:
+        pipe.send_text("\x10\r")
+        time.sleep(0.2)
+        pipe.send_text("\t")
+        time.sleep(0.2)
+        pipe.send_text("\x1b[B")
+        time.sleep(0.2)
+        pipe.send_text("\t")
+        time.sleep(0.2)
+        pipe.send_text("\r")
+        time.sleep(0.2)
+        pipe.send_text("\x03")
+        _form_chat([_form_command(fields)], spawn)(pipe)
+
+    assert spawned[0].given == {"steps": 2000, "start_from": "char-gpt"}
+
+
+def test_a_form_command_without_a_load_function_fails_at_the_pick():
+    log = ChatLog(clock=lambda: 0.0)
+
+    def spawn(cmd, status, on_built):
+        pass
+
+    with create_pipe_input() as pipe:
+        pipe.send_text("\x10\r")
+        time.sleep(0.2)
+        pipe.send_text("\x03")
+        run_chat(
+            _form_session(),
+            commands=[_form_command()],
+            input=pipe,
+            output=DummyOutput(),
+            spawn=spawn,
+            observer=log,
+        )
+
+    assert [line.split(" ", 1)[1] for line in log.lines] == [
+        "[panel] opened 1 commands",
+        "[panel] closed",
+        "[command] picked retrain x",
+        "[train] retrain x failed: no load function",
+    ]
+
+
+def test_the_right_arrow_moves_to_the_next_choice():
+    spawned = []
+    fields = (
+        _steps_field(),
+        Field(
+            "start_from",
+            "start from",
+            "choice",
+            "fresh",
+            choices=("fresh", "char-gpt"),
+        ),
+    )
+
+    def spawn(cmd, status, on_built):
+        spawned.append(cmd)
+
+    with create_pipe_input() as pipe:
+        pipe.send_text("\x10\r")
+        time.sleep(0.2)
+        pipe.send_text("\t")
+        time.sleep(0.2)
+        pipe.send_text("\x1b[C")
+        time.sleep(0.2)
+        pipe.send_text("\r")
+        time.sleep(0.2)
+        pipe.send_text("\x03")
+        _form_chat([_form_command(fields)], spawn)(pipe)
+
+    assert spawned[0].given == {"steps": 2000, "start_from": "char-gpt"}
+
+
+def test_the_left_arrow_moves_to_the_previous_choice():
+    spawned = []
+    fields = (
+        _steps_field(),
+        Field(
+            "start_from",
+            "start from",
+            "choice",
+            "fresh",
+            choices=("fresh", "char-gpt"),
+        ),
+    )
+
+    def spawn(cmd, status, on_built):
+        spawned.append(cmd)
+
+    with create_pipe_input() as pipe:
+        pipe.send_text("\x10\r")
+        time.sleep(0.2)
+        pipe.send_text("\t")
+        time.sleep(0.2)
+        pipe.send_text("\x1b[B")
+        time.sleep(0.2)
+        pipe.send_text("\x1b[D")
+        time.sleep(0.2)
+        pipe.send_text("\r")
+        time.sleep(0.2)
+        pipe.send_text("\x03")
+        _form_chat([_form_command(fields)], spawn)(pipe)
+
+    assert spawned[0].given == {"steps": 2000, "start_from": "fresh"}
