@@ -119,21 +119,50 @@ def test_run_chat_without_a_session_opens_ready_to_pick():
     assert returned is model
 
 
-def test_a_picked_training_command_runs_in_the_background():
+def test_a_training_command_without_a_load_function_fails_loudly():
+    spawned = []
+    log = ChatLog()
+    command = Command("retrain x", "slow model", lambda: _session(), trains=True)
+
+    def spawn(cmd, status, on_built):
+        spawned.append(cmd)
+
+    with create_pipe_input() as pipe:
+        pipe.send_text("\x10\r\x03")
+        run_chat(
+            _session(),
+            commands=[command],
+            input=pipe,
+            output=DummyOutput(),
+            spawn=spawn,
+            observer=log,
+        )
+
+    assert spawned == []
+    assert any("[train] retrain x failed" in line for line in log.lines)
+
+
+def test_a_picked_training_command_swaps_in_the_loaded_checkpoint():
     calls = []
-    built_sessions = []
+    names = []
+    loaded = []
+    session = _session("baba")
 
     def build(on_event=None):
         calls.append(on_event)
         on_event(TrainingEvent(step=1, total_steps=10))
-        built = _session("baba")
-        built_sessions.append(built)
-        return built
+        return session
 
     command = Command("retrain x", "slow model", build, trains=True)
 
     def spawn(cmd, status, on_built):
-        on_built(cmd.build(on_event=status.track(cmd.name)))
+        on_built(cmd.build(on_event=status.track(cmd.name)).kind)
+
+    def load(name):
+        names.append(name)
+        swap = _session("abba")
+        loaded.append(swap)
+        return swap
 
     first = _session()
     with create_pipe_input() as pipe:
@@ -146,11 +175,13 @@ def test_a_picked_training_command_runs_in_the_background():
             input=pipe,
             output=DummyOutput(),
             spawn=spawn,
+            load=load,
         )
 
     assert len(calls) == 1
     assert calls[0] is not None
-    assert returned is built_sessions[0]
+    assert names == ["counted-bigram"]
+    assert returned is loaded[0]
 
 
 class SlowBuilder:
@@ -194,6 +225,7 @@ def test_the_screen_answers_keys_while_a_training_builds():
             input=pipe,
             output=DummyOutput(),
             observer=log,
+            load=lambda name: _session(prepared.text),
         )
         thread.join()
 

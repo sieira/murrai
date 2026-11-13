@@ -31,6 +31,7 @@ def train_bigram(
     corpus: Corpus,
     holdout: float,
     bus: EventBus | None = None,
+    keeper=None,
 ) -> TrainingResult:
     text = corpus.text()
     cut = int(len(text) * (1 - holdout))
@@ -45,6 +46,8 @@ def train_bigram(
         vocabulary,
         on_progress=report if bus is not None else None,
     )
+    if keeper is not None:
+        keeper(model)
     return TrainingResult(
         model=model,
         train_chars=len(train),
@@ -61,6 +64,7 @@ def train_neural_bigram(
     learning_rate=0.5,
     final_learning_rate=0.1,
     bus: EventBus | None = None,
+    keeper=None,
 ):
     vocabulary = Vocabulary.from_text(train)
     model = NeuralBigram(vocabulary)
@@ -82,6 +86,8 @@ def train_neural_bigram(
         loss_curve.append(loss.data)
         if bus is not None:
             bus.emit(TrainingEvent(step=step + 1, total_steps=steps))
+    if keeper is not None:
+        keeper(model)
     return NeuralTrainingResult(model=model, loss_curve=loss_curve)
 
 
@@ -123,6 +129,7 @@ def train_mlp_lm(
     holdout=0.1,
     device=None,
     bus: EventBus | None = None,
+    keeper=None,
 ):
     device = torch.device(device) if device is not None else torch.device("cpu")
     cut = int(len(text) * (1 - holdout))
@@ -169,6 +176,8 @@ def train_mlp_lm(
         if bus is not None:
             bus.emit(TrainingEvent(step=step + 1, total_steps=steps))
 
+    if keeper is not None:
+        keeper(model)
     return MlpTrainingResult(
         model=model,
         loss_curve=loss_curve,
@@ -204,6 +213,7 @@ def train_transformer_lm(
     holdout=0.1,
     device=None,
     bus: EventBus | None = None,
+    keeper=None,
 ):
     device = torch.device(device) if device is not None else torch.device("cpu")
     cut = int(len(text) * (1 - holdout))
@@ -252,6 +262,8 @@ def train_transformer_lm(
         if bus is not None:
             bus.emit(TrainingEvent(step=step + 1, total_steps=steps))
 
+    if keeper is not None:
+        keeper(model)
     return TransformerTrainingResult(
         model=model,
         loss_curve=loss_curve,

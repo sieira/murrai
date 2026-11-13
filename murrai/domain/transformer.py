@@ -1,10 +1,13 @@
 import math
+from itertools import batched
 
 import torch
 import torch.nn.functional as F
 
 from murrai.domain.block import TransformerBlock
 from murrai.domain.vocabulary import Vocabulary
+
+ROWS_PER_PASS = 512
 
 
 class TransformerLM(torch.nn.Module):
@@ -81,18 +84,42 @@ class TransformerLM(torch.nn.Module):
     def nll(self, text: str) -> float:
         ids = [self.start, *self.vocabulary.encode(text)]
         stream = torch.tensor(ids, dtype=torch.long, device=self._device())
-        losses = []
-        for start in range(0, len(stream) - 1, self.max_time):
-            row = stream[start : start + self.max_time]
-            with torch.no_grad():
-                logits = self.forward(row[None])
-            losses.append(
-                F.cross_entropy(
-                    logits[0, :-1],
-                    stream[start + 1 : start + self.max_time],
-                ),
+        row_losses = []
+        for starts in batched(
+            range(0, len(stream) - 1, self.max_time),
+            ROWS_PER_PASS,
+            strict=False,
+        ):
+            rows = [stream[start : start + self.max_time] for start in starts]
+            widest = max(len(row) for row in rows)
+            batch = torch.full(
+                (len(rows), widest),
+                self.start,
+                dtype=torch.long,
+                device=self._device(),
             )
-        return float(torch.stack(losses).mean())
+            targets = torch.full(
+                (len(rows), widest),
+                -100,
+                dtype=torch.long,
+                device=self._device(),
+            )
+            for index, row in enumerate(rows):
+                batch[index, : len(row)] = row
+                targets[index, : len(row) - 1] = row[1:]
+            with torch.no_grad():
+                logits = self.forward(batch)
+            per_position = F.cross_entropy(
+                logits.reshape(-1, logits.size(-1)),
+                targets.reshape(-1),
+                ignore_index=-100,
+                reduction="none",
+            ).reshape(len(rows), widest)
+            row_losses.extend(
+                per_position[index, : len(row) - 1].mean()
+                for index, row in enumerate(rows)
+            )
+        return float(torch.stack(row_losses).mean())
 
     def perplexity(self, text: str) -> float:
         return math.exp(self.nll(text))

@@ -27,7 +27,6 @@ def main():
     parser.add_argument("--store", default="checkpoints")
     args = parser.parse_args()
 
-    torch.set_default_device(args.device)
     text = DirTextCorpus(args.corpus).text()[: args.chars]
     started = time.time()
 
@@ -40,6 +39,13 @@ def main():
 
     bus = ListenerBus()
     bus.subscribe(show)
+    if args.save:
+
+        def keeper(model):
+            FileCheckpointStore(args.store).save(args.save, snapshot_of(model))
+
+    else:
+        keeper = None
     result = train_transformer_lm(
         text,
         steps=args.steps,
@@ -49,7 +55,9 @@ def main():
         dimension=args.dimension,
         max_time=args.window,
         heads=args.heads,
+        device=args.device,
         bus=bus,
+        keeper=keeper,
     )
     curve = [
         sum(chunk) / len(chunk)
@@ -70,7 +78,6 @@ def main():
     print(model.generate(200, seed=17))
 
     if args.save:
-        FileCheckpointStore(args.store).save(args.save, snapshot_of(model))
         notes = {
             "heads": args.heads,
             "steps": args.steps,

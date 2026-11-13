@@ -59,6 +59,38 @@ def test_nll_matches_a_hand_computed_case(model):
     assert model.nll("ab") == pytest.approx(expected)
 
 
+def test_nll_walks_long_text_in_batched_rows(model):
+    calls = []
+    original = model.forward
+
+    def counting(rows):
+        calls.append(rows.size(0))
+        return original(rows)
+
+    model.forward = counting
+    model.nll("ab" * 301)
+    assert len(calls) == 1
+
+
+def test_nll_matches_the_one_row_at_a_time_value(model):
+    text = "ab" * 301
+    ids = [model.start, *model.vocabulary.encode(text)]
+    stream = torch.tensor(ids, dtype=torch.long)
+    losses = []
+    for start in range(0, len(stream) - 1, model.max_time):
+        row = stream[start : start + model.max_time]
+        with torch.no_grad():
+            logits = model.forward(row[None])
+        losses.append(
+            torch.nn.functional.cross_entropy(
+                logits[0, :-1],
+                stream[start + 1 : start + model.max_time],
+            ),
+        )
+    expected = float(torch.stack(losses).mean())
+    assert model.nll(text) == pytest.approx(expected)
+
+
 def test_training_lowers_loss_on_a_toy_corpus():
     result = train_transformer_lm(
         "ab" * 200,
