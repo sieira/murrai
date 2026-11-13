@@ -128,6 +128,12 @@ def correctness(device, text):
 
 def main():
     text = DirTextCorpus(CORPUS).text()
+    if len(text) < 1_000_000:
+        print(
+            f"corpus too small ({len(text):,} chars in data/corpus); run: make corpus",
+            file=sys.stderr,
+        )
+        sys.exit(1)
     print(
         f"{platform.platform()} | torch {torch.__version__} | "
         f"corpus {len(text):,} chars | timing on first {TIMING_CHARS:,} chars | "
