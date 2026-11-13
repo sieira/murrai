@@ -2,8 +2,9 @@ import time
 from dataclasses import replace
 from datetime import UTC, datetime
 from functools import partial
+from pathlib import Path
 
-from murrai.adapters.corpus import DirTextCorpus
+from murrai.adapters.corpus import DirTextCorpus, TextCorpus
 from murrai.adapters.events import ListenerBus
 from murrai.application.checkpoints import restore, snapshot_of
 from murrai.application.runs import (
@@ -52,7 +53,21 @@ def _load_description(info):
     return " · ".join(parts)
 
 
+def _chosen_directory(directory, values):
+    return Path(directory).parent / values["text"]
+
+
+SIZES = {"all": None, "100k": 100000, "500k": 500000}
+
+
+def _sliced_text(directory, values):
+    text = DirTextCorpus(directory).text()
+    cap = SIZES[values["size"]]
+    return text if cap is None else text[:cap]
+
+
 def _trained_chat_session(run, directory, seed, store, clock, values, on_event=None):
+    directory = _chosen_directory(directory, values)
     bus = ListenerBus()
     if on_event is not None:
         bus.subscribe(on_event)
@@ -88,6 +103,12 @@ def _trained_chat_session(run, directory, seed, store, clock, values, on_event=N
     return ChatSession(result.model, seed)
 
 
+def _cap_settings(text, values):
+    if SIZES[values["size"]] is None:
+        return {}
+    return {"corpus_chars": len(text)}
+
+
 def _keep_with(keeper, settings):
     def keep(model):
         if keeper is not None:
@@ -113,20 +134,23 @@ def _device(values, prefer_mps):
 
 
 def _run_counted(directory, seed, store, values, bus=None, keeper=None):
+    text = _sliced_text(directory, values)
     return train_bigram(
-        DirTextCorpus(directory),
+        TextCorpus(text),
         holdout=values["holdout"],
         merges=values["merges"],
         bus=bus,
-        keeper=_keep_with(keeper, {}),
+        keeper=_keep_with(keeper, _cap_settings(text, values)),
     )
 
 
 def _run_neural(directory, seed, store, values, bus=None, keeper=None):
+    text = _sliced_text(directory, values)
     settings = {
         "steps": values["steps"],
         "batch": values["batch"],
         "learning_rate": values["learning_rate"],
+        **_cap_settings(text, values),
     }
     start = _start_snapshot(store, values)
     kwargs = {
@@ -140,7 +164,7 @@ def _run_neural(directory, seed, store, values, bus=None, keeper=None):
     if start is None:
         kwargs.update(merges=values["merges"])
     return train_neural_bigram(
-        DirTextCorpus(directory).text(),
+        text,
         bus=bus,
         keeper=_keep_with(keeper, settings),
         **kwargs,
@@ -148,10 +172,12 @@ def _run_neural(directory, seed, store, values, bus=None, keeper=None):
 
 
 def _run_mlp(directory, seed, store, values, bus=None, keeper=None):
+    text = _sliced_text(directory, values)
     settings = {
         "steps": values["steps"],
         "batch": values["batch"],
         "learning_rate": values["learning_rate"],
+        **_cap_settings(text, values),
     }
     start = _start_snapshot(store, values)
     kwargs = {
@@ -173,7 +199,7 @@ def _run_mlp(directory, seed, store, values, bus=None, keeper=None):
             merges=values["merges"],
         )
     return train_mlp_lm(
-        DirTextCorpus(directory).text(),
+        text,
         bus=bus,
         keeper=_keep_with(keeper, settings),
         **kwargs,
@@ -181,10 +207,12 @@ def _run_mlp(directory, seed, store, values, bus=None, keeper=None):
 
 
 def _run_gpt(directory, seed, store, values, bus=None, keeper=None):
+    text = _sliced_text(directory, values)
     settings = {
         "steps": values["steps"],
         "batch": values["batch"],
         "learning_rate": values["learning_rate"],
+        **_cap_settings(text, values),
     }
     start = _start_snapshot(store, values)
     kwargs = {
@@ -207,7 +235,7 @@ def _run_gpt(directory, seed, store, values, bus=None, keeper=None):
             merges=values["merges"],
         )
     return train_transformer_lm(
-        DirTextCorpus(directory).text(),
+        text,
         bus=bus,
         keeper=_keep_with(keeper, settings),
         **kwargs,
@@ -290,6 +318,32 @@ def _holdout_field():
     return Field("holdout", "holdout", "float", 0.1, check="from zero below one")
 
 
+def _text_field(directory):
+    parent = Path(directory).parent
+    choices = (
+        tuple(
+            sorted(
+                entry.name
+                for entry in parent.iterdir()
+                if entry.is_dir() and any(entry.glob("*.txt"))
+            ),
+        )
+        if parent.exists()
+        else ()
+    )
+    return Field(
+        "text",
+        "text",
+        "choice",
+        Path(directory).name,
+        choices=choices or (Path(directory).name,),
+    )
+
+
+def _size_field():
+    return Field("size", "size", "choice", "all", choices=("all", "100k", "500k"))
+
+
 def _seed_field(seed):
     return Field("seed", "seed", "int", seed, check="whole number")
 
@@ -313,15 +367,19 @@ def _merges_field():
     return Field("merges", "merges", "int", 300, check="whole above zero", shape=True)
 
 
-def _counted_fields():
+def _counted_fields(directory):
     return (
+        _text_field(directory),
+        _size_field(),
         _holdout_field(),
         _merges_field(),
     )
 
 
-def _neural_fields(seed, store, steps):
+def _neural_fields(directory, seed, store, steps):
     return (
+        _text_field(directory),
+        _size_field(),
         Field("steps", "steps", "int", steps, check="whole above zero"),
         Field("batch", "batch", "int", 64, check="whole above zero"),
         Field(
@@ -344,8 +402,10 @@ def _neural_fields(seed, store, steps):
     )
 
 
-def _mlp_fields(seed, store, steps):
+def _mlp_fields(directory, seed, store, steps):
     return (
+        _text_field(directory),
+        _size_field(),
         Field("steps", "steps", "int", steps, check="whole above zero"),
         Field("batch", "batch", "int", 256, check="whole above zero"),
         Field(
@@ -375,8 +435,10 @@ def _mlp_fields(seed, store, steps):
     )
 
 
-def _gpt_fields(seed, store, steps):
+def _gpt_fields(directory, seed, store, steps):
     return (
+        _text_field(directory),
+        _size_field(),
         Field("steps", "steps", "int", steps, check="whole above zero"),
         Field("batch", "batch", "int", 256, check="whole above zero"),
         Field(
@@ -461,7 +523,7 @@ def chat_commands(
                 seed,
                 store,
                 clock,
-                _counted_fields(),
+                _counted_fields(directory),
             ),
             _training_command(
                 _bake_neural,
@@ -469,7 +531,7 @@ def chat_commands(
                 seed,
                 store,
                 clock,
-                _neural_fields(seed, store, neural_steps),
+                _neural_fields(directory, seed, store, neural_steps),
             ),
             _training_command(
                 _bake_mlp,
@@ -477,7 +539,7 @@ def chat_commands(
                 seed,
                 store,
                 clock,
-                _mlp_fields(seed, store, mlp_steps),
+                _mlp_fields(directory, seed, store, mlp_steps),
             ),
             _training_command(
                 _bake_gpt,
@@ -485,7 +547,7 @@ def chat_commands(
                 seed,
                 store,
                 clock,
-                _gpt_fields(seed, store, gpt_steps),
+                _gpt_fields(directory, seed, store, gpt_steps),
             ),
         ],
     )
