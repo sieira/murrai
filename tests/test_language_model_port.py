@@ -5,8 +5,8 @@ from murrai.application.ports import LanguageModel
 from murrai.application.runs import train_neural_bigram
 from murrai.domain.bigram import Bigram
 from murrai.domain.mlp import MlpLM
-from murrai.domain.transformer import TransformerLM
 from murrai.domain.tokenizer import TokenizerEncoderDecoder
+from murrai.domain.transformer import TransformerLM
 
 
 @pytest.fixture
@@ -54,7 +54,10 @@ def test_an_empty_history_means_the_start(counted):
 
 
 def test_the_counted_bigram_uses_the_last_char_only(counted):
-    torch.testing.assert_close(counted.probs([ord("b"), ord("a")]), counted.probs([ord("a")]))
+    torch.testing.assert_close(
+        counted.probs([ord("b"), ord("a")]),
+        counted.probs([ord("a")]),
+    )
     expected = torch.full((256,), 1 / 257)
     expected[ord("a")] = 2 / 257
     torch.testing.assert_close(counted.probs([ord("b"), ord("a"), ord("b")]), expected)

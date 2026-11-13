@@ -7,8 +7,8 @@ from murrai.application.runs import train_mlp_lm, train_neural_bigram
 from murrai.domain.bigram import Bigram
 from murrai.domain.mlp import MlpLM
 from murrai.domain.neural_bigram import NeuralBigram
-from murrai.domain.transformer import TransformerLM
 from murrai.domain.tokenizer import TokenizerEncoderDecoder
+from murrai.domain.transformer import TransformerLM
 from murrai.presentation.chat import ChatSession
 
 

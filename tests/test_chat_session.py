@@ -94,7 +94,10 @@ def test_the_die_renders_a_partial_utf8_token_as_replacement_characters():
 
 
 def test_rollout_renders_a_partial_utf8_token_without_crashing():
-    session = ChatSession(_Forcing(TokenizerEncoderDecoder(merges=((0xC3, 0x41),))), seed=0)
+    session = ChatSession(
+        _Forcing(TokenizerEncoderDecoder(merges=((0xC3, 0x41),))),
+        seed=0,
+    )
     assert session.rollout("", 3) == "�A�A�A"
 
 

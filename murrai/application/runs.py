@@ -9,8 +9,8 @@ from murrai.application.ports import Corpus, EventBus, TrainingEvent
 from murrai.domain.bigram import Bigram
 from murrai.domain.mlp import MlpLM
 from murrai.domain.neural_bigram import NeuralBigram
-from murrai.domain.transformer import TransformerLM
 from murrai.domain.tokenizer import TokenizerEncoderDecoder
+from murrai.domain.transformer import TransformerLM
 
 
 @dataclass
@@ -255,7 +255,10 @@ def train_transformer_lm(
         rows = stream[chosen[:, None] + span]
         targets = stream[chosen[:, None] + span + 1]
         logits = model(rows)
-        loss = F.cross_entropy(logits.reshape(-1, tokenizer.vocab_size), targets.reshape(-1))
+        loss = F.cross_entropy(
+            logits.reshape(-1, tokenizer.vocab_size),
+            targets.reshape(-1),
+        )
         loss.backward()
         optimizer.step()
         optimizer.zero_grad()

@@ -29,7 +29,7 @@ class FileCheckpointStore:
     def save(self, name, snapshot):
         snapshot = Snapshot(
             kind=snapshot.kind,
-            chars=snapshot.chars,
+            merges=snapshot.merges,
             state=_state_to_cpu(snapshot.state),
         )
         self._root.mkdir(parents=True, exist_ok=True)

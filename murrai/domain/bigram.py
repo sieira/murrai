@@ -2,8 +2,6 @@ import math
 
 import torch
 
-from murrai.domain.tokenizer import TokenizerEncoderDecoder
-
 
 class Bigram:
     kind = "counted-bigram"

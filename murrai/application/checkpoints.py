@@ -21,5 +21,8 @@ def snapshot_of(model):
 def restore(snapshot: Snapshot):
     for cls in (Bigram, NeuralBigram, MlpLM, TransformerLM):
         if cls.kind == snapshot.kind:
-            return cls.from_state(TokenizerEncoderDecoder(snapshot.merges), snapshot.state)
+            return cls.from_state(
+                TokenizerEncoderDecoder(snapshot.merges),
+                snapshot.state,
+            )
     raise ValueError(f"unknown checkpoint kind {snapshot.kind!r}")
