@@ -31,7 +31,8 @@ def device_name(device):
     if device.type == "cuda":
         return f"{torch.cuda.get_device_name()} (cuda)"
     if device.type == "mps":
-        return f"{torch.mps.get_device_name()} (mps)"
+        name = getattr(torch.mps, "get_device_name", lambda: "apple gpu")()
+        return f"{name} (mps)"
     return "cpu"
 
 
