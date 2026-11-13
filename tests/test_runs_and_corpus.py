@@ -75,6 +75,7 @@ def test_run_reports_counting_progress_to_a_bus():
     bus.subscribe(seen.append)
 
     result = train_bigram(FakeCorpus(), holdout=0.2, bus=bus)
+    bus.flush()
 
     assert seen
     assert all(isinstance(event, TrainingEvent) for event in seen)
@@ -94,7 +95,14 @@ def test_the_tokenising_stage_reports_its_own_progress():
     seen = []
     bus.subscribe(seen.append)
 
-    train_transformer_lm(FakeCorpus().text(), steps=2, batch=2, seed=0, bus=bus)
+    train_transformer_lm(
+        FakeCorpus().text(),
+        steps=2,
+        batch=2,
+        seed=0,
+        bus=bus,
+    )
+    bus.flush()
 
     phases = [event.phase for event in seen]
     assert "tokenising" in phases
@@ -118,6 +126,7 @@ def test_the_tokenising_stage_counts_down_to_its_own_total():
         seed=0,
         bus=bus,
     )
+    bus.flush()
 
     tokenising = [event for event in seen if event.phase == "tokenising"]
     assert tokenising[-1].total_steps == 300

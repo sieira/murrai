@@ -2,6 +2,8 @@ import math
 
 import torch
 
+from murrai.domain.ports import Progress
+
 
 class Bigram:
     kind = "counted-bigram"
@@ -13,7 +15,7 @@ class Bigram:
         self._probs = probs / probs.sum(dim=1, keepdim=True)
 
     @classmethod
-    def fit(cls, text, tokenizer, on_progress=None):
+    def fit(cls, text, tokenizer, sink=None):
         counts = torch.ones(tokenizer.vocab_size + 1, tokenizer.vocab_size)
         chunk = max(1, len(text) // 100)
         previous = cls._start(tokenizer)
@@ -21,8 +23,8 @@ class Bigram:
             for nxt in tokenizer.encode(text[from_char : from_char + chunk]):
                 counts[previous, nxt] += 1
                 previous = nxt
-            if on_progress is not None:
-                on_progress(min(from_char + chunk, len(text)), len(text))
+            if sink is not None:
+                sink.emit(Progress(min(from_char + chunk, len(text)), len(text)))
         return cls(tokenizer, counts)
 
     @staticmethod

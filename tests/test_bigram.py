@@ -4,6 +4,7 @@ import pytest
 import torch
 
 from murrai.domain.bigram import Bigram
+from murrai.domain.ports import Progress
 from murrai.domain.tokenizer import TokenizerEncoderDecoder
 
 A = ord("a")
@@ -56,13 +57,19 @@ def test_different_seed_differs(tokenizer):
 
 def test_fit_reports_progress_chunk_by_chunk():
     text = "aabbaabb" * 50
-    marks = []
-    Bigram.fit(
-        text,
-        TokenizerEncoderDecoder(),
-        on_progress=lambda counted, total: marks.append((counted, total)),
-    )
+    bus = FakeBus()
+    Bigram.fit(text, TokenizerEncoderDecoder(), sink=bus)
+    marks = [(event.step, event.total_steps) for event in bus.events]
     assert marks[-1] == (len(text), len(text))
     counted = [counted for counted, _ in marks]
     assert counted == sorted(counted)
     assert all(total == len(text) for _, total in marks)
+    assert all(isinstance(event, Progress) for event in bus.events)
+
+
+class FakeBus:
+    def __init__(self):
+        self.events = []
+
+    def emit(self, event):
+        self.events.append(event)

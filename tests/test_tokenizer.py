@@ -4,6 +4,7 @@ import time
 
 import pytest
 
+from murrai.domain.ports import Progress
 from murrai.domain.tokenizer import TokenizerEncoderDecoder, _replace
 
 CORPUS = "aaabdaaabac"
@@ -177,5 +178,38 @@ def test_encode_on_a_large_corpus_does_not_replay_merge_by_merge():
 def test_encode_reports_progress_per_merge_replay():
     t = TokenizerEncoderDecoder().fit(CORPUS, num_merges=3)
     seen = []
-    t.encode(CORPUS, on_progress=lambda done, total: seen.append((done, total)))
-    assert seen == [(1, 3), (2, 3), (3, 3)]
+
+    class FakeBus:
+        def emit(self, event):
+            seen.append(event)
+
+    t.encode(CORPUS, sink=FakeBus())
+    assert [(event.step, event.total_steps) for event in seen] == [
+        (1, 3),
+        (2, 3),
+        (3, 3),
+    ]
+    assert all(isinstance(event, Progress) for event in seen)
+
+
+def test_fit_publishes_progress_through_a_bus():
+    class FakeBus:
+        def __init__(self):
+            self.events = []
+
+        def emit(self, event):
+            self.events.append(event)
+
+    bus = FakeBus()
+    t = TokenizerEncoderDecoder().fit(CORPUS, num_merges=3, sink=bus)
+    assert [(event.step, event.total_steps) for event in bus.events] == [
+        (1, 3),
+        (2, 3),
+        (3, 3),
+    ]
+    assert len(t.merges) == 3
+
+
+def test_fit_stays_silent_without_a_bus():
+    t = TokenizerEncoderDecoder().fit(CORPUS, num_merges=2)
+    assert len(t.merges) == 2

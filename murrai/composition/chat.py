@@ -25,6 +25,7 @@ def _trained_chat_session(builder, directory, seed, store, on_event=None):
 
     try:
         result = builder(directory, seed, bus=bus, keeper=keep)
+        bus.flush()
     finally:
         if on_event is not None:
             bus.unsubscribe(on_event)

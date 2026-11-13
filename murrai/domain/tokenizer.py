@@ -2,6 +2,8 @@ from array import array
 from collections import Counter
 from itertools import islice
 
+from murrai.domain.ports import Progress
+
 
 class TokenizerEncoderDecoder:
     def __init__(self, merges=()):
@@ -11,7 +13,7 @@ class TokenizerEncoderDecoder:
     def vocab_size(self):
         return 256 + len(self.merges)
 
-    def fit(self, text, num_merges, on_progress=None):
+    def fit(self, text, num_merges, sink=None):
         ids = array("i", iter(text.encode("utf-8")))
         counts = Counter(zip(ids, islice(ids, 1, None), strict=False))
         merges = []
@@ -21,17 +23,17 @@ class TokenizerEncoderDecoder:
             best = min(counts, key=lambda p: (-counts[p], p))
             merges.append(best)
             ids = _merge_best(ids, best, 256 + len(merges) - 1, counts)
-            if on_progress is not None:
-                on_progress(len(merges), num_merges)
+            if sink is not None:
+                sink.emit(Progress(len(merges), num_merges))
         self.merges = tuple(merges)
         return self
 
-    def encode(self, text, on_progress=None):
+    def encode(self, text, sink=None):
         ids = array("i", iter(text.encode("utf-8")))
         for rank, pair in enumerate(self.merges):
             ids = _merge_best(ids, pair, 256 + rank, None)
-            if on_progress is not None:
-                on_progress(rank + 1, len(self.merges))
+            if sink is not None:
+                sink.emit(Progress(rank + 1, len(self.merges)))
         return list(ids)
 
     @property

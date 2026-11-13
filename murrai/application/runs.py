@@ -27,14 +27,25 @@ class NeuralTrainingResult:
     loss_curve: list[float]
 
 
-def _phase_reporter(bus, phase):
-    if bus is None:
-        return None
+class _StageBus:
+    # The domain reports stage-free Progress; the application names the
+    # stage on the way out (ADR-0005).
+    def __init__(self, bus, phase):
+        self._bus = bus
+        self._phase = phase
 
-    def report(done, total):
-        bus.emit(TrainingEvent(step=done, total_steps=total, phase=phase))
+    def emit(self, event):
+        self._bus.emit(
+            TrainingEvent(
+                step=event.step,
+                total_steps=event.total_steps,
+                phase=self._phase,
+            ),
+        )
 
-    return report
+
+def _stage_bus(bus, phase):
+    return None if bus is None else _StageBus(bus, phase)
 
 
 def train_bigram(
@@ -51,12 +62,12 @@ def train_bigram(
     tokenizer = TokenizerEncoderDecoder().fit(
         train,
         merges,
-        on_progress=_phase_reporter(bus, "tokenising"),
+        sink=_stage_bus(bus, "tokenising"),
     )
     model = Bigram.fit(
         train,
         tokenizer,
-        on_progress=_phase_reporter(bus, "counting"),
+        sink=_stage_bus(bus, "counting"),
     )
     if keeper is not None:
         keeper(model)
@@ -82,12 +93,12 @@ def train_neural_bigram(
     tokenizer = TokenizerEncoderDecoder().fit(
         train,
         merges,
-        on_progress=_phase_reporter(bus, "tokenising"),
+        sink=_stage_bus(bus, "tokenising"),
     )
     model = NeuralBigram(tokenizer)
     ids = [
         tokenizer.vocab_size,
-        *tokenizer.encode(train, on_progress=_phase_reporter(bus, "encoding")),
+        *tokenizer.encode(train, sink=_stage_bus(bus, "encoding")),
     ]
     pairs = [(prev, nxt) for prev, nxt in itertools.pairwise(ids)]
 
@@ -159,7 +170,7 @@ def train_mlp_lm(
     tokenizer = TokenizerEncoderDecoder().fit(
         train,
         merges,
-        on_progress=_phase_reporter(bus, "tokenising"),
+        sink=_stage_bus(bus, "tokenising"),
     )
     torch.manual_seed(seed)
     model = MlpLM(tokenizer, window=window, dimension=dimension, hidden=hidden).to(
@@ -169,7 +180,7 @@ def train_mlp_lm(
 
     ids = [
         model.start,
-        *tokenizer.encode(train, on_progress=_phase_reporter(bus, "encoding")),
+        *tokenizer.encode(train, sink=_stage_bus(bus, "encoding")),
     ]
     contexts = [ids[max(0, i - window) : i] for i in range(1, len(ids))]
     targets = ids[1:]
@@ -251,7 +262,7 @@ def train_transformer_lm(
     tokenizer = TokenizerEncoderDecoder().fit(
         train,
         merges,
-        on_progress=_phase_reporter(bus, "tokenising"),
+        sink=_stage_bus(bus, "tokenising"),
     )
     torch.manual_seed(seed)
     model = TransformerLM(
@@ -265,7 +276,7 @@ def train_transformer_lm(
 
     ids = [
         model.start,
-        *tokenizer.encode(train, on_progress=_phase_reporter(bus, "encoding")),
+        *tokenizer.encode(train, sink=_stage_bus(bus, "encoding")),
     ]
     stream = torch.tensor(ids, dtype=torch.long, device=device)
     if len(stream) < 2:
