@@ -1,7 +1,7 @@
 from murrai.adapters.corpus import DirTextCorpus
 from murrai.adapters.events import ListenerBus
 from murrai.application.ports import Corpus, TrainingEvent
-from murrai.application.runs import train_bigram
+from murrai.application.runs import train_bigram, train_transformer_lm
 from murrai.domain.bigram import Bigram
 
 
@@ -78,6 +78,47 @@ def test_run_reports_counting_progress_to_a_bus():
 
     assert seen
     assert all(isinstance(event, TrainingEvent) for event in seen)
-    assert seen[-1].step == seen[-1].total_steps == result.train_chars
-    steps = [event.step for event in seen]
+    counting = [event for event in seen if event.phase == "counting"]
+    assert counting[-1].step == counting[-1].total_steps == result.train_chars
+    steps = [event.step for event in counting]
     assert steps == sorted(steps)
+    assert {event.phase for event in seen} == {"counting", "tokenising"}
+
+
+def test_the_tokenising_stage_reports_its_own_progress():
+    class FakeCorpus:
+        def text(self):
+            return "aabbaabb" * 20
+
+    bus = ListenerBus()
+    seen = []
+    bus.subscribe(seen.append)
+
+    train_transformer_lm(FakeCorpus().text(), steps=2, batch=2, seed=0, bus=bus)
+
+    phases = [event.phase for event in seen]
+    assert "tokenising" in phases
+    assert "training" in phases
+    assert phases.index("tokenising") < phases.index("training")
+
+
+def test_the_tokenising_stage_counts_down_to_its_own_total():
+    class FakeCorpus:
+        def text(self):
+            return "aabbaabb" * 20
+
+    bus = ListenerBus()
+    seen = []
+    bus.subscribe(seen.append)
+
+    result = train_transformer_lm(
+        FakeCorpus().text(),
+        steps=2,
+        batch=2,
+        seed=0,
+        bus=bus,
+    )
+
+    tokenising = [event for event in seen if event.phase == "tokenising"]
+    assert tokenising[-1].total_steps == 300
+    assert tokenising[-1].step == len(result.model.tokenizer.merges)

@@ -45,11 +45,12 @@ def test_the_trainer_emits_one_event_per_step():
 
     train_neural_bigram("ab" * 50, steps=20, batch=8, seed=0, bus=bus)
 
-    assert len(seen) == 20
-    last = seen[-1]
+    training = [event for event in seen if event.phase == "training"]
+    assert len(training) == 20
+    last = training[-1]
     assert last.step == 20
     assert last.total_steps == 20
-    assert [event.step for event in seen] == list(range(1, 21))
+    assert [event.step for event in training] == list(range(1, 21))
 
 
 def test_training_is_identical_with_a_listening_bus():
@@ -74,8 +75,10 @@ def test_mlp_and_transformer_trainers_emit_too():
     from murrai.application.runs import train_mlp_lm, train_transformer_lm
 
     train_mlp_lm("ab" * 50, steps=5, batch=8, seed=0, bus=bus)
-    assert [event.step for event in seen] == [1, 2, 3, 4, 5]
+    training = [event for event in seen if event.phase == "training"]
+    assert [event.step for event in training] == [1, 2, 3, 4, 5]
 
     seen.clear()
     train_transformer_lm("ab" * 50, steps=5, batch=8, seed=0, bus=bus)
-    assert [event.step for event in seen] == [1, 2, 3, 4, 5]
+    training = [event for event in seen if event.phase == "training"]
+    assert [event.step for event in training] == [1, 2, 3, 4, 5]

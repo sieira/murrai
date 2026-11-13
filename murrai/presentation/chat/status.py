@@ -21,14 +21,14 @@ class TrainingStatus:
     def __init__(self, clock=time.monotonic, observer=SILENT):
         self._observer = observer
         self._lock = threading.Lock()
-        self._runs: dict[str, tuple[float, int, int] | None] = {}
+        self._runs: dict[str, tuple[float, int, int, str] | None] = {}
         self.redraw = None
         self._clock = clock
         self._last_wake = float("-inf")
 
     def begin(self, name):
         with self._lock:
-            self._runs[name] = (self._clock(), 0, 0)
+            self._runs[name] = (self._clock(), 0, 0, "training")
         self._observer.on_event(TrainingStarted(name))
         self._wake(force=True)
 
@@ -39,12 +39,17 @@ class TrainingStatus:
             if run is None:
                 self.begin(name)
             with self._lock:
-                start, _, total = self._runs[name]
-                if total == 0:
+                start, _, total, phase = self._runs[name]
+                if total == 0 or event.phase != phase:
                     start = self._clock()
-                self._runs[name] = (start, event.step, event.total_steps)
+                self._runs[name] = (
+                    start,
+                    event.step,
+                    event.total_steps,
+                    event.phase,
+                )
             self._observer.on_event(
-                TrainingStepped(name, event.step, event.total_steps),
+                TrainingStepped(name, event.step, event.total_steps, event.phase),
             )
             self._wake()
 
@@ -70,13 +75,13 @@ class TrainingStatus:
             if run is None:
                 rows.append((name, None))
                 continue
-            start, step, total = run
+            start, step, total, phase = run
             eta = None
             if step > 0 and total > 0:
                 elapsed = self._clock() - start
                 if elapsed > 0:
                     eta = (total - step) * elapsed / step
-            rows.append((name, (step, total, eta)))
+            rows.append((name, (step, total, eta, phase)))
         return rows
 
     def _wake(self, force=False):
@@ -96,13 +101,13 @@ def status_fragments(status):
         if run is None:
             fragments.append(("class:failed", f"{name} failed"))
             continue
-        step, total, eta = run
+        step, total, eta, phase = run
         if total == 0:
             fragments.append(("class:hint", f"{name} starting"))
             continue
         filled = BAR_WIDTH * step // total if total else BAR_WIDTH
         bar = "█" * filled + "░" * (BAR_WIDTH - filled)
-        text = f"{name} {bar} {step}/{total}"
+        text = f"{name} {phase} {bar} {step}/{total}"
         if eta is not None:
             text += f" eta {_clock_left(eta)}"
         fragments.append(("class:bar", text))
@@ -122,7 +127,7 @@ def _clock_left(seconds):
 
 def _train_in_process(command, connection):
     def on_event(event):
-        connection.send(("step", event.step, event.total_steps))
+        connection.send(("step", event.step, event.total_steps, event.phase))
 
     try:
         built = command.build(on_event=on_event)
@@ -142,7 +147,13 @@ def _pump(name, connection, status, on_built=None):
             status.fail(name, "the training process ended without a result")
             return
         if message[0] == "step":
-            on_event(TrainingEvent(step=message[1], total_steps=message[2]))
+            on_event(
+                TrainingEvent(
+                    step=message[1],
+                    total_steps=message[2],
+                    phase=message[3],
+                ),
+            )
         elif message[0] == "done":
             built = message[1]
             if built is not None and on_built is not None:

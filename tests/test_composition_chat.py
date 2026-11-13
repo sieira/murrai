@@ -145,7 +145,8 @@ def test_training_commands_stream_events_to_the_listener(corpus):
     )
     command.build(on_event=events.append)
 
-    assert len(events) == 20
+    training = [event for event in events if event.phase == "training"]
+    assert len(training) == 20
     assert all(isinstance(event, TrainingEvent) for event in events)
 
 
@@ -204,10 +205,10 @@ def test_training_saves_the_model_before_the_metrics_run(tmp_path, monkeypatch):
     monkeypatch.setattr(TransformerLM, "perplexity", broken_perplexity)
     (tmp_path / "story.txt").write_text("aabbaabb" * 20)
     store = FileCheckpointStore(tmp_path / "checkpoints")
-    command = _command(tmp_path, "retrain char gpt", seed=0, gpt_steps=5, store=store)
+    command = _command(tmp_path, "retrain gpt", seed=0, gpt_steps=5, store=store)
     with pytest.raises(RuntimeError):
         command.build()
-    assert store.names() == ["char-gpt"]
+    assert store.names() == ["gpt"]
 
 
 def test_the_retrain_command_trains_and_saves(corpus):

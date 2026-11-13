@@ -32,7 +32,10 @@ def test_each_event_renders_its_own_lane_line():
     )
     assert SessionSwapped().lane_line() == "[session] swapped"
     assert TrainingStarted("x").lane_line() == "[train] x started"
-    assert TrainingStepped("x", 3, 50).lane_line() == "[train] x 3/50"
+    assert TrainingStepped("x", 3, 50).lane_line() == "[train] x training 3/50"
+    assert TrainingStepped("x", 3, 50, "tokenising").lane_line() == (
+        "[train] x tokenising 3/50"
+    )
     assert TrainingFinished("x").lane_line() == "[train] x finished"
     assert TrainingFailed("x", "boom").lane_line() == "[train] x failed: boom"
 
@@ -84,8 +87,8 @@ def test_a_training_run_publishes_start_steps_and_finish():
 
     assert [line.split(" ", 1)[1] for line in log.lines] == [
         "[train] x started",
-        "[train] x 1/2",
-        "[train] x 2/2",
+        "[train] x training 1/2",
+        "[train] x training 2/2",
         "[train] x finished",
     ]
 
@@ -130,5 +133,5 @@ def test_beginning_a_run_publishes_started_once():
 
     assert [line.split(" ", 1)[1] for line in log.lines] == [
         "[train] x started",
-        "[train] x 1/2",
+        "[train] x training 1/2",
     ]

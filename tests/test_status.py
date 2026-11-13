@@ -72,7 +72,7 @@ def test_two_trainings_share_one_line():
 def test_the_status_names_the_phase():
     status = TrainingStatus()
     status.track("retrain gpt")(
-        TrainingEvent(step=3, total_steps=300, phase="tokenising")
+        TrainingEvent(step=3, total_steps=300, phase="tokenising"),
     )
 
     text = plain_text(status_fragments(status))
@@ -93,7 +93,7 @@ def test_the_clock_restarts_when_the_phase_changes():
     listener(TrainingEvent(step=2, total_steps=10, phase="training"))
 
     text = plain_text(status_fragments(status))
-    assert "eta 4s" in text
+    assert "eta 8s" in text
 
 
 def test_a_running_training_shows_the_time_left():

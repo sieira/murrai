@@ -39,9 +39,16 @@ def train_bigram(
     train, held_out = text[:cut], text[cut:]
 
     def report(counted, total):
-        bus.emit(TrainingEvent(step=counted, total_steps=total))
+        bus.emit(TrainingEvent(step=counted, total_steps=total, phase="counting"))
 
-    tokenizer = TokenizerEncoderDecoder().fit(train, merges)
+    def report_tokenising(done, total):
+        bus.emit(TrainingEvent(step=done, total_steps=total, phase="tokenising"))
+
+    tokenizer = TokenizerEncoderDecoder().fit(
+        train,
+        merges,
+        on_progress=report_tokenising if bus is not None else None,
+    )
     model = Bigram.fit(
         train,
         tokenizer,
@@ -68,7 +75,14 @@ def train_neural_bigram(
     keeper=None,
     merges: int = 300,
 ):
-    tokenizer = TokenizerEncoderDecoder().fit(train, merges)
+    def report_tokenising(done, total):
+        bus.emit(TrainingEvent(step=done, total_steps=total, phase="tokenising"))
+
+    tokenizer = TokenizerEncoderDecoder().fit(
+        train,
+        merges,
+        on_progress=report_tokenising if bus is not None else None,
+    )
     model = NeuralBigram(tokenizer)
     ids = [tokenizer.vocab_size, *tokenizer.encode(train)]
     pairs = [(prev, nxt) for prev, nxt in itertools.pairwise(ids)]
@@ -138,7 +152,14 @@ def train_mlp_lm(
     cut = int(len(text) * (1 - holdout))
     train, held_out = text[:cut], text[cut:]
 
-    tokenizer = TokenizerEncoderDecoder().fit(train, merges)
+    def report_tokenising(done, total):
+        bus.emit(TrainingEvent(step=done, total_steps=total, phase="tokenising"))
+
+    tokenizer = TokenizerEncoderDecoder().fit(
+        train,
+        merges,
+        on_progress=report_tokenising if bus is not None else None,
+    )
     torch.manual_seed(seed)
     model = MlpLM(tokenizer, window=window, dimension=dimension, hidden=hidden).to(
         device,
@@ -223,7 +244,14 @@ def train_transformer_lm(
     cut = int(len(text) * (1 - holdout))
     train, held_out = text[:cut], text[cut:]
 
-    tokenizer = TokenizerEncoderDecoder().fit(train, merges)
+    def report_tokenising(done, total):
+        bus.emit(TrainingEvent(step=done, total_steps=total, phase="tokenising"))
+
+    tokenizer = TokenizerEncoderDecoder().fit(
+        train,
+        merges,
+        on_progress=report_tokenising if bus is not None else None,
+    )
     torch.manual_seed(seed)
     model = TransformerLM(
         tokenizer,

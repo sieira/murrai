@@ -10,6 +10,7 @@ from murrai.domain.tokenizer import TokenizerEncoderDecoder
 class TrainingEvent:
     step: int
     total_steps: int
+    phase: str = "training"
 
 
 class EventBus(Protocol):
