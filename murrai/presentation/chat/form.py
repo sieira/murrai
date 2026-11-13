@@ -4,16 +4,21 @@ from dataclasses import dataclass
 from prompt_toolkit.filters import Condition
 from prompt_toolkit.key_binding import KeyBindings
 from prompt_toolkit.layout import HSplit, VSplit, Window
-from prompt_toolkit.layout.containers import ConditionalContainer, DynamicContainer
+from prompt_toolkit.layout.containers import (
+    ConditionalContainer,
+    DynamicContainer,
+    Float,
+)
 from prompt_toolkit.layout.controls import FormattedTextControl
-from prompt_toolkit.widgets import Frame, TextArea
+from prompt_toolkit.widgets import Dialog, TextArea
 
 from murrai.presentation.chat.lanes import SILENT, FormCancelled, FormOpened
 
 FRESH = "fresh"
 START_FROM = "start_from"
-FORM_WIDTH = 44
+FORM_WIDTH = 48
 LABEL_WIDTH = 24
+FORM_TOP = 2
 
 
 def _whole(text):
@@ -214,6 +219,7 @@ class FormOverlay:
             DynamicContainer(lambda: self.body),
             Condition(lambda: self.form is not None and self.form.visible),
         )
+        self.float = Float(content=self.container, top=FORM_TOP)
 
     @property
     def visible(self):
@@ -247,9 +253,10 @@ class FormOverlay:
                 wrap_lines=True,
             ),
         )
-        self.body = Frame(
-            HSplit(rows, width=FORM_WIDTH),
+        self.body = Dialog(
+            body=HSplit(rows),
             title=self.form.command.name,
+            width=FORM_WIDTH,
         )
 
     def _choice_row(self, field):
