@@ -1,6 +1,10 @@
+import itertools
+import random
+import time
+
 import pytest
 
-from murrai.domain.tokenizer import TokenizerEncoderDecoder
+from murrai.domain.tokenizer import TokenizerEncoderDecoder, _replace
 
 CORPUS = "aaabdaaabac"
 
@@ -107,3 +111,64 @@ def test_fit_encode_decode_are_separate_operations():
     assert t.merges == ((ord("a"), ord("a")), (ord("a"), ord("b")))
     assert t.encode("azb") == [ord("a"), ord("z"), ord("b")]
     assert t.decode(t.encode("azb")) == "azb"
+
+
+def _naive_fit(text, num_merges):
+    ids = list(text.encode("utf-8"))
+    merges = []
+    for _ in range(num_merges):
+        counts = {}
+        for pair in itertools.pairwise(ids):
+            counts[pair] = counts.get(pair, 0) + 1
+        if not counts:
+            break
+        best = min(counts, key=lambda p: (-counts[p], p))
+        merges.append(best)
+        ids = _replace(ids, best, 256 + len(merges) - 1)
+    return tuple(merges)
+
+
+ADVERSARIAL_CORPORA = [
+    "aaaa",
+    "aaaaa",
+    "aaabdaaabac",
+    "abab",
+    "abababab",
+    "aaaaaaaab",
+    "abcabcabca",
+    "aabb" * 50,
+]
+
+
+@pytest.mark.parametrize("text", ADVERSARIAL_CORPORA)
+def test_fit_matches_a_full_recount_on_adversarial_corpora(text):
+    fast = TokenizerEncoderDecoder().fit(text, num_merges=12)
+    assert fast.merges == _naive_fit(text, num_merges=12)
+
+
+def test_fit_on_a_large_corpus_does_not_recount_every_pair():
+    words = random.Random(0).choices(
+        "abcdefghij",
+        k=300000,
+    )
+    text = "".join(words)
+    start = time.perf_counter()
+    TokenizerEncoderDecoder().fit(text, num_merges=300)
+    assert time.perf_counter() - start < 2.0
+
+
+@pytest.mark.parametrize("text", ADVERSARIAL_CORPORA)
+def test_encode_matches_the_sequential_replay(text):
+    t = TokenizerEncoderDecoder().fit(text, num_merges=12)
+    expected = list(text.encode("utf-8"))
+    for rank, pair in enumerate(t.merges):
+        expected = _replace(expected, pair, 256 + rank)
+    assert t.encode(text) == expected
+
+
+def test_encode_on_a_large_corpus_does_not_replay_merge_by_merge():
+    text = "".join(random.Random(0).choices("abcdefghij", k=300000))
+    t = TokenizerEncoderDecoder().fit(text, num_merges=300)
+    start = time.perf_counter()
+    t.encode(text)
+    assert time.perf_counter() - start < 1.5

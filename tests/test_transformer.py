@@ -79,7 +79,7 @@ def test_nll_walks_long_text_in_batched_rows(model):
 
 def test_nll_matches_the_one_row_at_a_time_value(model):
     text = "ab" * 301
-    ids = [model.start, *model.vocabulary.encode(text)]
+    ids = [model.start, *model.tokenizer.encode(text)]
     stream = torch.tensor(ids, dtype=torch.long)
     losses = []
     for start in range(0, len(stream) - 1, model.max_time):

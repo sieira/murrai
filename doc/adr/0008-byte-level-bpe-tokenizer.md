@@ -29,7 +29,15 @@ corpus allows. The context window holds meaning, not padding.
 
 - Measured at 300 merges (scripts/tokenizer_density.py): English prose
   encodes 3.2x denser than one token per character; unseen text 2.1x.
-- Encoding cost grows with merges times sequence length; fine at this
-  scale, revisited before fitting thousands of merges on the full corpus.
+- Fit and encode no longer do a full slow pass over the text for every
+  merge: the pair counts update only around each occurrence, and the text
+  is stored as 4-byte numbers so searching and copying run at memory
+  speed. Measured on the 26.5M-byte corpus at 300 merges
+  (scripts/tokenizer_fit_speed.py): fit ~70s, encode ~62s. Both still
+  make one fast pass per merge over the shrinking sequence; a
+  neighbour-chain layout (each piece knowing only its left and right
+  neighbour, with a memory of where each pair lives) would remove those
+  passes for about 2GB of memory; revisit if this scale stops being
+  comfortable.
 - A single token may hold bytes that are not valid UTF-8 on their own;
   decoding and display render them with replacement characters.
