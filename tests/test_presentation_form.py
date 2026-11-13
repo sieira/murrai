@@ -1,4 +1,9 @@
-from murrai.presentation.chat.form import Field, TrainingForm, label_fragments
+from murrai.presentation.chat.form import (
+    Field,
+    TrainingForm,
+    choice_fragments,
+    label_fragments,
+)
 from murrai.presentation.chat.lanes import ChatLog
 from murrai.presentation.chat.panel import Command
 
@@ -68,7 +73,7 @@ def test_shift_tab_walks_backwards():
     assert form.current.name == "depth"
 
 
-def test_picking_a_savegame_locks_the_shape_fields():
+def test_picking_a_checkpoint_locks_the_shape_fields():
     form = _form()
     form.move_choice("start_from", 1)
 
@@ -100,7 +105,7 @@ def test_tab_skips_the_locked_fields():
     assert form.current.name == "seed"
 
 
-def test_the_chosen_savegame_is_what_the_form_reports():
+def test_the_chosen_checkpoint_is_what_the_form_reports():
     form = _form()
     form.move_choice("start_from", 1)
 
@@ -290,10 +295,22 @@ def test_an_unfocused_label_carries_no_style():
     assert label_fragments(form, form.fields[1]) == [("", "   batch:")]
 
 
-def test_a_locked_label_carries_the_savegame_marker():
+def test_a_locked_label_carries_the_checkpoint_marker():
     form = _form()
     form.move_choice("start_from", 1)
 
     assert label_fragments(form, form.fields[3]) == [
-        ("class:hint", "   depth: (from savegame)"),
+        ("class:hint", "   depth: (from checkpoint)"),
+    ]
+
+
+def test_the_selected_choice_highlights_from_the_bracket_only():
+    form = _form()
+    form.move(2)
+
+    assert choice_fragments(form, form.fields[2]) == [
+        ("class:selected", " » start from:"),
+        ("", " "),
+        ("class:selected", "[fresh]"),
+        ("", " char-gpt"),
     ]
