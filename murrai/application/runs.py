@@ -113,14 +113,18 @@ def train_mlp_lm(
     patience=200,
     shrink=0.5,
     holdout=0.1,
+    device=None,
     bus: EventBus | None = None,
 ):
+    device = torch.device(device) if device is not None else torch.device("cpu")
     cut = int(len(text) * (1 - holdout))
     train, held_out = text[:cut], text[cut:]
 
     vocabulary = Vocabulary.from_text(text)
     torch.manual_seed(seed)
-    model = MlpLM(vocabulary, window=window, dimension=dimension, hidden=hidden)
+    model = MlpLM(vocabulary, window=window, dimension=dimension, hidden=hidden).to(
+        device,
+    )
     optimizer = torch.optim.SGD(model.parameters(), lr=learning_rate)
 
     ids = [model.start, *vocabulary.encode(train)]
@@ -135,7 +139,11 @@ def train_mlp_lm(
     rate = learning_rate
     for step in range(steps):
         chosen = [rng.randrange(pairs) for _ in range(batch)]
-        batch_targets = torch.tensor([targets[i] for i in chosen], dtype=torch.long)
+        batch_targets = torch.tensor(
+            [targets[i] for i in chosen],
+            dtype=torch.long,
+            device=device,
+        )
         loss = F.cross_entropy(
             model.forward_batch([contexts[i] for i in chosen]),
             batch_targets,
@@ -186,8 +194,10 @@ def train_transformer_lm(
     patience=200,
     shrink=0.5,
     holdout=0.1,
+    device=None,
     bus: EventBus | None = None,
 ):
+    device = torch.device(device) if device is not None else torch.device("cpu")
     cut = int(len(text) * (1 - holdout))
     train, held_out = text[:cut], text[cut:]
 
@@ -199,12 +209,12 @@ def train_transformer_lm(
         dimension=dimension,
         max_time=max_time,
         heads=heads,
-    )
+    ).to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
 
     ids = [model.start, *vocabulary.encode(train)]
-    stream = torch.tensor(ids, dtype=torch.long)
-    span = torch.arange(max_time)
+    stream = torch.tensor(ids, dtype=torch.long, device=device)
+    span = torch.arange(max_time, device=device)
     last_start = len(stream) - max_time - 1
 
     rng = random.Random(seed)
@@ -213,7 +223,10 @@ def train_transformer_lm(
     best_step = 0
     rate = learning_rate
     for step in range(steps):
-        chosen = torch.tensor([rng.randrange(last_start) for _ in range(batch)])
+        chosen = torch.tensor(
+            [rng.randrange(last_start) for _ in range(batch)],
+            device=device,
+        )
         rows = stream[chosen[:, None] + span]
         targets = stream[chosen[:, None] + span + 1]
         logits = model(rows)

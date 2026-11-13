@@ -7,6 +7,18 @@ import torch
 from murrai.application.checkpoints import Snapshot
 
 
+def _state_to_cpu(state):
+    if isinstance(state, torch.Tensor):
+        return state.detach().to("cpu")
+    if isinstance(state, dict):
+        return {key: _state_to_cpu(value) for key, value in state.items()}
+    if isinstance(state, list):
+        return [_state_to_cpu(value) for value in state]
+    if isinstance(state, tuple):
+        return tuple(_state_to_cpu(value) for value in state)
+    return state
+
+
 class FileCheckpointStore:
     def __init__(self, root):
         self._root = Path(root)
@@ -15,6 +27,11 @@ class FileCheckpointStore:
         return self._root / f"{name}.pt"
 
     def save(self, name, snapshot):
+        snapshot = Snapshot(
+            kind=snapshot.kind,
+            chars=snapshot.chars,
+            state=_state_to_cpu(snapshot.state),
+        )
         self._root.mkdir(parents=True, exist_ok=True)
         descriptor, temp = tempfile.mkstemp(dir=self._root, suffix=".tmp")
         try:

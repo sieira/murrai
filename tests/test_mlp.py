@@ -80,3 +80,26 @@ def test_the_plateau_schedule_shrinks_the_rate_during_a_stalled_run():
         patience=3,
     )
     assert result.rate_curve[-1] < result.rate_curve[0]
+
+
+def test_training_honors_a_requested_device():
+    result = train_mlp_lm(
+        "abab" * 50,
+        steps=10,
+        batch=16,
+        seed=0,
+        device=torch.device("cpu"),
+    )
+    assert next(result.model.parameters()).device.type == "cpu"
+
+
+def test_the_requested_device_trains_the_same_curve():
+    default = train_mlp_lm("abab" * 200, steps=15, batch=16, seed=0)
+    explicit = train_mlp_lm(
+        "abab" * 200,
+        steps=15,
+        batch=16,
+        seed=0,
+        device=torch.device("cpu"),
+    )
+    assert explicit.loss_curve == default.loss_curve

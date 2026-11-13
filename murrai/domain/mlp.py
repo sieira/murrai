@@ -43,13 +43,16 @@ class MlpLM(torch.nn.Module):
         model.load_state_dict(state["parameters"])
         return model
 
+    def _device(self):
+        return self.embed.weight.device
+
     def _pack(self, contexts: list[list[int]]) -> torch.Tensor:
         rows = []
         for context in contexts:
             tail = context[-self.window :]
             missing = self.window - len(tail)
             rows.append([self.start] * missing + tail)
-        return torch.tensor(rows, dtype=torch.long)
+        return torch.tensor(rows, dtype=torch.long, device=self._device())
 
     def forward_batch(self, contexts: list[list[int]]) -> torch.Tensor:
         packed = self._pack(contexts)
@@ -67,7 +70,7 @@ class MlpLM(torch.nn.Module):
     def nll(self, text: str) -> float:
         ids = self.vocabulary.encode(text)
         contexts = [ids[max(0, i - self.window) : i] for i in range(len(ids))]
-        targets = torch.tensor(ids, dtype=torch.long)
+        targets = torch.tensor(ids, dtype=torch.long, device=self._device())
         with torch.no_grad():
             losses = F.cross_entropy(
                 self.forward_batch(contexts),
@@ -80,7 +83,7 @@ class MlpLM(torch.nn.Module):
         return math.exp(self.nll(text))
 
     def generate(self, n_chars: int, seed: int) -> str:
-        generator = torch.Generator().manual_seed(seed)
+        generator = torch.Generator(device=self._device()).manual_seed(seed)
         ids: list[int] = []
         for _ in range(n_chars):
             row = self.probs(list(ids))

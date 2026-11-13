@@ -51,14 +51,19 @@ class TransformerLM(torch.nn.Module):
         model.load_state_dict(state["parameters"])
         return model
 
+    def _device(self):
+        return self.embed.weight.device
+
     def _rows(self, contexts: list[list[int]]) -> torch.Tensor:
         trimmed = [context[-self.max_time :] or [self.start] for context in contexts]
         widest = max(len(row) for row in trimmed)
         rows = [[self.start] * (widest - len(row)) + row for row in trimmed]
-        return torch.tensor(rows, dtype=torch.long)
+        return torch.tensor(rows, dtype=torch.long, device=self._device())
 
     def forward(self, rows: torch.Tensor) -> torch.Tensor:
-        x = self.embed(rows) + self.position(torch.arange(rows.size(1)))
+        x = self.embed(rows) + self.position(
+            torch.arange(rows.size(1), device=rows.device),
+        )
         for block in self.blocks:
             x = block(x)
         return self.head(self.norm(x))
@@ -75,7 +80,7 @@ class TransformerLM(torch.nn.Module):
 
     def nll(self, text: str) -> float:
         ids = [self.start, *self.vocabulary.encode(text)]
-        stream = torch.tensor(ids, dtype=torch.long)
+        stream = torch.tensor(ids, dtype=torch.long, device=self._device())
         losses = []
         for start in range(0, len(stream) - 1, self.max_time):
             row = stream[start : start + self.max_time]
@@ -93,7 +98,7 @@ class TransformerLM(torch.nn.Module):
         return math.exp(self.nll(text))
 
     def generate(self, n_chars: int, seed: int) -> str:
-        generator = torch.Generator().manual_seed(seed)
+        generator = torch.Generator(device=self._device()).manual_seed(seed)
         ids: list[int] = []
         for _ in range(n_chars):
             row = self.probs(ids[-self.max_time :])

@@ -130,3 +130,41 @@ def test_training_accepts_a_head_count():
         heads=2,
     )
     assert result.model.blocks[0].attend.heads == 2
+
+
+def test_training_honors_a_requested_device():
+    result = train_transformer_lm(
+        "ab" * 200,
+        steps=5,
+        batch=8,
+        seed=0,
+        depth=1,
+        dimension=8,
+        max_time=8,
+        device=torch.device("cpu"),
+    )
+    assert next(result.model.parameters()).device.type == "cpu"
+
+
+def test_the_requested_device_trains_the_same_curve():
+    text = "ab" * 500
+    default = train_transformer_lm(
+        text,
+        steps=10,
+        batch=8,
+        seed=0,
+        depth=1,
+        dimension=8,
+        max_time=8,
+    )
+    explicit = train_transformer_lm(
+        text,
+        steps=10,
+        batch=8,
+        seed=0,
+        depth=1,
+        dimension=8,
+        max_time=8,
+        device=torch.device("cpu"),
+    )
+    assert explicit.loss_curve == default.loss_curve
