@@ -323,6 +323,7 @@ def run_chat(
         suggestions.forget()
         buffer.text = chat.session.text
         buffer.cursor_position = len(buffer.text)
+        buffer.suggestion = suggestions.get_suggestion(buffer, buffer.document)
 
     @editor_keys.add("enter")
     def _(event):
