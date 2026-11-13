@@ -313,6 +313,7 @@ def run_chat(
         if not real:
             return
         chat.accept_rest(buffer.text, real)
+        suggestions.forget()
         buffer.text = chat.session.text
         buffer.cursor_position = len(buffer.text)
 
