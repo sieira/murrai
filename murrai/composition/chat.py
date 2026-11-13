@@ -18,21 +18,36 @@ def _trained_chat_session(builder, directory, seed, store, on_event=None):
     bus = ListenerBus()
     if on_event is not None:
         bus.subscribe(on_event)
+
+    def keep(model):
+        if store is not None:
+            store.save(model.kind, snapshot_of(model))
+
     try:
-        result = builder(directory, seed, bus=bus)
+        result = builder(directory, seed, bus=bus, keeper=keep)
     finally:
         if on_event is not None:
             bus.unsubscribe(on_event)
-    if store is not None:
-        store.save(result.model.kind, snapshot_of(result.model))
     return ChatSession(result.model, seed)
 
 
-def counted_from_directory(directory, seed=0, bus=None):
-    return train_bigram(DirTextCorpus(directory), holdout=0.1, bus=bus)
+def counted_from_directory(directory, seed=0, bus=None, keeper=None):
+    return train_bigram(
+        DirTextCorpus(directory),
+        holdout=0.1,
+        bus=bus,
+        keeper=keeper,
+    )
 
 
-def neural_from_directory(directory, seed=0, steps=2000, batch=64, bus=None):
+def neural_from_directory(
+    directory,
+    seed=0,
+    steps=2000,
+    batch=64,
+    bus=None,
+    keeper=None,
+):
     return train_neural_bigram(
         DirTextCorpus(directory).text(),
         steps=steps,
@@ -40,10 +55,18 @@ def neural_from_directory(directory, seed=0, steps=2000, batch=64, bus=None):
         seed=seed,
         learning_rate=3.0,
         bus=bus,
+        keeper=keeper,
     )
 
 
-def mlp_from_directory(directory, seed=0, steps=10000, batch=256, bus=None):
+def mlp_from_directory(
+    directory,
+    seed=0,
+    steps=10000,
+    batch=256,
+    bus=None,
+    keeper=None,
+):
     return train_mlp_lm(
         DirTextCorpus(directory).text(),
         steps=steps,
@@ -56,10 +79,18 @@ def mlp_from_directory(directory, seed=0, steps=10000, batch=256, bus=None):
         hidden=256,
         device=training_device(prefer_mps=False),
         bus=bus,
+        keeper=keeper,
     )
 
 
-def gpt_from_directory(directory, seed=0, steps=2000, batch=256, bus=None):
+def gpt_from_directory(
+    directory,
+    seed=0,
+    steps=2000,
+    batch=256,
+    bus=None,
+    keeper=None,
+):
     return train_transformer_lm(
         DirTextCorpus(directory).text(),
         steps=steps,
@@ -70,6 +101,7 @@ def gpt_from_directory(directory, seed=0, steps=2000, batch=256, bus=None):
         max_time=64,
         device=training_device(prefer_mps=True),
         bus=bus,
+        keeper=keeper,
     )
 
 
