@@ -198,3 +198,18 @@ def test_closing_the_form_leaves_no_box_behind():
     assert "steps:" not in screen
     assert "final learning rate:" not in screen
     assert "hello" in screen
+
+
+def test_the_modal_dresses_in_the_chat_colors_instead_of_the_library_white():
+    from prompt_toolkit.styles import merge_styles
+    from prompt_toolkit.styles.defaults import default_ui_style
+
+    from murrai.presentation.chat.repl import STYLE
+
+    merged = merge_styles([default_ui_style(), STYLE])
+    body = merged.get_attrs_for_style_str("class:dialog.body")
+    field = merged.get_attrs_for_style_str("class:dialog.body class:text-area")
+
+    assert body.bgcolor == "default"
+    assert body.color == "default"
+    assert field.bgcolor == "default"
