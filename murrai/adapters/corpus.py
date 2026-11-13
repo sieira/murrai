@@ -7,3 +7,11 @@ class DirTextCorpus:
 
     def text(self):
         return "\n".join(p.read_text() for p in sorted(self._directory.glob("*.txt")))
+
+
+class TextCorpus:
+    def __init__(self, text):
+        self._text = text
+
+    def text(self):
+        return self._text
