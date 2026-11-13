@@ -1,7 +1,11 @@
 from murrai.adapters.corpus import DirTextCorpus
 from murrai.adapters.events import ListenerBus
 from murrai.application.ports import Corpus, TrainingEvent
-from murrai.application.runs import train_bigram, train_transformer_lm
+from murrai.application.runs import (
+    train_bigram,
+    train_mlp_lm,
+    train_transformer_lm,
+)
 from murrai.domain.bigram import Bigram
 
 
@@ -16,6 +20,37 @@ def test_run_trains_and_evaluates():
     assert result.held_out_chars > 0
     assert result.train_chars > 0
     assert 0.0 < result.held_out_perplexity < float("inf")
+
+
+def test_no_holdout_means_no_perplexity():
+    class FakeCorpus:
+        def text(self):
+            return "aabbaabbaabbaabb"
+
+    assert train_bigram(FakeCorpus(), holdout=0).held_out_perplexity is None
+    assert (
+        train_mlp_lm(
+            "aabbaabbaabbaabb",
+            steps=2,
+            batch=4,
+            seed=0,
+            holdout=0,
+        ).held_out_perplexity
+        is None
+    )
+    assert (
+        train_transformer_lm(
+            "aabbaabbaabbaabb",
+            steps=2,
+            batch=4,
+            seed=0,
+            depth=1,
+            dimension=8,
+            max_time=8,
+            holdout=0,
+        ).held_out_perplexity
+        is None
+    )
 
 
 def test_run_held_out_is_last_slice():

@@ -3,6 +3,7 @@ import math
 import pytest
 import torch
 
+from murrai.application.checkpoints import snapshot_of
 from murrai.application.runs import plateau_rate, train_mlp_lm
 from murrai.domain.mlp import MlpLM
 from murrai.domain.tokenizer import TokenizerEncoderDecoder
@@ -104,3 +105,46 @@ def test_the_requested_device_trains_the_same_curve():
         device=torch.device("cpu"),
     )
     assert explicit.loss_curve == default.loss_curve
+
+
+def test_training_continues_from_a_snapshot():
+    first = train_mlp_lm("ab" * 200, steps=15, batch=16, seed=0, learning_rate=0.1)
+    second = train_mlp_lm(
+        "ab" * 200,
+        steps=15,
+        batch=16,
+        seed=0,
+        learning_rate=0.1,
+        start=snapshot_of(first.model),
+    )
+    assert second.loss_curve[0] < first.loss_curve[0]
+    assert second.loss_curve[0] == pytest.approx(first.loss_curve[-1], abs=0.01)
+    assert second.loss_curve[-1] < second.loss_curve[0]
+
+
+def test_continuing_from_an_untrained_snapshot_repeats_the_fresh_run():
+    torch.manual_seed(0)
+    tokenizer = TokenizerEncoderDecoder().fit("ab" * 200, 300)
+    fresh_model = MlpLM(tokenizer, window=2, dimension=8, hidden=16)
+    fresh = train_mlp_lm(
+        "ab" * 200,
+        steps=10,
+        batch=16,
+        seed=0,
+        window=2,
+        dimension=8,
+        hidden=16,
+        holdout=0,
+        start=snapshot_of(fresh_model),
+    )
+    plain = train_mlp_lm(
+        "ab" * 200,
+        steps=10,
+        batch=16,
+        seed=0,
+        window=2,
+        dimension=8,
+        hidden=16,
+        holdout=0,
+    )
+    assert fresh.loss_curve == plain.loss_curve
