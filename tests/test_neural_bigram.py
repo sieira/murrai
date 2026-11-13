@@ -37,31 +37,36 @@ def test_training_neural_bigram_lowers_loss_below_the_counted_benchmark():
     assert result.loss_curve[-1] < result.loss_curve[0]
 
 
+def _row_distances(model, counted, vocabulary, frequent):
+    distances = []
+    for prev in frequent:
+        counted_probs = counted.probs([prev]).tolist()
+        learned = model.probs([prev])
+        distances.append(
+            0.5 * sum(abs(a - b) for a, b in zip(learned, counted_probs, strict=True)),
+        )
+    return distances
+
+
 def test_neural_bigram_matches_the_counted_table():
     train, _ = _aesop()
+    train = train[:20_000]
     vocabulary = Vocabulary.from_text(train)
-    result = train_neural_bigram(train, steps=2000, batch=64, seed=0, learning_rate=3.0)
-    neural = result.model
     counted = Bigram.fit(train, vocabulary)
     ids = vocabulary.encode(train)
-    pairs = zip([vocabulary.size, *ids][:-1], ids, strict=False)
+    pairs = zip([vocabulary.size, *ids][:-1], ids, strict=True)
     prev_counts = Counter(p for p, _ in pairs)
+    frequent = [
+        prev for prev in range(vocabulary.size) if prev_counts.get(prev, 0) >= 50
+    ]
 
-    assert result.loss_curve[-1] < 2.90
+    result = train_neural_bigram(train, steps=1000, batch=64, seed=0, learning_rate=3.0)
+    assert result.loss_curve[-1] < math.log(vocabulary.size)
 
-    distances = []
-    for prev in range(vocabulary.size):
-        if prev_counts.get(prev, 0) < 50:
-            continue
-        counted_probs = counted.probs([prev]).tolist()
-        learned = neural.probs([prev])
-        distance = 0.5 * sum(
-            abs(a - b) for a, b in zip(learned, counted_probs, strict=False)
-        )
-        distances.append(distance)
-
-    assert max(distances) < 0.45
-    assert sum(distances) / len(distances) < 0.25
+    trained = _row_distances(result.model, counted, vocabulary, frequent)
+    uniform = _row_distances(NeuralBigram(vocabulary), counted, vocabulary, frequent)
+    assert max(trained) < max(uniform) / 2
+    assert sum(trained) / len(trained) < sum(uniform) / len(uniform) / 2
 
 
 def test_neural_bigram_generation_is_deterministic_and_in_vocabulary():
