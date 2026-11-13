@@ -320,8 +320,10 @@ def run_chat(
             chat.accept_rest(buffer.text, real)
         except ValueError:
             return
+        suggestions.forget()
         buffer.text = chat.session.text
         buffer.cursor_position = len(buffer.text)
+        buffer.suggestion = suggestions.get_suggestion(buffer, buffer.document)
 
     @editor_keys.add("enter")
     def _(event):
