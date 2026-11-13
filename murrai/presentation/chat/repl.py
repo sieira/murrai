@@ -110,7 +110,8 @@ class GhostChat:
         for char, p in dice[:TOP]:
             mark = "»" if char == hit else " "
             style = "class:die-hit" if char == hit else "class:die-row"
-            fragments.append((style, f" {mark} {char} {p:6.1%}"))
+            shown = "↵" if char == "\n" else char
+            fragments.append((style, f" {mark} {shown} {p:6.1%}"))
         if len(dice) > TOP:
             fragments.append(("class:more", f"   ... {len(dice) - TOP} more"))
         return fragments
@@ -329,6 +330,10 @@ def run_chat(
     def _(event):
         if chat.session is not None:
             chat.sync(buffer.text)
+
+    @editor_keys.add("escape", "[", "1", "3", ";", "2", "u")
+    def _(event):
+        buffer.insert_text("\n")
 
     panel_keys = KeyBindings()
 
