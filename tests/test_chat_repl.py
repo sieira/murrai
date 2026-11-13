@@ -518,3 +518,67 @@ def test_a_form_command_without_a_load_function_fails_at_the_pick():
         "[command] picked retrain x",
         "[train] retrain x failed: no load function",
     ]
+
+
+def test_the_right_arrow_moves_to_the_next_choice():
+    spawned = []
+    fields = (
+        _steps_field(),
+        Field(
+            "start_from",
+            "start from",
+            "choice",
+            "fresh",
+            choices=("fresh", "char-gpt"),
+        ),
+    )
+
+    def spawn(cmd, status, on_built):
+        spawned.append(cmd)
+
+    with create_pipe_input() as pipe:
+        pipe.send_text("\x10\r")
+        time.sleep(0.2)
+        pipe.send_text("\t")
+        time.sleep(0.2)
+        pipe.send_text("\x1b[C")
+        time.sleep(0.2)
+        pipe.send_text("\r")
+        time.sleep(0.2)
+        pipe.send_text("\x03")
+        _form_chat([_form_command(fields)], spawn)(pipe)
+
+    assert spawned[0].given == {"steps": 2000, "start_from": "char-gpt"}
+
+
+def test_the_left_arrow_moves_to_the_previous_choice():
+    spawned = []
+    fields = (
+        _steps_field(),
+        Field(
+            "start_from",
+            "start from",
+            "choice",
+            "fresh",
+            choices=("fresh", "char-gpt"),
+        ),
+    )
+
+    def spawn(cmd, status, on_built):
+        spawned.append(cmd)
+
+    with create_pipe_input() as pipe:
+        pipe.send_text("\x10\r")
+        time.sleep(0.2)
+        pipe.send_text("\t")
+        time.sleep(0.2)
+        pipe.send_text("\x1b[B")
+        time.sleep(0.2)
+        pipe.send_text("\x1b[D")
+        time.sleep(0.2)
+        pipe.send_text("\r")
+        time.sleep(0.2)
+        pipe.send_text("\x03")
+        _form_chat([_form_command(fields)], spawn)(pipe)
+
+    assert spawned[0].given == {"steps": 2000, "start_from": "fresh"}

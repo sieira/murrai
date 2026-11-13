@@ -335,6 +335,14 @@ class FormOverlay:
             def _(event):
                 self.form.move_choice(field.name, 1)
 
+            @keys.add("left")
+            def _(event):
+                self.form.move_choice(field.name, -1)
+
+            @keys.add("right")
+            def _(event):
+                self.form.move_choice(field.name, 1)
+
         return keys
 
     def _enter(self):
