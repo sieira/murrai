@@ -32,6 +32,15 @@ crosses the pipe to the chat (ADR-0005).
 
 A file without `info` keeps loading; its record reads as empty.
 
+## Continuing from a checkpoint
+
+Each trainer accepts a checkpoint as its optional starting point. The
+checkpoint's tokenizer is used unchanged: the new text is encoded
+through the saved merge list, and no new merging is fitted. The weights
+rebuild from the record and train on. The learning rate is whatever the
+run says, the optimizer's memory starts empty, and the schedule
+restarts.
+
 ## Consequences
 
 - Old checkpoints load unchanged and keep their generic menu line.

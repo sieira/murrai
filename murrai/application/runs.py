@@ -5,6 +5,7 @@ from dataclasses import dataclass
 import torch
 import torch.nn.functional as F
 
+from murrai.application.checkpoints import Snapshot
 from murrai.application.ports import Corpus, EventBus, TrainingEvent
 from murrai.domain.bigram import Bigram
 from murrai.domain.mlp import MlpLM
@@ -18,7 +19,7 @@ class TrainingResult:
     model: Bigram
     train_chars: int
     held_out_chars: int
-    held_out_perplexity: float
+    held_out_perplexity: float | None
 
 
 @dataclass
@@ -75,7 +76,7 @@ def train_bigram(
         model=model,
         train_chars=len(train),
         held_out_chars=len(held_out),
-        held_out_perplexity=model.perplexity(held_out),
+        held_out_perplexity=model.perplexity(held_out) if held_out else None,
     )
 
 
@@ -89,13 +90,18 @@ def train_neural_bigram(
     bus: EventBus | None = None,
     keeper=None,
     merges: int = 300,
+    start: Snapshot | None = None,
 ):
-    tokenizer = TokenizerEncoderDecoder().fit(
-        train,
-        merges,
-        bus=_stage_bus(bus, "tokenising"),
-    )
-    model = NeuralBigram(tokenizer)
+    if start is None:
+        tokenizer = TokenizerEncoderDecoder().fit(
+            train,
+            merges,
+            bus=_stage_bus(bus, "tokenising"),
+        )
+        model = NeuralBigram(tokenizer)
+    else:
+        tokenizer = TokenizerEncoderDecoder(start.merges)
+        model = NeuralBigram.from_state(tokenizer, start.state)
     ids = [
         tokenizer.vocab_size,
         *tokenizer.encode(train, bus=_stage_bus(bus, "encoding")),
@@ -143,7 +149,7 @@ class MlpTrainingResult:
     rate_curve: list[float]
     train_chars: int
     held_out_chars: int
-    held_out_perplexity: float
+    held_out_perplexity: float | None
 
 
 def train_mlp_lm(
@@ -162,20 +168,25 @@ def train_mlp_lm(
     bus: EventBus | None = None,
     keeper=None,
     merges: int = 300,
+    start: Snapshot | None = None,
 ):
     device = torch.device(device) if device is not None else torch.device("cpu")
     cut = int(len(text) * (1 - holdout))
     train, held_out = text[:cut], text[cut:]
 
-    tokenizer = TokenizerEncoderDecoder().fit(
-        train,
-        merges,
-        bus=_stage_bus(bus, "tokenising"),
-    )
     torch.manual_seed(seed)
-    model = MlpLM(tokenizer, window=window, dimension=dimension, hidden=hidden).to(
-        device,
-    )
+    if start is None:
+        tokenizer = TokenizerEncoderDecoder().fit(
+            train,
+            merges,
+            bus=_stage_bus(bus, "tokenising"),
+        )
+        model = MlpLM(tokenizer, window=window, dimension=dimension, hidden=hidden).to(
+            device,
+        )
+    else:
+        tokenizer = TokenizerEncoderDecoder(start.merges)
+        model = MlpLM.from_state(tokenizer, start.state).to(device)
     optimizer = torch.optim.SGD(model.parameters(), lr=learning_rate)
 
     ids = [
@@ -223,7 +234,7 @@ def train_mlp_lm(
         rate_curve=rate_curve,
         train_chars=len(train),
         held_out_chars=len(held_out),
-        held_out_perplexity=model.perplexity(held_out),
+        held_out_perplexity=model.perplexity(held_out) if held_out else None,
     )
 
 
@@ -234,7 +245,7 @@ class TransformerTrainingResult:
     rate_curve: list[float]
     train_chars: int
     held_out_chars: int
-    held_out_perplexity: float
+    held_out_perplexity: float | None
 
 
 def train_transformer_lm(
@@ -254,24 +265,29 @@ def train_transformer_lm(
     bus: EventBus | None = None,
     keeper=None,
     merges: int = 300,
+    start: Snapshot | None = None,
 ):
     device = torch.device(device) if device is not None else torch.device("cpu")
     cut = int(len(text) * (1 - holdout))
     train, held_out = text[:cut], text[cut:]
 
-    tokenizer = TokenizerEncoderDecoder().fit(
-        train,
-        merges,
-        bus=_stage_bus(bus, "tokenising"),
-    )
     torch.manual_seed(seed)
-    model = TransformerLM(
-        tokenizer,
-        depth=depth,
-        dimension=dimension,
-        max_time=max_time,
-        heads=heads,
-    ).to(device)
+    if start is None:
+        tokenizer = TokenizerEncoderDecoder().fit(
+            train,
+            merges,
+            bus=_stage_bus(bus, "tokenising"),
+        )
+        model = TransformerLM(
+            tokenizer,
+            depth=depth,
+            dimension=dimension,
+            max_time=max_time,
+            heads=heads,
+        ).to(device)
+    else:
+        tokenizer = TokenizerEncoderDecoder(start.merges)
+        model = TransformerLM.from_state(tokenizer, start.state).to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
 
     ids = [
@@ -323,5 +339,5 @@ def train_transformer_lm(
         rate_curve=rate_curve,
         train_chars=len(train),
         held_out_chars=len(held_out),
-        held_out_perplexity=model.perplexity(held_out),
+        held_out_perplexity=model.perplexity(held_out) if held_out else None,
     )
