@@ -69,6 +69,33 @@ def test_two_trainings_share_one_line():
     assert "\n" not in text
 
 
+def test_the_status_names_the_phase():
+    status = TrainingStatus()
+    status.track("retrain gpt")(
+        TrainingEvent(step=3, total_steps=300, phase="tokenising")
+    )
+
+    text = plain_text(status_fragments(status))
+    assert "tokenising" in text
+    assert "3/300" in text
+
+
+def test_the_clock_restarts_when_the_phase_changes():
+    now = {"t": 0.0}
+    status = TrainingStatus(clock=lambda: now["t"])
+    listener = status.track("gpt")
+
+    listener(TrainingEvent(step=1, total_steps=300, phase="tokenising"))
+    now["t"] = 60.0
+    listener(TrainingEvent(step=300, total_steps=300, phase="tokenising"))
+    listener(TrainingEvent(step=1, total_steps=10, phase="training"))
+    now["t"] = 62.0
+    listener(TrainingEvent(step=2, total_steps=10, phase="training"))
+
+    text = plain_text(status_fragments(status))
+    assert "eta 4s" in text
+
+
 def test_a_running_training_shows_the_time_left():
     now = {"t": 0.0}
     status = TrainingStatus(clock=lambda: now["t"])
