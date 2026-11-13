@@ -1,4 +1,4 @@
-.PHONY: setup check test test-one lint boundaries bench corpus chat
+.PHONY: setup check test test-one lint boundaries bench bench-train corpus chat
 
 setup:
 	uv sync
@@ -26,3 +26,6 @@ boundaries:
 
 bench:
 	uv run python scripts/mps_sanity.py
+
+bench-train:
+	uv run python scripts/train_bench.py
