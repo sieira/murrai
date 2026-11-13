@@ -16,9 +16,10 @@ binds (AGENTS.md header).
 - bigram: a model whose whole memory is the previous token; our baseline.
 - neural bigram: the same memory as a bigram, but its table is trained
   by gradient descent through the autograd engine instead of tallied.
-- tokenizer: the pair of functions turning text into tokens and back.
-- BPE: byte pair encoding; the algorithm our tokenizer learns as merges of
-  frequent pairs.
+- tokenizer: the `TokenizerEncoderDecoder`, turning text into tokens and
+  back; byte-level BPE over 256 byte values (ADR-0008).
+- BPE: byte pair encoding; merges of the most frequent adjacent pairs,
+  learned from the corpus and replayed in learned order.
 - embedding: a learned vector standing for one token; a lookup row
   fetched by index, describing the token rather than predicting.
 - context window: how many previous tokens the model can see at once.
