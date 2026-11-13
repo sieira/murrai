@@ -10,27 +10,25 @@ busy. The interface must show live progress and stay responsive while a
 training runs. Trainers must stay unaware of screens, and reporting must
 not change training results or slow training down.
 
-Two full trainings were lost in one morning: the trained model crossed
-the process boundary as live objects, and that crossing dies while the
-chat unpacks it — three runs in ten in a repro loop. The checkpoint save
-ran only after the crossing, so a model that died there left nothing on
-disk.
+The handoff of a finished model between processes is unreliable: it dies
+while the receiving side unpacks it, about three runs in ten. The
+checkpoint save ran after that handoff, so a training that died there
+left nothing on disk.
 
 ## Decision
 
 - Trainers emit one `TrainingEvent` (step, total_steps) per step through
-  an optional `EventBus` port (`murrai/application/ports.py`). The event
-  is self-sufficient; a reader never asks the trainer for anything and
-  derives pace and time left from its own clock. Without a bus, a trainer
-  does nothing extra.
+  an optional `EventBus` port (`murrai/application/ports.py`). A reader
+  never asks the trainer for anything; it derives pace and time left
+  from its own clock. Without a bus, a trainer does nothing extra.
 - `ListenerBus` (`murrai/adapters/events.py`) is the concrete bus.
   Subscribing replaces the listener list under a lock, emitting walks it
   without one, and a listener subscribed twice is delivered once. A
   listener never blocks.
 - A training runs in its own process, started with `spawn`. The child
-  sends `("step", step, total)`, then `("done", name)` — name is the
-  checkpoint the training saved under — or `("failed", reason)` over a
-  pipe; a thread in the chat turns steps into calls on the status
+  sends `("step", step, total)`, then `("done", name)`, where name is
+  the checkpoint the training saved under, or `("failed", reason)` over
+  a pipe; a thread in the chat turns steps into calls on the status
   registry and hands the name to the screen's event loop, where a `load`
   function turns it into the session that replaces the chat's. A child
   that ends without a result counts as failed. The child's standard
@@ -40,8 +38,8 @@ disk.
   anything else runs after the last step.
 - Only the checkpoint name crosses the process boundary; the trained
   model never does. The chat's `load` turns the name into a session by
-  reading the checkpoint store — the same read its menu load commands
-  use — so a trained session and a loaded session are one mechanism.
+  reading the checkpoint store, the same read its menu load commands
+  use, so training and loading use the same code path.
 - The status registry (`murrai/presentation/chat/status.py`) holds one
   entry per running training. The status bar renders one bar per entry
   with its time left; a failed entry stays visible as "name failed". The
@@ -63,5 +61,5 @@ disk.
   load cannot delay a keystroke.
 - A training command cannot close over local state; whatever it needs
   travels as picklable data.
-- The pipe carries a name and the checkpoint travels on disk, so the
-  hand-back cannot lose a finished training.
+- The pipe carries only a name, and the checkpoint is already on disk,
+  so the handoff cannot lose a finished training.
