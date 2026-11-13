@@ -1,7 +1,9 @@
 import pytest
 
+import murrai.composition.chat as murrai_composition_chat
 from murrai.adapters.checkpoint import InMemoryCheckpointStore
 from murrai.application.ports import TrainingEvent
+from murrai.application.runs import training_device
 from murrai.composition.chat import chat_commands
 
 
@@ -238,3 +240,29 @@ def test_training_commands_survive_a_trip_to_another_process(corpus):
 
     revived = pickle.loads(pickle.dumps(trains[0]))
     assert revived.build().rollout("a", 5)
+
+
+def test_the_gpt_command_trains_on_the_policy_device(corpus, monkeypatch):
+    real = murrai_composition_chat.train_transformer_lm
+    captured = {}
+
+    def recorder(text, **kwargs):
+        captured.update(kwargs)
+        return real(text, **kwargs)
+
+    monkeypatch.setattr(murrai_composition_chat, "train_transformer_lm", recorder)
+    _command(corpus, "retrain char gpt", seed=0, gpt_steps=20).build()
+    assert captured["device"] == training_device(prefer_mps=True)
+
+
+def test_the_mlp_command_trains_on_the_policy_device(corpus, monkeypatch):
+    real = murrai_composition_chat.train_mlp_lm
+    captured = {}
+
+    def recorder(text, **kwargs):
+        captured.update(kwargs)
+        return real(text, **kwargs)
+
+    monkeypatch.setattr(murrai_composition_chat, "train_mlp_lm", recorder)
+    _command(corpus, "retrain windowed mlp", seed=0, mlp_steps=20).build()
+    assert captured["device"] == training_device(prefer_mps=False)
