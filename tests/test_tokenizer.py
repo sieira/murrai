@@ -76,6 +76,29 @@ def test_vocab_size_is_256_plus_merges():
     assert t.vocab_size == 261
 
 
+def test_a_tokenizer_can_be_rebuilt_from_prior_merges():
+    fitted = TokenizerEncoderDecoder().fit(CORPUS, num_merges=2)
+    rebuilt = TokenizerEncoderDecoder(fitted.merges)
+    assert rebuilt.merges == fitted.merges
+    assert rebuilt.vocab_size == fitted.vocab_size
+    assert rebuilt.encode(CORPUS) == fitted.encode(CORPUS)
+    assert rebuilt.decode(rebuilt.encode(CORPUS)) == CORPUS
+
+
+def test_decode_replaces_invalid_bytes_instead_of_raising():
+    t = TokenizerEncoderDecoder().fit(CORPUS, num_merges=2)
+    assert t.decode([0x80]) == "�"
+    assert t.decode([0xFF, 0x80, ord("a")]) == "��a"
+
+
+def test_pieces_render_every_token_with_replacement_for_partial_utf8():
+    t = TokenizerEncoderDecoder(merges=((0xC3, 0x41),))
+    pieces = t.pieces
+    assert len(pieces) == t.vocab_size
+    assert pieces[ord("a")] == "a"
+    assert pieces[256] == "�A"
+
+
 def test_fit_encode_decode_are_separate_operations():
     t = TokenizerEncoderDecoder()
     assert t.merges == ()

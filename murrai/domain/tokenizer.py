@@ -2,8 +2,8 @@ from itertools import pairwise
 
 
 class TokenizerEncoderDecoder:
-    def __init__(self):
-        self.merges = ()
+    def __init__(self, merges=()):
+        self.merges = tuple(merges)
 
     @property
     def vocab_size(self):
@@ -30,9 +30,16 @@ class TokenizerEncoderDecoder:
             ids = _replace(ids, pair, 256 + rank)
         return ids
 
+    @property
+    def pieces(self):
+        vocab = _vocab(self.merges)
+        return tuple(
+            vocab[i].decode("utf-8", errors="replace") for i in range(len(vocab))
+        )
+
     def decode(self, ids):
         vocab = _vocab(self.merges)
-        return b"".join(vocab[i] for i in ids).decode("utf-8")
+        return b"".join(vocab[i] for i in ids).decode("utf-8", errors="replace")
 
 
 def _replace(ids, pair, new_id):
