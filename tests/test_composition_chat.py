@@ -26,7 +26,7 @@ def test_chat_commands_list_the_models(corpus):
         "counted bigram",
         "retrain neural bigram",
         "retrain windowed mlp",
-        "retrain char gpt",
+        "retrain gpt",
     ]
     counted, neural, mlp, gpt = commands
     assert counted.trains
@@ -64,7 +64,7 @@ def test_mlp_command_builds_a_working_session(corpus):
 
 
 def test_gpt_command_builds_a_working_session(corpus):
-    session = _command(corpus, "retrain char gpt", seed=0, gpt_steps=20).build()
+    session = _command(corpus, "retrain gpt", seed=0, gpt_steps=20).build()
     session.extend_user("a")
     probabilities = [p for _, p in session.dice()]
     assert pytest.approx(sum(probabilities)) == 1.0
@@ -105,10 +105,10 @@ def test_training_commands_save_a_checkpoint(corpus):
     assert store.names() == ["counted-bigram", "neural-bigram"]
     _command(corpus, "retrain windowed mlp", store=store, mlp_steps=20).build()
     assert store.names() == ["counted-bigram", "neural-bigram", "windowed-mlp"]
-    _command(corpus, "retrain char gpt", store=store, gpt_steps=20).build()
+    _command(corpus, "retrain gpt", store=store, gpt_steps=20).build()
     assert store.names() == [
-        "char-gpt",
         "counted-bigram",
+        "gpt",
         "neural-bigram",
         "windowed-mlp",
     ]
@@ -174,7 +174,7 @@ def test_commands_offer_loading_and_retraining(corpus):
     assert "counted bigram" in names
     assert "retrain neural bigram" in names
     assert "retrain windowed mlp" in names
-    assert "retrain char gpt" in names
+    assert "retrain gpt" in names
 
 
 def test_the_load_command_builds_a_working_session(corpus):
@@ -233,7 +233,7 @@ def test_no_store_means_counted_and_retraining_commands(corpus):
         "counted bigram",
         "retrain neural bigram",
         "retrain windowed mlp",
-        "retrain char gpt",
+        "retrain gpt",
     ]
 
 
@@ -246,7 +246,7 @@ def test_training_commands_survive_a_trip_to_another_process(corpus):
         "counted bigram",
         "retrain neural bigram",
         "retrain windowed mlp",
-        "retrain char gpt",
+        "retrain gpt",
     ]
 
     for command in trains:
@@ -265,7 +265,7 @@ def test_the_gpt_command_trains_on_the_policy_device(corpus, monkeypatch):
         return real(text, **kwargs)
 
     monkeypatch.setattr(murrai_composition_chat, "train_transformer_lm", recorder)
-    _command(corpus, "retrain char gpt", seed=0, gpt_steps=20).build()
+    _command(corpus, "retrain gpt", seed=0, gpt_steps=20).build()
     assert captured["device"] == training_device(prefer_mps=True)
 
 

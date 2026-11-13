@@ -11,7 +11,7 @@ ROWS_PER_PASS = 512
 
 
 class TransformerLM(torch.nn.Module):
-    kind = "char-gpt"
+    kind = "gpt"
 
     def __init__(
         self,

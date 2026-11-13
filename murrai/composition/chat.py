@@ -169,7 +169,7 @@ def chat_commands(
                 trains=True,
             ),
             Command(
-                "retrain char gpt",
+                "retrain gpt",
                 "attention over the last sixty-four chars",
                 partial(
                     _trained_chat_session,
