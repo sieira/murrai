@@ -107,10 +107,11 @@ class GhostChat:
         for piece, p in shown:
             mark = "»" if piece == hit else " "
             style = "class:die-hit" if piece == hit else "class:die-row"
-            fragments.append((style, f" {mark} {piece} {p:6.1%}"))
+            shown_piece = piece.replace("\n", "↵")
+            fragments.append((style, f" {mark} {shown_piece} {p:6.1%}"))
         if hit is not None and hit not in [piece for piece, _ in shown]:
             p = next(p for piece, p in dice if piece == hit)
-            fragments.append(("class:die-hit", f" » {hit} {p:6.1%}"))
+            fragments.append(("class:die-hit", f" » {hit.replace(chr(10), '↵')} {p:6.1%}"))
         if len(dice) > TOP:
             fragments.append(("class:more", f"   ... {len(dice) - TOP} more"))
         return fragments
@@ -322,6 +323,10 @@ def run_chat(
     def _(event):
         if chat.session is not None:
             chat.sync(buffer.text)
+
+    @editor_keys.add("escape", "[", "1", "3", ";", "2", "u")
+    def _(event):
+        buffer.insert_text("\n")
 
     panel_keys = KeyBindings()
 
