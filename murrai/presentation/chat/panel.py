@@ -11,6 +11,9 @@ class Command:
     description: str
     build: Callable
     trains: bool = False
+    fields: tuple = ()
+    bake: Callable | None = None
+    given: dict | None = None
 
 
 class CommandPanel:
