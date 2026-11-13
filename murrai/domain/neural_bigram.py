@@ -7,12 +7,12 @@ from murrai.domain.autograd import Value
 class NeuralBigram:
     kind = "neural-bigram"
 
-    def __init__(self, vocabulary):
-        self.vocabulary = vocabulary
-        self.start = vocabulary.size
-        rows = vocabulary.size + 1
+    def __init__(self, tokenizer):
+        self.tokenizer = tokenizer
+        self.start = tokenizer.vocab_size
+        rows = tokenizer.vocab_size + 1
         self.weights = [
-            [Value(0.0) for _ in range(vocabulary.size)] for _ in range(rows)
+            [Value(0.0) for _ in range(tokenizer.vocab_size)] for _ in range(rows)
         ]
 
     def logits(self, prev_id):
@@ -22,8 +22,8 @@ class NeuralBigram:
         return {"weights": [[value.data for value in row] for row in self.weights]}
 
     @classmethod
-    def from_state(cls, vocabulary, state):
-        model = cls(vocabulary)
+    def from_state(cls, tokenizer, state):
+        model = cls(tokenizer)
         for row, values in zip(model.weights, state["weights"], strict=False):
             for value, data in zip(row, values, strict=False):
                 value.data = data
@@ -57,15 +57,15 @@ class NeuralBigram:
                 weight.data -= learning_rate * weight.grad
                 weight.grad = 0.0
 
-    def generate(self, n_chars, seed):
+    def generate(self, n_tokens, seed):
         rng = random.Random(seed)
         ids = []
         prev = self.start
-        for _ in range(n_chars):
+        for _ in range(n_tokens):
             nxt = self.roll(prev, rng)
             ids.append(nxt)
             prev = nxt
-        return self.vocabulary.decode(ids)
+        return self.tokenizer.decode(ids)
 
     def roll(self, prev_id, rng):
         r = rng.random() * sum(self.probs([prev_id]))

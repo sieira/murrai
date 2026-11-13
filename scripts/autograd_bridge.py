@@ -4,14 +4,14 @@ from collections import Counter
 from murrai.adapters.corpus import DirTextCorpus
 from murrai.application.runs import train_neural_bigram
 from murrai.domain.bigram import Bigram
-from murrai.domain.vocabulary import Vocabulary
+from murrai.domain.tokenizer import TokenizerEncoderDecoder
 
 
 def main():
     text = DirTextCorpus("data/corpus").text()
     train = text[: int(len(text) * 0.8)]
-    vocabulary = Vocabulary.from_text(train)
-    counted = Bigram.fit(train, vocabulary)
+    tokenizer = TokenizerEncoderDecoder().fit(train, 300)
+    counted = Bigram.fit(train, tokenizer)
 
     print("training softmax bigram through the autograd engine...")
     result = train_neural_bigram(train, steps=2000, batch=64, seed=0, learning_rate=3.0)
@@ -27,20 +27,20 @@ def main():
         )
         print(f"  step {i:4d}  {curve[i]:{width}.2f}  {bar}")
     print(
-        f"\nuniform no-knowledge loss: {math.log(vocabulary.size):.3f}"
+        f"\nuniform no-knowledge loss: {math.log(tokenizer.vocab_size):.3f}"
         f"\ncounted bigram loss:       {counted.nll(train):.3f}"
         f"\ntrained bigram loss:       {curve[-1]:.3f}",
     )
 
-    ids = vocabulary.encode(train)
-    pairs = zip([vocabulary.size, *ids][:-1], ids, strict=False)
+    ids = tokenizer.encode(train)
+    pairs = zip([tokenizer.vocab_size, *ids][:-1], ids, strict=False)
     prev_counts = Counter(p for p, _ in pairs)
     distances = []
-    for prev in range(vocabulary.size):
+    for prev in range(tokenizer.vocab_size):
         if prev_counts.get(prev, 0) < 50:
             continue
-        learned = neural.probs(prev)
-        counted_probs = counted.probs(prev).tolist()
+        learned = neural.probs([prev])
+        counted_probs = counted.probs([prev]).tolist()
         distance = 0.5 * sum(
             abs(a - b) for a, b in zip(learned, counted_probs, strict=False)
         )

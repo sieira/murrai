@@ -5,7 +5,7 @@ from prompt_toolkit.input.defaults import create_pipe_input
 from prompt_toolkit.output import DummyOutput
 
 from murrai.domain.bigram import Bigram
-from murrai.domain.vocabulary import Vocabulary
+from murrai.domain.tokenizer import TokenizerEncoderDecoder
 from murrai.presentation.chat import ChatSession
 from murrai.presentation.chat.repl import (
     GhostChat,
@@ -17,7 +17,7 @@ from murrai.presentation.chat.repl import (
 
 @pytest.fixture
 def model():
-    return Bigram.fit("abab", Vocabulary.from_text("ab"))
+    return Bigram.fit("abab", TokenizerEncoderDecoder())
 
 
 @pytest.fixture
@@ -25,15 +25,15 @@ def chat(model):
     return GhostChat(ChatSession(model, seed=0))
 
 
-def test_the_ghost_is_a_twenty_char_rollout(chat):
+def test_the_ghost_is_a_twenty_token_rollout(chat):
     suggestion = GhostSuggestions(chat).get_suggestion(None, Document("a"))
     assert isinstance(suggestion, Suggestion)
-    assert len(suggestion.text) == 20
+    assert len(suggestion.text) >= 20
 
 
-def test_the_ghost_is_empty_on_unknown_chars(chat):
+def test_the_ghost_survives_text_absent_from_the_corpus(chat):
     suggestion = GhostSuggestions(chat).get_suggestion(None, Document("az"))
-    assert suggestion is None
+    assert suggestion is not None
 
 
 def test_the_ghost_advances_after_an_accept_instead_of_rerolling(chat):
@@ -51,7 +51,7 @@ def test_the_ghost_is_deterministic_per_seed(model):
 
 @pytest.fixture
 def newline_chat():
-    model = Bigram.fit("a\nb\na\nb", Vocabulary.from_text("a\nb"))
+    model = Bigram.fit("a\nb\na\nb", TokenizerEncoderDecoder())
     return GhostChat(ChatSession(model, seed=0))
 
 
@@ -100,17 +100,18 @@ def test_accept_rest_lands_the_whole_suggestion(chat):
 
 
 def test_the_die_bar_marks_what_tab_will_accept(chat):
-    ghost = chat.suggestions("a")
+    ids, ghost = chat.roll("a")
     chat.sync("a")
-    bar = chat.die_bar("a", ghost)
+    bar = chat.die_bar("a", ids[0])
     text = plain_text(bar)
     assert chat.session.text
+    assert ghost
     assert "»" in text
     assert "%" in text
 
 
-def test_the_die_bar_is_empty_on_unknown_chars(chat):
-    assert plain_text(chat.die_bar("az")) == ""
+def test_the_die_bar_survives_text_absent_from_the_corpus(chat):
+    assert plain_text(chat.die_bar("az")) != ""
 
 
 def test_run_chat_types_and_returns_the_story(chat):

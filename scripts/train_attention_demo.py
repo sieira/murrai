@@ -51,7 +51,7 @@ def main():
     for name, result in [
         ("counted bigram", bigram),
         ("windowed mlp", mlp),
-        ("char gpt", gpt),
+        ("gpt", gpt),
     ]:
         loss = (
             f"{result.loss_curve[0]:.3f} -> {result.loss_curve[-1]:.3f}"
@@ -63,7 +63,7 @@ def main():
     for name, model in [
         ("counted bigram", bigram.model),
         ("windowed mlp", mlp.model),
-        ("char gpt", gpt.model),
+        ("gpt", gpt.model),
     ]:
         print(f"\n--- {name} (seed 17) ---")
         print(sample(model))

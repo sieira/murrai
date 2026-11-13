@@ -3,7 +3,7 @@ import math
 import torch
 import torch.nn.functional as F
 
-from murrai.domain.vocabulary import Vocabulary
+from murrai.domain.tokenizer import TokenizerEncoderDecoder
 
 
 class MlpLM(torch.nn.Module):
@@ -11,18 +11,18 @@ class MlpLM(torch.nn.Module):
 
     def __init__(
         self,
-        vocabulary: Vocabulary,
+        tokenizer: TokenizerEncoderDecoder,
         window: int,
         dimension: int,
         hidden: int,
     ):
         super().__init__()
-        self.vocabulary = vocabulary
-        self.start = vocabulary.size
+        self.tokenizer = tokenizer
+        self.start = tokenizer.vocab_size
         self.window = window
-        self.embed = torch.nn.Embedding(vocabulary.size + 1, dimension)
+        self.embed = torch.nn.Embedding(tokenizer.vocab_size + 1, dimension)
         self.input = torch.nn.Linear(window * dimension, hidden)
-        self.output = torch.nn.Linear(hidden, vocabulary.size)
+        self.output = torch.nn.Linear(hidden, tokenizer.vocab_size)
 
     def state(self):
         return {
@@ -33,9 +33,9 @@ class MlpLM(torch.nn.Module):
         }
 
     @classmethod
-    def from_state(cls, vocabulary, state):
+    def from_state(cls, tokenizer, state):
         model = cls(
-            vocabulary,
+            tokenizer,
             window=state["window"],
             dimension=state["dimension"],
             hidden=state["hidden"],
@@ -68,7 +68,7 @@ class MlpLM(torch.nn.Module):
             return F.softmax(self.logits(context_ids), dim=-1)
 
     def nll(self, text: str) -> float:
-        ids = self.vocabulary.encode(text)
+        ids = self.tokenizer.encode(text)
         contexts = [ids[max(0, i - self.window) : i] for i in range(len(ids))]
         targets = torch.tensor(ids, dtype=torch.long, device=self._device())
         with torch.no_grad():
@@ -82,11 +82,11 @@ class MlpLM(torch.nn.Module):
     def perplexity(self, text: str) -> float:
         return math.exp(self.nll(text))
 
-    def generate(self, n_chars: int, seed: int) -> str:
+    def generate(self, n_tokens: int, seed: int) -> str:
         generator = torch.Generator(device=self._device()).manual_seed(seed)
         ids: list[int] = []
-        for _ in range(n_chars):
+        for _ in range(n_tokens):
             row = self.probs(list(ids))
             nxt = int(torch.multinomial(row, 1, generator=generator))
             ids.append(nxt)
-        return self.vocabulary.decode(ids)
+        return self.tokenizer.decode(ids)

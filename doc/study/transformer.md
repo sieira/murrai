@@ -72,7 +72,7 @@ the loss comes from every position, not only the last one.
 
 Vaswani et al. (2017) introduced the architecture with multi-head
 attention. Several attention patterns run in parallel inside each block
-and their outputs are concatenated. murrAI's char gpt does the same: the
+and their outputs are concatenated. murrAI's gpt does the same: the
 model's dimension is cut into equal slices, one per head, and each head
 scores and blends its own slice (see the Heads section of
 [attention.md](attention.md)). The default is 1 head per block, 4 blocks,

@@ -17,14 +17,30 @@ left nothing on disk.
 
 ## Decision
 
-- Trainers emit one `TrainingEvent` (step, total_steps) per step through
-  an optional `EventBus` port (`murrai/application/ports.py`). A reader
-  never asks the trainer for anything; it derives pace and time left
-  from its own clock. Without a bus, a trainer does nothing extra.
+- The domain reports progress as plain numbers. `Progress`
+  (step, total_steps) is emitted through the `ProgressBus` port in
+  `murrai/domain/ports.py`. The port carries only `emit` and knows
+  nothing about stages. `fit`, `encode`, and the counted bigram's
+  counting emit through it when a bus is handed in; without one they
+  stay silent.
+- The application names the stage. Trainers hand the domain a thin
+  wrapper around the real bus (`_StageBus` in
+  `murrai/application/runs.py`), and the wrapper turns each `Progress`
+  into a `TrainingEvent` that names its stage (`counting`,
+  `tokenising`, `encoding`, `training`). The domain never learns the
+  stage names.
 - `ListenerBus` (`murrai/adapters/events.py`) is the concrete bus.
-  Subscribing replaces the listener list under a lock, emitting walks it
-  without one, and a listener subscribed twice is delivered once. A
-  listener never blocks.
+  Emitting puts the event on a queue and returns at once; one worker
+  thread delivers it to the subscribed listeners. A slow listener can
+  never slow the emitter, and a listener that raises is recorded in
+  `listener_errors` and skipped instead of raising into training.
+  Subscribing replaces the listener list under a lock, and a listener
+  subscribed twice is delivered once. `flush` waits until every queued
+  event has been delivered; the chat's training wiring flushes before
+  the child reports its result, so the last step is never overtaken by
+  the done message.
+- A reader never asks the trainer for anything; it derives pace and time
+  left from its own clock. Without a bus, a trainer does nothing extra.
 - A training runs in its own process, started with `spawn`. The child
   sends `("step", step, total)`, then `("done", name)`, where name is
   the checkpoint the training saved under, or `("failed", reason)` over
@@ -51,7 +67,11 @@ left nothing on disk.
 ## Consequences
 
 - Trainers know nothing about screens; a new progress display changes no
-  trainer.
+  trainer. The domain knows nothing about stages either: it emits
+  numbers, the application names them.
+- One event costs about 0.2 microseconds to create and queue. Tens of
+  thousands of events add milliseconds to a minutes-long training, and
+  a listener's own cost never reaches the emitter at all.
 - Trainers know nothing about files either: a trainer calls a `keeper`
   function it is handed with the finished model, and only the wiring in
   composition connects that function to the checkpoint store.

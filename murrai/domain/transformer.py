@@ -5,33 +5,33 @@ import torch
 import torch.nn.functional as F
 
 from murrai.domain.block import TransformerBlock
-from murrai.domain.vocabulary import Vocabulary
+from murrai.domain.tokenizer import TokenizerEncoderDecoder
 
 ROWS_PER_PASS = 512
 
 
 class TransformerLM(torch.nn.Module):
-    kind = "char-gpt"
+    kind = "gpt"
 
     def __init__(
         self,
-        vocabulary: Vocabulary,
+        tokenizer: TokenizerEncoderDecoder,
         depth: int,
         dimension: int,
         max_time: int,
         heads: int = 1,
     ):
         super().__init__()
-        self.vocabulary = vocabulary
-        self.start = vocabulary.size
+        self.tokenizer = tokenizer
+        self.start = tokenizer.vocab_size
         self.max_time = max_time
-        self.embed = torch.nn.Embedding(vocabulary.size + 1, dimension)
+        self.embed = torch.nn.Embedding(tokenizer.vocab_size + 1, dimension)
         self.position = torch.nn.Embedding(max_time, dimension)
         self.blocks = torch.nn.ModuleList(
             TransformerBlock(dimension, heads) for _ in range(depth)
         )
         self.norm = torch.nn.LayerNorm(dimension)
-        self.head = torch.nn.Linear(dimension, vocabulary.size)
+        self.head = torch.nn.Linear(dimension, tokenizer.vocab_size)
 
     def state(self):
         return {
@@ -43,9 +43,9 @@ class TransformerLM(torch.nn.Module):
         }
 
     @classmethod
-    def from_state(cls, vocabulary, state):
+    def from_state(cls, tokenizer, state):
         model = cls(
-            vocabulary,
+            tokenizer,
             depth=state["depth"],
             dimension=state["dimension"],
             max_time=state["max_time"],
@@ -82,7 +82,7 @@ class TransformerLM(torch.nn.Module):
             return F.softmax(self.logits(context_ids), dim=-1)
 
     def nll(self, text: str) -> float:
-        ids = [self.start, *self.vocabulary.encode(text)]
+        ids = [self.start, *self.tokenizer.encode(text)]
         stream = torch.tensor(ids, dtype=torch.long, device=self._device())
         row_losses = []
         for starts in batched(
@@ -124,11 +124,11 @@ class TransformerLM(torch.nn.Module):
     def perplexity(self, text: str) -> float:
         return math.exp(self.nll(text))
 
-    def generate(self, n_chars: int, seed: int) -> str:
+    def generate(self, n_tokens: int, seed: int) -> str:
         generator = torch.Generator(device=self._device()).manual_seed(seed)
         ids: list[int] = []
-        for _ in range(n_chars):
+        for _ in range(n_tokens):
             row = self.probs(ids[-self.max_time :])
             nxt = int(torch.multinomial(row, 1, generator=generator))
             ids.append(nxt)
-        return self.vocabulary.decode(ids)
+        return self.tokenizer.decode(ids)

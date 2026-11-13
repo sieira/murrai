@@ -3,13 +3,14 @@ from dataclasses import dataclass
 from typing import Protocol, runtime_checkable
 
 from murrai.application.checkpoints import Snapshot
-from murrai.domain.vocabulary import Vocabulary
+from murrai.domain.tokenizer import TokenizerEncoderDecoder
 
 
 @dataclass(frozen=True)
 class TrainingEvent:
     step: int
     total_steps: int
+    phase: str = "training"
 
 
 class EventBus(Protocol):
@@ -27,7 +28,7 @@ class Corpus(Protocol):
 @runtime_checkable
 class LanguageModel(Protocol):
     kind: str
-    vocabulary: Vocabulary
+    tokenizer: TokenizerEncoderDecoder
 
     def probs(self, context_ids: list[int]): ...
 

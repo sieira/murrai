@@ -82,24 +82,27 @@ class GhostChat:
     def suggestions(self, buffer_text: str) -> str:
         if self.session is None:
             return ""
-        try:
-            return self.session.rollout(buffer_text, self.ghost_chars)
-        except ValueError:
-            return ""
+        return self.session.rollout(buffer_text, self.ghost_chars)
 
-    def die_bar(self, buffer_text: str, ghost: str = ""):
+    def roll(self, buffer_text: str) -> tuple[list[int], str]:
+        if self.session is None:
+            return [], ""
+        return self.session.rollout_ids(buffer_text, self.ghost_chars)
+
+    def die_bar(self, buffer_text: str, next_id: int | None = None):
         if self.session is None:
             return []
-        try:
-            dice = self.session.preview(buffer_text)
-        except ValueError:
-            return []
+        dice = self.session.preview(buffer_text)
+        hit = self.session.labels[next_id] if next_id is not None else None
+        shown = dice[:TOP]
         fragments = []
-        hit = ghost[0] if ghost else None
-        for char, p in dice[:TOP]:
-            mark = "»" if char == hit else " "
-            style = "class:die-hit" if char == hit else "class:die-row"
-            fragments.append((style, f" {mark} {char} {p:6.1%}"))
+        for piece, p in shown:
+            mark = "»" if piece == hit else " "
+            style = "class:die-hit" if piece == hit else "class:die-row"
+            fragments.append((style, f" {mark} {piece} {p:6.1%}"))
+        if hit is not None and hit not in [piece for piece, _ in shown]:
+            p = next(p for piece, p in dice if piece == hit)
+            fragments.append(("class:die-hit", f" » {hit} {p:6.1%}"))
         if len(dice) > TOP:
             fragments.append(("class:more", f"   ... {len(dice) - TOP} more"))
         return fragments
@@ -108,23 +111,24 @@ class GhostChat:
 class GhostSuggestions(AutoSuggest):
     def __init__(self, chat: GhostChat):
         self._chat = chat
-        self._cache: dict[str, str] = {}
+        self._cache: dict[str, tuple[str, int | None]] = {}
 
-    def _roll_for(self, context: str) -> str:
+    def _roll_for(self, context: str) -> tuple[str, int | None]:
         if context not in self._cache:
-            roll = self._chat.suggestions(context)
-            if not roll:
-                self._cache[context] = ""
-                return ""
+            ids, roll = self._chat.roll(context)
+            first = ids[0] if ids else None
             for offset in range(len(roll) + 1):
-                self._cache[context + roll[:offset]] = roll[offset:]
+                self._cache[context + roll[:offset]] = (roll[offset:], first)
         return self._cache[context]
 
     def real_for(self, context: str) -> str:
-        return self._roll_for(context)
+        return self._roll_for(context)[0]
+
+    def first_id_for(self, context: str) -> int | None:
+        return self._roll_for(context)[1]
 
     def get_suggestion(self, buffer, document):
-        roll = self._roll_for(document.text)
+        roll = self.real_for(document.text)
         if not roll:
             return None
         return Suggestion(roll.replace("\n", "↵"))
@@ -157,7 +161,7 @@ def story_fragments(session, tail_lines=None):
 
 
 def _die_fragments(chat, suggestions, buffer):
-    return chat.die_bar(buffer.text, suggestions.real_for(buffer.text))
+    return chat.die_bar(buffer.text, suggestions.first_id_for(buffer.text))
 
 
 def status_line(status, model_kind=None):
@@ -217,10 +221,7 @@ def run_chat(
         real = suggestions.real_for(buffer.text)
         if not real:
             return
-        try:
-            chat.accept_rest(buffer.text, real)
-        except ValueError:
-            return
+        chat.accept_rest(buffer.text, real)
         buffer.text = chat.session.text
         buffer.cursor_position = len(buffer.text)
 

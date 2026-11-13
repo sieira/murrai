@@ -6,15 +6,14 @@ from prompt_toolkit.output import DummyOutput
 
 from murrai.application.ports import TrainingEvent
 from murrai.domain.bigram import Bigram
-from murrai.domain.vocabulary import Vocabulary
+from murrai.domain.tokenizer import TokenizerEncoderDecoder
 from murrai.presentation.chat import ChatSession, Command, run_chat
 from murrai.presentation.chat.lanes import ChatLog
 from murrai.presentation.chat.repl import GhostChat, GhostSuggestions
 
 
 def _session(text="abab"):
-    vocabulary = Vocabulary.from_text("ab")
-    return ChatSession(Bigram.fit(text, vocabulary), 0)
+    return ChatSession(Bigram.fit(text, TokenizerEncoderDecoder()), 0)
 
 
 def test_ctrl_p_opens_the_command_menu_and_swaps_the_session():

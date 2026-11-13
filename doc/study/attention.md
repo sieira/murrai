@@ -30,9 +30,9 @@ forward, so a prediction never sees its own answer.
   wrapped in layer-norm-first
   ("pre-norm") and a residual: the block's output is added to its
   input, so a block can choose to change almost nothing.
-- `murrai/domain/transformer.py`: `TransformerLM` (`kind` "char-gpt")
-  — a character embedding plus a learned table of position numbers,
-  then N blocks, a final layer norm, and a linear head to character
+- `murrai/domain/transformer.py`: `TransformerLM` (`kind` "gpt")
+  — a token embedding plus a learned table of position numbers,
+  then N blocks, a final layer norm, and a linear head to token
   odds. Same surface as `MlpLM`: logits, probs, nll, perplexity,
   generate, state/from_state.
 - `murrai/application/runs.py`: `train_transformer_lm` — the mlp
@@ -41,8 +41,8 @@ forward, so a prediction never sees its own answer.
   consecutive characters scored at every position at once, instead of
   256 separate windows. The plateau rate schedule carries over
   untouched.
-- `murrai/composition/chat.py`: the "char gpt" stage, saving
-  checkpoints as `char-gpt`.
+- `murrai/composition/chat.py`: the "gpt" stage, saving
+  checkpoints as `gpt`.
 
 ## Heads
 

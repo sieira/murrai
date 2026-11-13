@@ -17,20 +17,24 @@ class ChatSession:
 
     @property
     def text(self) -> str:
-        return self._model.vocabulary.decode(self._ids)
+        return self._model.tokenizer.decode(self._ids)
+
+    @property
+    def labels(self):
+        return self._model.tokenizer.labels
 
     def truncate(self, keep: int) -> None:
         self._ids = self._ids[:keep]
         self._origins = self._origins[:keep]
 
-    def extend_user(self, chars: str) -> None:
-        self._extend(chars, "entered")
+    def extend_user(self, text: str) -> None:
+        self._extend(text, "entered")
 
-    def extend_generated(self, chars: str) -> None:
-        self._extend(chars, "generated")
+    def extend_generated(self, text: str) -> None:
+        self._extend(text, "generated")
 
-    def _extend(self, chars: str, origin: str) -> None:
-        fresh = list(self._model.vocabulary.encode(chars))
+    def _extend(self, text: str, origin: str) -> None:
+        fresh = list(self._model.tokenizer.encode(text))
         self._ids.extend(fresh)
         self._origins.extend([origin] * len(fresh))
 
@@ -38,26 +42,30 @@ class ChatSession:
         return self._dice(self._ids)
 
     def preview(self, text: str):
-        return self._dice(list(self._model.vocabulary.encode(text)))
+        return self._dice(list(self._model.tokenizer.encode(text)))
 
     def _dice(self, ids):
         row = [float(p) for p in self._model.probs(list(ids))]
         pairs = sorted(
-            zip(self._model.vocabulary.chars, row, strict=False),
+            zip(self._model.tokenizer.labels, row, strict=True),
             key=lambda entry: entry[1],
             reverse=True,
         )
         return pairs
 
     def rollout(self, text: str, n: int) -> str:
-        ids = list(self._model.vocabulary.encode(text))
-        chars = []
+        return self.rollout_ids(text, n)[1]
+
+    def rollout_ids(self, text: str, n: int) -> tuple[list[int], str]:
+        ids = list(self._model.tokenizer.encode(text))
+        pieces = self._model.tokenizer.pieces
+        out = []
         for _ in range(n):
             row = [float(p) for p in self._model.probs(list(ids))]
             index = self._sample(row)
             ids.append(index)
-            chars.append(self._model.vocabulary.chars[index])
-        return "".join(chars)
+            out.append(pieces[index])
+        return ids, "".join(out)
 
     def _sample(self, row):
         r = self._rng.random() * sum(row)
@@ -73,7 +81,7 @@ class ChatSession:
         position = 0
         for origin, run in itertools.groupby(self._origins):
             count = len(list(run))
-            segment = self._model.vocabulary.decode(
+            segment = self._model.tokenizer.decode(
                 self._ids[position : position + count],
             )
             segments.append((segment, origin))

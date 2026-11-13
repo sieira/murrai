@@ -49,9 +49,10 @@ class TrainingStepped(ChatEvent):
     name: str
     step: int
     total: int
+    phase: str = "training"
 
     def lane_line(self):
-        return f"[train] {self.name} {self.step}/{self.total}"
+        return f"[train] {self.name} {self.phase} {self.step}/{self.total}"
 
 
 @dataclass(frozen=True)
