@@ -62,12 +62,12 @@ def train_bigram(
     tokenizer = TokenizerEncoderDecoder().fit(
         train,
         merges,
-        sink=_stage_bus(bus, "tokenising"),
+        bus=_stage_bus(bus, "tokenising"),
     )
     model = Bigram.fit(
         train,
         tokenizer,
-        sink=_stage_bus(bus, "counting"),
+        bus=_stage_bus(bus, "counting"),
     )
     if keeper is not None:
         keeper(model)
@@ -93,12 +93,12 @@ def train_neural_bigram(
     tokenizer = TokenizerEncoderDecoder().fit(
         train,
         merges,
-        sink=_stage_bus(bus, "tokenising"),
+        bus=_stage_bus(bus, "tokenising"),
     )
     model = NeuralBigram(tokenizer)
     ids = [
         tokenizer.vocab_size,
-        *tokenizer.encode(train, sink=_stage_bus(bus, "encoding")),
+        *tokenizer.encode(train, bus=_stage_bus(bus, "encoding")),
     ]
     pairs = [(prev, nxt) for prev, nxt in itertools.pairwise(ids)]
 
@@ -170,7 +170,7 @@ def train_mlp_lm(
     tokenizer = TokenizerEncoderDecoder().fit(
         train,
         merges,
-        sink=_stage_bus(bus, "tokenising"),
+        bus=_stage_bus(bus, "tokenising"),
     )
     torch.manual_seed(seed)
     model = MlpLM(tokenizer, window=window, dimension=dimension, hidden=hidden).to(
@@ -180,7 +180,7 @@ def train_mlp_lm(
 
     ids = [
         model.start,
-        *tokenizer.encode(train, sink=_stage_bus(bus, "encoding")),
+        *tokenizer.encode(train, bus=_stage_bus(bus, "encoding")),
     ]
     contexts = [ids[max(0, i - window) : i] for i in range(1, len(ids))]
     targets = ids[1:]
@@ -262,7 +262,7 @@ def train_transformer_lm(
     tokenizer = TokenizerEncoderDecoder().fit(
         train,
         merges,
-        sink=_stage_bus(bus, "tokenising"),
+        bus=_stage_bus(bus, "tokenising"),
     )
     torch.manual_seed(seed)
     model = TransformerLM(
@@ -276,7 +276,7 @@ def train_transformer_lm(
 
     ids = [
         model.start,
-        *tokenizer.encode(train, sink=_stage_bus(bus, "encoding")),
+        *tokenizer.encode(train, bus=_stage_bus(bus, "encoding")),
     ]
     stream = torch.tensor(ids, dtype=torch.long, device=device)
     if len(stream) < 2:

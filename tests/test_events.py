@@ -108,16 +108,16 @@ def test_a_slow_listener_cannot_slow_the_emitter():
     bus = ListenerBus()
 
     def slow(event):
-        time.sleep(0.2)
+        time.sleep(0.05)
 
     bus.subscribe(slow)
 
     start = time.perf_counter()
-    for step in range(100):
-        bus.emit(TrainingEvent(step=step, total_steps=100))
+    for step in range(20):
+        bus.emit(TrainingEvent(step=step, total_steps=20))
     emit_seconds = time.perf_counter() - start
 
-    assert emit_seconds < 0.5
+    assert emit_seconds < 0.3
     bus.flush()
 
 
@@ -135,3 +135,17 @@ def test_a_dying_listener_does_not_break_the_bus():
     bus.flush()
 
     assert seen == [TrainingEvent(step=1, total_steps=10)]
+
+
+def test_listener_errors_keeps_only_the_last_twenty():
+    bus = ListenerBus()
+
+    def broken(event):
+        raise RuntimeError("boom")
+
+    bus.subscribe(broken)
+    for step in range(25):
+        bus.emit(TrainingEvent(step=step, total_steps=25))
+    bus.flush()
+
+    assert len(bus.listener_errors) == 20

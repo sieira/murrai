@@ -5,7 +5,21 @@ import time
 import pytest
 
 from murrai.domain.ports import Progress
-from murrai.domain.tokenizer import TokenizerEncoderDecoder, _replace
+from murrai.domain.tokenizer import TokenizerEncoderDecoder
+
+
+def _replace(ids, pair, new_id):
+    out = []
+    i = 0
+    while i < len(ids):
+        if i + 1 < len(ids) and (ids[i], ids[i + 1]) == pair:
+            out.append(new_id)
+            i += 2
+        else:
+            out.append(ids[i])
+            i += 1
+    return out
+
 
 CORPUS = "aaabdaaabac"
 
@@ -183,7 +197,7 @@ def test_encode_reports_progress_per_merge_replay():
         def emit(self, event):
             seen.append(event)
 
-    t.encode(CORPUS, sink=FakeBus())
+    t.encode(CORPUS, bus=FakeBus())
     assert [(event.step, event.total_steps) for event in seen] == [
         (1, 3),
         (2, 3),
@@ -201,7 +215,7 @@ def test_fit_publishes_progress_through_a_bus():
             self.events.append(event)
 
     bus = FakeBus()
-    t = TokenizerEncoderDecoder().fit(CORPUS, num_merges=3, sink=bus)
+    t = TokenizerEncoderDecoder().fit(CORPUS, num_merges=3, bus=bus)
     assert [(event.step, event.total_steps) for event in bus.events] == [
         (1, 3),
         (2, 3),

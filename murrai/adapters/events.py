@@ -41,4 +41,5 @@ class ListenerBus:
                     listener(event)
                 except Exception as error:
                     self.listener_errors.append(error)
+                    del self.listener_errors[:-20]
             self._queue.task_done()

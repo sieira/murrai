@@ -13,7 +13,7 @@ class TokenizerEncoderDecoder:
     def vocab_size(self):
         return 256 + len(self.merges)
 
-    def fit(self, text, num_merges, sink=None):
+    def fit(self, text, num_merges, bus=None):
         ids = array("i", iter(text.encode("utf-8")))
         counts = Counter(zip(ids, islice(ids, 1, None), strict=False))
         merges = []
@@ -23,17 +23,17 @@ class TokenizerEncoderDecoder:
             best = min(counts, key=lambda p: (-counts[p], p))
             merges.append(best)
             ids = _merge_best(ids, best, 256 + len(merges) - 1, counts)
-            if sink is not None:
-                sink.emit(Progress(len(merges), num_merges))
+            if bus is not None:
+                bus.emit(Progress(len(merges), num_merges))
         self.merges = tuple(merges)
         return self
 
-    def encode(self, text, sink=None):
+    def encode(self, text, bus=None):
         ids = array("i", iter(text.encode("utf-8")))
         for rank, pair in enumerate(self.merges):
             ids = _merge_best(ids, pair, 256 + rank, None)
-            if sink is not None:
-                sink.emit(Progress(rank + 1, len(self.merges)))
+            if bus is not None:
+                bus.emit(Progress(rank + 1, len(self.merges)))
         return list(ids)
 
     @property
@@ -51,19 +51,6 @@ class TokenizerEncoderDecoder:
     def decode(self, ids):
         vocab = _vocab(self.merges)
         return b"".join(vocab[i] for i in ids).decode("utf-8", errors="replace")
-
-
-def _replace(ids, pair, new_id):
-    out = []
-    i = 0
-    while i < len(ids):
-        if i + 1 < len(ids) and (ids[i], ids[i + 1]) == pair:
-            out.append(new_id)
-            i += 2
-        else:
-            out.append(ids[i])
-            i += 1
-    return out
 
 
 def _merge_best(ids, best, new_id, counts):

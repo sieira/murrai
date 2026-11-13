@@ -58,7 +58,7 @@ def test_different_seed_differs(tokenizer):
 def test_fit_reports_progress_chunk_by_chunk():
     text = "aabbaabb" * 50
     bus = FakeBus()
-    Bigram.fit(text, TokenizerEncoderDecoder(), sink=bus)
+    Bigram.fit(text, TokenizerEncoderDecoder(), bus=bus)
     marks = [(event.step, event.total_steps) for event in bus.events]
     assert marks[-1] == (len(text), len(text))
     counted = [counted for counted, _ in marks]
