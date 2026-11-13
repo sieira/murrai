@@ -5,6 +5,7 @@ from dataclasses import dataclass
 import torch
 import torch.nn.functional as F
 
+from murrai.application.checkpoints import Snapshot
 from murrai.application.ports import Corpus, EventBus, TrainingEvent
 from murrai.domain.bigram import Bigram
 from murrai.domain.mlp import MlpLM
@@ -65,9 +66,16 @@ def train_neural_bigram(
     final_learning_rate=0.1,
     bus: EventBus | None = None,
     keeper=None,
+    start: Snapshot | None = None,
 ):
     vocabulary = Vocabulary.from_text(train)
-    model = NeuralBigram(vocabulary)
+    if start is None:
+        model = NeuralBigram(vocabulary)
+    else:
+        model = NeuralBigram.from_state(
+            Vocabulary(start.chars),
+            start.state,
+        ).grown_to(vocabulary)
     ids = [vocabulary.size, *vocabulary.encode(train)]
     pairs = [(prev, nxt) for prev, nxt in itertools.pairwise(ids)]
 
@@ -130,6 +138,7 @@ def train_mlp_lm(
     device=None,
     bus: EventBus | None = None,
     keeper=None,
+    start: Snapshot | None = None,
 ):
     device = torch.device(device) if device is not None else torch.device("cpu")
     cut = int(len(text) * (1 - holdout))
@@ -137,9 +146,13 @@ def train_mlp_lm(
 
     vocabulary = Vocabulary.from_text(text)
     torch.manual_seed(seed)
-    model = MlpLM(vocabulary, window=window, dimension=dimension, hidden=hidden).to(
-        device,
-    )
+    if start is None:
+        model = MlpLM(vocabulary, window=window, dimension=dimension, hidden=hidden)
+    else:
+        model = MlpLM.from_state(Vocabulary(start.chars), start.state).grown_to(
+            vocabulary,
+        )
+    model = model.to(device)
     optimizer = torch.optim.SGD(model.parameters(), lr=learning_rate)
 
     ids = [model.start, *vocabulary.encode(train)]
@@ -214,6 +227,7 @@ def train_transformer_lm(
     device=None,
     bus: EventBus | None = None,
     keeper=None,
+    start: Snapshot | None = None,
 ):
     device = torch.device(device) if device is not None else torch.device("cpu")
     cut = int(len(text) * (1 - holdout))
@@ -221,13 +235,19 @@ def train_transformer_lm(
 
     vocabulary = Vocabulary.from_text(text)
     torch.manual_seed(seed)
-    model = TransformerLM(
-        vocabulary,
-        depth=depth,
-        dimension=dimension,
-        max_time=max_time,
-        heads=heads,
-    ).to(device)
+    if start is None:
+        model = TransformerLM(
+            vocabulary,
+            depth=depth,
+            dimension=dimension,
+            max_time=max_time,
+            heads=heads,
+        )
+    else:
+        model = TransformerLM.from_state(Vocabulary(start.chars), start.state).grown_to(
+            vocabulary,
+        )
+    model = model.to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
 
     ids = [model.start, *vocabulary.encode(train)]
