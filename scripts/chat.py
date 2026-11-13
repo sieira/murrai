@@ -23,6 +23,7 @@ def main():
         session,
         commands=lambda: chat_commands(corpus, seed=seed, store=store),
         observer=ChatLog("chat.log"),
+        load=lambda name: load_checkpoint_session(store, seed, name),
     )
 
 

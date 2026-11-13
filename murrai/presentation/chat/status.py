@@ -126,7 +126,7 @@ def _train_in_process(command, connection):
 
     try:
         built = command.build(on_event=on_event)
-        connection.send(("done", built))
+        connection.send(("done", built.kind if built is not None else None))
     except Exception as error:
         connection.send(("failed", str(error)))
     finally:

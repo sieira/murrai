@@ -4,7 +4,7 @@ import time
 import pytest
 
 from murrai.adapters.checkpoint import FileCheckpointStore
-from murrai.composition.chat import chat_commands
+from murrai.composition.chat import chat_commands, load_checkpoint_session
 from murrai.presentation.chat.lanes import ChatLog
 from murrai.presentation.chat.status import TrainingStatus, spawn_training
 
@@ -38,8 +38,11 @@ def test_a_training_runs_in_its_own_process_and_reports_over_a_pipe(tmp_path):
     assert "[train] retrain neural bigram 20/20" in lanes
     assert lanes[-1] == "[train] retrain neural bigram finished"
     assert store.names() == ["neural-bigram"]
-    assert len(delivered) == 1
-    assert delivered[0].kind == "neural-bigram"
+    assert delivered == ["neural-bigram"]
+    session = load_checkpoint_session(store, seed=0, name=delivered[0])
+    session.extend_user("a")
+    probabilities = [p for _, p in session.dice()]
+    assert pytest.approx(sum(probabilities)) == 1.0
 
 
 def test_a_training_that_cannot_leave_the_process_is_reported_failed():
@@ -69,9 +72,9 @@ def test_the_counted_bigram_trains_in_a_process_and_swaps_in(tmp_path):
     spawn_training(command, status, delivered.append)
     _wait_for(log, "finished")
 
-    assert len(delivered) == 1
+    assert delivered == ["counted-bigram"]
     assert store.names() == ["counted-bigram"]
-    session = delivered[0]
+    session = load_checkpoint_session(store, seed=0, name=delivered[0])
     session.extend_user("a")
     probabilities = [p for _, p in session.dice()]
     assert pytest.approx(sum(probabilities)) == 1.0

@@ -179,6 +179,7 @@ def run_chat(
     output=None,
     spawn=spawn_training,
     observer=SILENT,
+    load=None,
 ):
     chat = GhostChat(session)
     suggestions = GhostSuggestions(chat)
@@ -202,10 +203,12 @@ def run_chat(
         buffer.text = next_session.text
         buffer.cursor_position = len(next_session.text)
 
-    def schedule_swap(built):
+    def schedule_swap(name):
+        if load is None:
+            return
         with contextlib.suppress(RuntimeError):
             # the app can quit before a build lands
-            app.loop.call_soon_threadsafe(lambda: swap(built))
+            app.loop.call_soon_threadsafe(lambda: swap(load(name)))
 
     editor_keys = KeyBindings()
 
