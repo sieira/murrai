@@ -84,13 +84,25 @@ class _Forcing:
         return row
 
 
-def test_the_die_renders_a_partial_utf8_token_as_replacement_characters():
+def test_the_die_renders_a_partial_utf8_token_as_byte_escapes():
     tokenizer = TokenizerEncoderDecoder(merges=((0xC3, 0x41),))
     model = Bigram.fit("ab", tokenizer)
     session = ChatSession(model, seed=0)
     session.extend_user("a")
     dice = session.dice()
-    assert "�A" in [piece for piece, _ in dice]
+    assert "\\xc3A" in [piece for piece, _ in dice]
+
+
+def test_token_labels_are_all_distinct():
+    tokenizer = TokenizerEncoderDecoder(merges=((0xC3, 0x41), (0xEF, 0x41)))
+    assert len(set(tokenizer.labels)) == tokenizer.vocab_size
+
+
+def test_labels_keep_valid_text_and_escape_invalid_bytes():
+    tokenizer = TokenizerEncoderDecoder(merges=((0xC3, 0xA9),))
+    assert tokenizer.labels[ord("a")] == "a"
+    assert tokenizer.labels[256] == "é"
+    assert tokenizer.labels[ord("\x80")] == "\\x80"
 
 
 def test_rollout_renders_a_partial_utf8_token_without_crashing():
@@ -109,7 +121,7 @@ class Recording:
 
     def probs(self, context_ids):
         self.contexts.append(list(context_ids))
-        return [0.5, 0.5]
+        return [1 / self.tokenizer.vocab_size] * self.tokenizer.vocab_size
 
 
 def test_the_die_feeds_the_whole_story_to_the_port():

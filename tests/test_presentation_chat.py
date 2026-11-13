@@ -100,11 +100,12 @@ def test_accept_rest_lands_the_whole_suggestion(chat):
 
 
 def test_the_die_bar_marks_what_tab_will_accept(chat):
-    ghost = chat.suggestions("a")
+    ids, ghost = chat.roll("a")
     chat.sync("a")
-    bar = chat.die_bar("a", ghost)
+    bar = chat.die_bar("a", ids[0])
     text = plain_text(bar)
     assert chat.session.text
+    assert ghost
     assert "»" in text
     assert "%" in text
 

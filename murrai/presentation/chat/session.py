@@ -19,6 +19,10 @@ class ChatSession:
     def text(self) -> str:
         return self._model.tokenizer.decode(self._ids)
 
+    @property
+    def labels(self):
+        return self._model.tokenizer.labels
+
     def truncate(self, keep: int) -> None:
         self._ids = self._ids[:keep]
         self._origins = self._origins[:keep]
@@ -43,13 +47,16 @@ class ChatSession:
     def _dice(self, ids):
         row = [float(p) for p in self._model.probs(list(ids))]
         pairs = sorted(
-            zip(self._model.tokenizer.pieces, row, strict=False),
+            zip(self._model.tokenizer.labels, row, strict=True),
             key=lambda entry: entry[1],
             reverse=True,
         )
         return pairs
 
     def rollout(self, text: str, n: int) -> str:
+        return self.rollout_ids(text, n)[1]
+
+    def rollout_ids(self, text: str, n: int) -> tuple[list[int], str]:
         ids = list(self._model.tokenizer.encode(text))
         pieces = self._model.tokenizer.pieces
         out = []
@@ -58,7 +65,7 @@ class ChatSession:
             index = self._sample(row)
             ids.append(index)
             out.append(pieces[index])
-        return "".join(out)
+        return ids, "".join(out)
 
     def _sample(self, row):
         r = self._rng.random() * sum(row)

@@ -84,11 +84,16 @@ class GhostChat:
             return ""
         return self.session.rollout(buffer_text, self.ghost_chars)
 
-    def die_bar(self, buffer_text: str, ghost: str = ""):
+    def roll(self, buffer_text: str) -> tuple[list[int], str]:
+        if self.session is None:
+            return [], ""
+        return self.session.rollout_ids(buffer_text, self.ghost_chars)
+
+    def die_bar(self, buffer_text: str, next_id: int | None = None):
         if self.session is None:
             return []
         dice = self.session.preview(buffer_text)
-        hit = _ghost_piece([piece for piece, _ in dice], ghost)
+        hit = self.session.labels[next_id] if next_id is not None else None
         shown = dice[:TOP]
         fragments = []
         for piece, p in shown:
@@ -103,31 +108,27 @@ class GhostChat:
         return fragments
 
 
-def _ghost_piece(pieces, ghost):
-    matches = [piece for piece in pieces if piece and ghost.startswith(piece)]
-    return max(matches, key=len) if matches else None
-
-
 class GhostSuggestions(AutoSuggest):
     def __init__(self, chat: GhostChat):
         self._chat = chat
-        self._cache: dict[str, str] = {}
+        self._cache: dict[str, tuple[str, int | None]] = {}
 
-    def _roll_for(self, context: str) -> str:
+    def _roll_for(self, context: str) -> tuple[str, int | None]:
         if context not in self._cache:
-            roll = self._chat.suggestions(context)
-            if not roll:
-                self._cache[context] = ""
-                return ""
+            ids, roll = self._chat.roll(context)
+            first = ids[0] if ids else None
             for offset in range(len(roll) + 1):
-                self._cache[context + roll[:offset]] = roll[offset:]
+                self._cache[context + roll[:offset]] = (roll[offset:], first)
         return self._cache[context]
 
     def real_for(self, context: str) -> str:
-        return self._roll_for(context)
+        return self._roll_for(context)[0]
+
+    def first_id_for(self, context: str) -> int | None:
+        return self._roll_for(context)[1]
 
     def get_suggestion(self, buffer, document):
-        roll = self._roll_for(document.text)
+        roll = self.real_for(document.text)
         if not roll:
             return None
         return Suggestion(roll.replace("\n", "↵"))
@@ -160,7 +161,7 @@ def story_fragments(session, tail_lines=None):
 
 
 def _die_fragments(chat, suggestions, buffer):
-    return chat.die_bar(buffer.text, suggestions.real_for(buffer.text))
+    return chat.die_bar(buffer.text, suggestions.first_id_for(buffer.text))
 
 
 def status_line(status, model_kind=None):

@@ -32,10 +32,15 @@ class TokenizerEncoderDecoder:
 
     @property
     def pieces(self):
+        return self._render("replace")
+
+    @property
+    def labels(self):
+        return self._render("backslashreplace")
+
+    def _render(self, errors):
         vocab = _vocab(self.merges)
-        return tuple(
-            vocab[i].decode("utf-8", errors="replace") for i in range(len(vocab))
-        )
+        return tuple(vocab[i].decode("utf-8", errors=errors) for i in range(len(vocab)))
 
     def decode(self, ids):
         vocab = _vocab(self.merges)
