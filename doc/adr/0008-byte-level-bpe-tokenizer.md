@@ -1,47 +1,35 @@
-# ADR-0008: A byte-level BPE tokenizer replaces the char vocabulary
+# ADR-0008: Text is tokenized by byte-level BPE
 
 - Status: Accepted
 - Date: 2026-11-13
 
 ## Context
 
-Phases 2 and 3 built the vocabulary from the corpus: one id per distinct
-character. Two failures follow. Text outside the corpus cannot be encoded
-at all — an unknown character stops the run. And one token per character
-is the longest possible encoding, spending the context window on nothing.
-Phase 4 (issue #6) replaces this with a tokenizer learned from the corpus,
-in the minbpe style. That is also where GPT-2, our ADR-0004 target, sits.
+The model reads ids from a fixed table, so text becomes ids first. The
+table must be complete: every string the user can type encodes, whatever
+the training corpus held. And the id sequences must be as short as the
+corpus allows: the context window holds meaning, not padding.
 
 ## Decision
 
-- The char vocabulary is replaced by a byte-level BPE tokenizer, the
-  `TokenizerEncoderDecoder` domain type. The base vocabulary is the 256
-  byte values, so every string encodes; nothing is unknown.
-- Training repeatedly merges the most frequent adjacent pair (ties broken
-  deterministically). The ordered merge table is the learned vocabulary;
-  its size is 256 plus the number of merges.
-- Encoding replays the merges in the order they were learned. Decoding
-  concatenates each id's byte sequence, so decoding an encoding returns
-  the original string, for any string.
-- Training, encoding, and decoding are separate operations.
-- Models consume the tokenizer. Checkpoints store the merge table instead
-  of the character list. Old char-based checkpoints become unreadable;
-  accepted, the project is pre-1.0.
-- The number of merges is the one knob. Training runs default to 300.
+- The `TokenizerEncoderDecoder` (murrai/domain/tokenizer.py) turns text
+  into ids and back. Its base vocabulary is the 256 byte values, so every
+  string encodes.
+- `fit` learns an ordered merge table: it repeatedly merges the most
+  frequent adjacent pair (ties broken deterministically) into a new id.
+  The vocabulary is the 256 bytes plus one id per merge.
+- `encode` turns text into UTF-8 bytes and replays the merges in the
+  order they were learned. `decode` concatenates each id's byte sequence.
+  Decoding an encoding returns the original string, for any string.
+- Training, encoding, and decoding are separate operations. Models take
+  the tokenizer; checkpoints store the merge table. The number of merges
+  is the vocabulary-size knob; training runs default to 300.
 
 ## Consequences
 
-- Measured at 300 merges on the demo corpus
-  (scripts/tokenizer_density.py): 3.2x denser than char-level on the
-  training corpus, 2.1x on unseen text.
-- Encoding cost grows with the number of merges times the sequence
-  length. Fine at this scale; revisited before fitting thousands of
-  merges on the full corpus.
-- The chat must render single-token bytes that are not valid UTF-8 on
-  their own; how is decided in code.
-- The neural bigram's convergence test compares the trained table against
-  the counted one. Its bar is relative to the uniform baseline, not an
-  absolute distance: under BPE the counted rows are estimated from fewer
-  examples over more classes, and descent lands near the data rather than
-  on the noisy table.
-- The char vocabulary class is deleted, not deprecated.
+- Measured at 300 merges (scripts/tokenizer_density.py): English prose
+  encodes 3.2x denser than one-token-per-character; unseen text 2.1x.
+- Encoding cost grows with merges times sequence length; fine at this
+  scale, revisited before fitting thousands of merges on the full corpus.
+- A single token may hold bytes that are not valid UTF-8 on their own;
+  decoding and display render them with replacement characters.
