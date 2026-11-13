@@ -76,6 +76,8 @@ class FileCheckpointStore:
                 corpus=record.settings.corpus,
                 seed=record.settings.seed,
             )
+            if record.settings.corpus_chars is not None:
+                data["corpus_chars"] = record.settings.corpus_chars
         if record.gradient:
             data.update(
                 steps=record.gradient.steps,
@@ -110,6 +112,7 @@ class FileCheckpointStore:
                     saved_at=data["saved_at"],
                     corpus=data["corpus"],
                     seed=data["seed"],
+                    corpus_chars=data.get("corpus_chars"),
                 )
                 if "saved_at" in data
                 else None

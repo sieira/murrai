@@ -18,7 +18,9 @@ list, the weights, and a record of its run. The record is a frozen
 dataclass, `CheckpointRecord`. The store keeps it as a small JSON file
 beside the weights file, so reading the record never opens the
 weights. The record carries the run's settings (`saved_at` as ISO time
-in UTC, `corpus`, and `seed`), and, when the run produced them, a
+in UTC, `corpus`, `seed`, and `corpus_chars`, the characters of text
+the run trained on, written when a size cap was applied), and, when
+the run produced them, a
 gradient run (`steps`, `batch`, `learning_rate`, and `final_loss`, the
 last loss in the curve, written once the curve is known) and
 `held_out_perplexity`. The counted bigram has no gradient run; the
