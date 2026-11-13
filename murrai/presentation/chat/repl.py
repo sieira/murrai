@@ -34,6 +34,7 @@ from murrai.presentation.chat.status import (
 GHOST_CHARS = 20
 TOP = 5
 STORY_TAIL_LINES = 20
+ESC_FLUSH = 0.1
 PANEL_WIDTH = 36
 CURSOR_GREEN = "\x1b]12;#00ff00\x07"
 CURSOR_RESET = "\x1b]112\x07"
@@ -153,28 +154,30 @@ class GhostSuggestions(AutoSuggest):
 def story_fragments(session, tail_lines=None):
     if session is None:
         return []
-    segments = session.segments()
+    lines = []
+    for segment, origin in session.segments():
+        for index, piece in enumerate(segment.split("\n")):
+            lines.append((piece, origin, index > 0))
     if tail_lines is not None:
-        kept = []
-        lines_left = tail_lines
-        for segment, origin in reversed(segments):
-            pieces = segment.split("\n")
-            take = pieces[::-1] if lines_left >= len(pieces) else pieces[-lines_left:]
-            for piece in reversed(take):
-                kept.append((origin, piece))
-            lines_left -= len(pieces)
-            if lines_left <= 0:
-                break
-        segments = [(text, origin) for origin, text in reversed(kept)]
+        lines = lines[-tail_lines:]
     fragments = []
-    for segment, origin in segments:
+    for index, (text, origin, continues) in enumerate(lines):
+        if index and continues:
+            fragments.append(("", "\n"))
         style = "class:generated" if origin == "generated" else ""
-        fragments.append((style, segment))
+        fragments.append((style, text))
     return fragments
 
 
 def _die_fragments(chat, suggestions, buffer):
     return chat.die_bar(buffer.text, suggestions.real_for(buffer.text))
+
+
+def _story_tail(window):
+    info = window.render_info
+    if info is None:
+        return STORY_TAIL_LINES
+    return max(info.window_height, 1)
 
 
 def status_line(status, model_kind=None):
@@ -389,7 +392,7 @@ def run_chat(
     story = Window(
         FormattedTextControl(
             lambda: (
-                story_fragments(chat.session, tail_lines=STORY_TAIL_LINES)
+                story_fragments(chat.session, tail_lines=_story_tail(story))
                 if chat.session
                 else [("class:hint", "no model yet; ctrl-p opens commands")]
             ),
@@ -427,6 +430,7 @@ def run_chat(
         input=input,
         output=output,
     )
+    app.ttimeoutlen = ESC_FLUSH
     status.redraw = app.invalidate
     if session is None:
         panel.open()

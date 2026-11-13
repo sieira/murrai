@@ -1,3 +1,6 @@
+import threading
+import time
+
 from prompt_toolkit.input.defaults import create_pipe_input
 from prompt_toolkit.output import DummyOutput
 
@@ -49,3 +52,33 @@ def test_the_die_bar_shows_a_newline_row_as_the_break_mark():
 
     assert "↵" in text
     assert "\n" not in text
+
+
+def test_escape_answers_quickly_even_with_the_chord_sequences():
+    from murrai.presentation.chat.lanes import ChatLog
+
+    log = ChatLog()
+    with create_pipe_input() as pipe:
+
+        def feed():
+            time.sleep(0.3)
+            pipe.send_text("\x10")
+            time.sleep(0.1)
+            pipe.send_text("\x1b")
+            time.sleep(1.2)
+            pipe.send_text("\x03")
+
+        thread = threading.Thread(target=feed)
+        thread.start()
+        run_chat(_newline_session(), input=pipe, output=DummyOutput(), observer=log)
+        thread.join(timeout=10)
+
+    stamps = {}
+    for line in log.lines:
+        stamp, text = line.split(" ", 1)
+        if text.startswith("[panel] opened"):
+            stamps.setdefault("opened", float(stamp))
+        if text == "[panel] closed":
+            stamps.setdefault("closed", float(stamp))
+    assert "closed" in stamps
+    assert stamps["closed"] - stamps["opened"] < 0.5
