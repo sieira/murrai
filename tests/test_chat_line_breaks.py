@@ -25,6 +25,18 @@ def test_shift_enter_breaks_the_line_and_enter_still_commits():
     assert session.segments() == [("ab\nab", "entered")]
 
 
+def test_alt_enter_breaks_the_line_and_enter_still_commits():
+    session = _newline_session()
+
+    with create_pipe_input() as pipe:
+        pipe.send_text("ab\x1b\rab\r\x03")
+        returned = run_chat(session, input=pipe, output=DummyOutput())
+
+    assert returned is session
+    assert session.text == "ab\nab"
+    assert session.segments() == [("ab\nab", "entered")]
+
+
 def _newline_heavy_chat():
     model = Bigram.fit("a\na\n", Vocabulary.from_text("a\n"))
     return GhostChat(ChatSession(model, 0))

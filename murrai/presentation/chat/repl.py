@@ -332,6 +332,7 @@ def run_chat(
             chat.sync(buffer.text)
 
     @editor_keys.add("escape", "[", "1", "3", ";", "2", "u")
+    @editor_keys.add("escape", "c-m")
     def _(event):
         buffer.insert_text("\n")
 
