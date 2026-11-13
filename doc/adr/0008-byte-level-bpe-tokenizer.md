@@ -6,9 +6,9 @@
 ## Context
 
 The model reads ids from a fixed table, so text becomes ids first. The
-table must be complete: every string the user can type encodes, whatever
-the training corpus held. And the id sequences must be as short as the
-corpus allows: the context window holds meaning, not padding.
+table must be complete. Every string the user can type encodes, whatever
+the training corpus held. The id sequences must also be as short as the
+corpus allows. The context window holds meaning, not padding.
 
 ## Decision
 
@@ -23,12 +23,12 @@ corpus allows: the context window holds meaning, not padding.
   Decoding an encoding returns the original string, for any string.
 - Training, encoding, and decoding are separate operations. Models take
   the tokenizer; checkpoints store the merge table. The number of merges
-  is the vocabulary-size knob; training runs default to 300.
+  sets the vocabulary size; training runs default to 300.
 
 ## Consequences
 
 - Measured at 300 merges (scripts/tokenizer_density.py): English prose
-  encodes 3.2x denser than one-token-per-character; unseen text 2.1x.
+  encodes 3.2x denser than one token per character; unseen text 2.1x.
 - Encoding cost grows with merges times sequence length; fine at this
   scale, revisited before fitting thousands of merges on the full corpus.
 - A single token may hold bytes that are not valid UTF-8 on their own;
