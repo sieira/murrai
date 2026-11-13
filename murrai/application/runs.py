@@ -85,6 +85,14 @@ def train_neural_bigram(
     return NeuralTrainingResult(model=model, loss_curve=loss_curve)
 
 
+def training_device(prefer_mps=True):
+    if torch.cuda.is_available():
+        return torch.device("cuda")
+    if prefer_mps and torch.backends.mps.is_available():
+        return torch.device("mps")
+    return torch.device("cpu")
+
+
 def plateau_rate(since_best, rate, patience, shrink):
     if since_best >= patience:
         return rate * shrink

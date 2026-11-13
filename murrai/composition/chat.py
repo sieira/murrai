@@ -8,6 +8,7 @@ from murrai.application.runs import (
     train_mlp_lm,
     train_neural_bigram,
     train_transformer_lm,
+    training_device,
 )
 from murrai.presentation.chat.panel import Command
 from murrai.presentation.chat.session import ChatSession
@@ -53,6 +54,7 @@ def mlp_from_directory(directory, seed=0, steps=10000, batch=256, bus=None):
         window=8,
         dimension=32,
         hidden=256,
+        device=training_device(prefer_mps=False),
         bus=bus,
     )
 
@@ -66,6 +68,7 @@ def gpt_from_directory(directory, seed=0, steps=2000, batch=256, bus=None):
         depth=4,
         dimension=64,
         max_time=64,
+        device=training_device(prefer_mps=True),
         bus=bus,
     )
 
