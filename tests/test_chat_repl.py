@@ -601,3 +601,123 @@ def test_a_second_tab_takes_a_fresh_ghost():
     two = _chat_with_tabs(2)
 
     assert len(two.text) > len(one.text)
+
+
+def _broken_line_session(text):
+    return ChatSession(Bigram.fit(text, TokenizerEncoderDecoder()), 0)
+
+
+def test_the_story_renders_typed_line_breaks_as_lines():
+    from murrai.presentation.chat.repl import story_fragments
+
+    session = _broken_line_session("ab\ncd")
+    session.extend_user("ab\ncd")
+
+    fragments = story_fragments(session)
+
+    assert "".join(text for _, text in fragments) == "ab\ncd"
+
+
+def test_the_story_tail_keeps_the_last_lines_intact():
+    from murrai.presentation.chat.repl import story_fragments
+
+    session = _broken_line_session("ab\ncd\nef")
+    session.extend_user("ab\ncd\nef")
+
+    fragments = story_fragments(session, tail_lines=2)
+
+    assert "".join(text for _, text in fragments) == "cd\nef"
+
+
+class _ScreenOutput(DummyOutput):
+    def __init__(self):
+        self.chunks = []
+        self.snapshots = []
+        self._calls = 0
+
+    def get_size(self):
+        self._calls += 1
+        from prompt_toolkit.data_structures import Size
+
+        return Size(rows=40, columns=80 + self._calls)
+
+    def write(self, data):
+        self.chunks.append(data)
+
+    def flush(self):
+        if self.chunks:
+            self.snapshots.append("".join(self.chunks))
+            self.chunks = []
+
+
+def _wait_for_row(output, text, seconds=10):
+    deadline = time.monotonic() + seconds
+    while time.monotonic() < deadline:
+        large = [s for s in output.snapshots if len(s) > 1000]
+        if large:
+            shown = [row.strip("│ \r") for row in large[-1].split("\r\n")]
+            if text in shown:
+                return large[-1]
+        time.sleep(0.05)
+    raise AssertionError(f"no row {text!r} showed up on the screen")
+
+
+def test_the_story_fills_the_box_with_one_row_per_line():
+    session = _broken_line_session("\n".join("abcdefghijkl"))
+    session.extend_user("\n".join("abcdefghijkl"))
+    output = _ScreenOutput()
+    with create_pipe_input() as pipe:
+        failures = []
+
+        def chat():
+            try:
+                run_chat(session, input=pipe, output=output)
+            except BaseException as error:
+                failures.append(error)
+
+        thread = threading.Thread(target=chat)
+        thread.start()
+        full = _wait_for_row(output, "a")
+        pipe.send_text("\x03")
+        thread.join(timeout=10)
+    if failures:
+        raise failures[0]
+
+    shown = [row.strip("│ \r") for row in full.split("\r\n")]
+    for letter in "abcde":
+        assert letter in shown
+
+
+def test_the_story_box_uses_its_height_not_a_fixed_twenty_lines():
+    first = "\n".join("abcd")
+    session = _broken_line_session(
+        "abcd"
+        + "\n"
+        + "e\nf\ng\nh\ni\nj\nk\nl\nm\nn\no\np\nq\nr\ns\nt\nu\nv\nw\nx\ny\nz",
+    )
+    session.extend_user(first)
+    output = _ScreenOutput()
+    with create_pipe_input() as pipe:
+        failures = []
+
+        def chat():
+            try:
+                run_chat(session, input=pipe, output=output)
+            except BaseException as error:
+                failures.append(error)
+
+        thread = threading.Thread(target=chat)
+        thread.start()
+        _wait_for_row(output, "d")
+        sequence = "\x1b[13;2u"
+        typed = "".join(sequence + letter for letter in "fghijklmnopqrstuvwxyz")
+        pipe.send_text("e" + typed + "\r")
+        full = _wait_for_row(output, "f")
+        pipe.send_text("\x03")
+        thread.join(timeout=10)
+    if failures:
+        raise failures[0]
+
+    shown = [row.strip("│ \r") for row in full.split("\r\n")]
+    visible = [c for c in "abcdefghijklmnopqrstuvwx" if c in shown]
+    assert len(visible) >= 21

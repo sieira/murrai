@@ -35,7 +35,9 @@ from murrai.presentation.chat.status import (
 GHOST_CHARS = 20
 TOP = 5
 STORY_TAIL_LINES = 20
+ESC_FLUSH = 0.1
 PANEL_WIDTH = 36
+BREAK = "↵"
 CURSOR_GREEN = "\x1b]12;#00ff00\x07"
 CURSOR_RESET = "\x1b]112\x07"
 TOP_WEIGHT = 3
@@ -107,10 +109,12 @@ class GhostChat:
         for piece, p in shown:
             mark = "»" if piece == hit else " "
             style = "class:die-hit" if piece == hit else "class:die-row"
-            fragments.append((style, f" {mark} {piece} {p:6.1%}"))
+            shown_piece = piece.replace("\n", BREAK)
+            fragments.append((style, f" {mark} {shown_piece} {p:6.1%}"))
         if hit is not None and hit not in [piece for piece, _ in shown]:
             p = next(p for piece, p in dice if piece == hit)
-            fragments.append(("class:die-hit", f" » {hit} {p:6.1%}"))
+            marked = hit.replace("\n", BREAK)
+            fragments.append(("class:die-hit", f" » {marked} {p:6.1%}"))
         if len(dice) > TOP:
             fragments.append(("class:more", f"   ... {len(dice) - TOP} more"))
         return fragments
@@ -139,7 +143,7 @@ class GhostSuggestions(AutoSuggest):
         roll = self.real_for(document.text)
         if not roll:
             return None
-        return Suggestion(roll.replace("\n", "↵"))
+        return Suggestion(roll.replace("\n", BREAK))
 
     def forget(self) -> None:
         self._cache.clear()
@@ -148,28 +152,30 @@ class GhostSuggestions(AutoSuggest):
 def story_fragments(session, tail_lines=None):
     if session is None:
         return []
-    segments = session.segments()
+    lines = []
+    for segment, origin in session.segments():
+        for index, piece in enumerate(segment.split("\n")):
+            lines.append((piece, origin, index > 0))
     if tail_lines is not None:
-        kept = []
-        lines_left = tail_lines
-        for segment, origin in reversed(segments):
-            pieces = segment.split("\n")
-            take = pieces[::-1] if lines_left >= len(pieces) else pieces[-lines_left:]
-            for piece in reversed(take):
-                kept.append((origin, piece))
-            lines_left -= len(pieces)
-            if lines_left <= 0:
-                break
-        segments = [(text, origin) for origin, text in reversed(kept)]
+        lines = lines[-tail_lines:]
     fragments = []
-    for segment, origin in segments:
+    for index, (text, origin, continues) in enumerate(lines):
+        if index and continues:
+            fragments.append(("", "\n"))
         style = "class:generated" if origin == "generated" else ""
-        fragments.append((style, segment))
+        fragments.append((style, text))
     return fragments
 
 
 def _die_fragments(chat, suggestions, buffer):
     return chat.die_bar(buffer.text, suggestions.first_id_for(buffer.text))
+
+
+def _story_tail(window):
+    info = window.render_info
+    if info is None:
+        return STORY_TAIL_LINES
+    return max(info.window_height, 1)
 
 
 def status_line(status, model_kind=None):
@@ -323,6 +329,11 @@ def run_chat(
         if chat.session is not None:
             chat.sync(buffer.text)
 
+    @editor_keys.add("escape", "[", "1", "3", ";", "2", "u")
+    @editor_keys.add("escape", "c-m")
+    def _(event):
+        buffer.insert_text("\n")
+
     panel_keys = KeyBindings()
 
     @panel_keys.add("down")
@@ -376,7 +387,7 @@ def run_chat(
     story = Window(
         FormattedTextControl(
             lambda: (
-                story_fragments(chat.session, tail_lines=STORY_TAIL_LINES)
+                story_fragments(chat.session, tail_lines=_story_tail(story))
                 if chat.session
                 else [("class:hint", "no model yet; ctrl-p opens commands")]
             ),
@@ -414,6 +425,7 @@ def run_chat(
         input=input,
         output=output,
     )
+    app.ttimeoutlen = ESC_FLUSH
     status.redraw = app.invalidate
     if session is None:
         panel.open()
