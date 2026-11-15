@@ -9,7 +9,7 @@ from prompt_toolkit.output import DummyOutput
 from prompt_toolkit.widgets import Dialog
 
 from murrai.domain.bigram import Bigram
-from murrai.domain.vocabulary import Vocabulary
+from murrai.domain.tokenizer import TokenizerEncoderDecoder
 from murrai.presentation.chat import ChatSession, Command, run_chat
 from murrai.presentation.chat.form import Field, FormOverlay, TrainingForm
 from murrai.presentation.chat.panel import CommandPanel
@@ -19,7 +19,7 @@ from murrai.presentation.chat.status import TrainingStatus
 
 def _story_session(text="hello"):
     session = ChatSession(
-        Bigram.fit(text, Vocabulary.from_text(text)),
+        Bigram.fit(text, TokenizerEncoderDecoder()),
         0,
     )
     session.extend_user(text)
