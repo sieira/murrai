@@ -6,11 +6,10 @@
 ## Context
 
 A checkpoint holds a model kind, the tokenizer's merge list, and the
-weights (ADR-0008). We want a checkpoint to tell its run's story: when
-it was trained, on which corpus, with which settings, and how well the
-model did. The chat menu shows a load command for every checkpoint,
-and we want each command to carry those facts instead of one generic
-line.
+weights (ADR-0008). We want a checkpoint to record when it was
+trained, on which corpus, with which settings, and how well the model
+did. The chat menu shows a load command for every checkpoint, and we
+want each command to carry those facts instead of one generic line.
 
 ## Decision
 
@@ -23,28 +22,27 @@ weights. Its fields, each written when the run produced them:
 `seed`, `steps`, `batch`, `learning_rate`, `final_loss` (the last loss
 in the curve), and `held_out_perplexity`. The counted bigram has no
 steps and no loss curve; the neural bigram has no held-out
-perplexity. A field the run did not produce reads as none.
+perplexity. A field the run did not produce is empty.
 
-The record is assembled in composition, where the settings and the run
-result live. A trainer hands its keeper the finished model, as before;
+Composition assembles the record because it holds the settings and the
+run result. A trainer hands its keeper the finished model, as before;
 the builder wraps that keeper to add the settings it knows, and the
 session writes the record again once the result exists, so the run
 numbers join it. Both writes happen inside the training process,
 before anything crosses the pipe to the chat (ADR-0005).
 
-A checkpoint is also a starting point: a gradient trainer may rebuild
-its weights from one and train on. The tokenizer travels unchanged and
-no new merging is fitted; the learning rate and the plateau schedule
-come from the new run. A call whose shape settings contradict the
-checkpoint is rejected: the checkpoint keeps its own shape. The
-counted bigram has no gradient steps, so it always counts from
-scratch.
+A checkpoint is also a starting point. A gradient trainer may take one
+as its starting point, rebuild the weights, and keep training. The
+tokenizer travels unchanged, and the new run fits no merge list. The
+learning rate and the plateau schedule come from the new run. The
+trainer rejects a call whose shape settings contradict the checkpoint;
+the checkpoint keeps its own shape. The counted bigram has no gradient
+steps, so it always counts from scratch.
 
 ## Consequences
 
 - The weights file is written once. The record file is written twice
   at the end of a run: once with the settings, once when the run
   numbers are known.
-- A run whose metrics fail keeps its checkpoint, and its record keeps
-  the settings while missing the numbers the failed metrics would
-  have supplied.
+- A run whose metrics fail keeps its checkpoint. The record keeps the
+  settings and misses the run numbers.
