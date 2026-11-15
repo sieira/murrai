@@ -35,12 +35,8 @@ from murrai.presentation.chat.status import (
 GHOST_CHARS = 20
 TOP = 5
 STORY_TAIL_LINES = 20
-# How long the key parser waits to tell a lone escape from the start of a
-# chord. Low values answer fast but assume the bytes of one key sequence
-# arrive together, which holds for a local terminal.
 ESC_FLUSH = 0.1
 PANEL_WIDTH = 36
-# The mark the screen shows for a line break, in the ghost and the odds bar.
 BREAK = "↵"
 CURSOR_GREEN = "\x1b]12;#00ff00\x07"
 CURSOR_RESET = "\x1b]112\x07"
