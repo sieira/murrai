@@ -27,3 +27,15 @@ def test_mps_only_trains_the_gpt_but_not_the_mlp(monkeypatch):
     _torch_with(monkeypatch, cuda=False, mps=True)
     assert training_device(prefer_mps=True) == torch.device("mps")
     assert training_device(prefer_mps=False) == torch.device("cpu")
+
+
+def test_the_choice_can_force_the_cpu(monkeypatch):
+    _torch_with(monkeypatch, cuda=True, mps=True)
+    assert training_device(choice="cpu") == torch.device("cpu")
+
+
+def test_prefer_gpu_prefers_the_mps_even_for_the_mlp(monkeypatch):
+    _torch_with(monkeypatch, cuda=False, mps=True)
+    assert training_device(prefer_mps=False, choice="prefer gpu") == torch.device(
+        "mps",
+    )

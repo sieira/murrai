@@ -13,6 +13,16 @@ class Command:
     trains: bool = False
 
 
+@dataclass
+class FormCommand:
+    name: str
+    description: str
+    build: Callable
+    fields: tuple
+    bake: Callable
+    trains: bool = False
+
+
 class CommandPanel:
     def __init__(self, commands, observer=SILENT):
         self._commands = commands
