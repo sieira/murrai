@@ -35,8 +35,13 @@ from murrai.presentation.chat.status import (
 GHOST_CHARS = 20
 TOP = 5
 STORY_TAIL_LINES = 20
+# How long the key parser waits to tell a lone escape from the start of a
+# chord. Low values answer fast but assume the bytes of one key sequence
+# arrive together, which holds for a local terminal.
 ESC_FLUSH = 0.1
 PANEL_WIDTH = 36
+# The mark the screen shows for a line break, in the ghost and the odds bar.
+BREAK = "↵"
 CURSOR_GREEN = "\x1b]12;#00ff00\x07"
 CURSOR_RESET = "\x1b]112\x07"
 TOP_WEIGHT = 3
@@ -108,13 +113,12 @@ class GhostChat:
         for piece, p in shown:
             mark = "»" if piece == hit else " "
             style = "class:die-hit" if piece == hit else "class:die-row"
-            shown_piece = piece.replace("\n", "↵")
+            shown_piece = piece.replace("\n", BREAK)
             fragments.append((style, f" {mark} {shown_piece} {p:6.1%}"))
         if hit is not None and hit not in [piece for piece, _ in shown]:
             p = next(p for piece, p in dice if piece == hit)
-            fragments.append(
-                ("class:die-hit", f" » {hit.replace(chr(10), '↵')} {p:6.1%}"),
-            )
+            marked = hit.replace("\n", BREAK)
+            fragments.append(("class:die-hit", f" » {marked} {p:6.1%}"))
         if len(dice) > TOP:
             fragments.append(("class:more", f"   ... {len(dice) - TOP} more"))
         return fragments
@@ -143,7 +147,7 @@ class GhostSuggestions(AutoSuggest):
         roll = self.real_for(document.text)
         if not roll:
             return None
-        return Suggestion(roll.replace("\n", "↵"))
+        return Suggestion(roll.replace("\n", BREAK))
 
     def forget(self) -> None:
         self._cache.clear()

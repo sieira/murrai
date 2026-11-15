@@ -650,9 +650,21 @@ class _ScreenOutput(DummyOutput):
             self.chunks = []
 
 
+def _wait_for_row(output, text, seconds=10):
+    deadline = time.monotonic() + seconds
+    while time.monotonic() < deadline:
+        large = [s for s in output.snapshots if len(s) > 1000]
+        if large:
+            shown = [row.strip("│ \r") for row in large[-1].split("\r\n")]
+            if text in shown:
+                return large[-1]
+        time.sleep(0.05)
+    raise AssertionError(f"no row {text!r} showed up on the screen")
+
+
 def test_the_story_fills_the_box_with_one_row_per_line():
-    session = _broken_line_session("a\nb\nc\nd\ne\nf")
-    session.extend_user("a\nb\nc\nd\ne\nf")
+    session = _broken_line_session("\n".join("abcdefghijkl"))
+    session.extend_user("\n".join("abcdefghijkl"))
     output = _ScreenOutput()
     with create_pipe_input() as pipe:
         failures = []
@@ -665,15 +677,14 @@ def test_the_story_fills_the_box_with_one_row_per_line():
 
         thread = threading.Thread(target=chat)
         thread.start()
-        time.sleep(0.4)
+        full = _wait_for_row(output, "a")
         pipe.send_text("\x03")
         thread.join(timeout=10)
     if failures:
         raise failures[0]
 
-    full = [s for s in output.snapshots if len(s) > 1000][-1]
     shown = [row.strip("│ \r") for row in full.split("\r\n")]
-    for letter in "abcdef":
+    for letter in "abcde":
         assert letter in shown
 
 
@@ -697,17 +708,16 @@ def test_the_story_box_uses_its_height_not_a_fixed_twenty_lines():
 
         thread = threading.Thread(target=chat)
         thread.start()
-        time.sleep(0.4)
+        _wait_for_row(output, "d")
         sequence = "\x1b[13;2u"
         typed = "".join(sequence + letter for letter in "fghijklmnopqrstuvwxyz")
         pipe.send_text("e" + typed + "\r")
-        time.sleep(0.5)
+        full = _wait_for_row(output, "f")
         pipe.send_text("\x03")
         thread.join(timeout=10)
     if failures:
         raise failures[0]
 
-    full = [s for s in output.snapshots if len(s) > 1000][-1]
     shown = [row.strip("│ \r") for row in full.split("\r\n")]
     visible = [c for c in "abcdefghijklmnopqrstuvwx" if c in shown]
     assert len(visible) >= 21

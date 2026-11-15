@@ -79,8 +79,9 @@ binds (AGENTS.md header).
 - story: the chat's shared text; the characters the user typed plus the
   characters the model generated, in order.
 - turn: one exchange; the user types their part and presses Enter to
-  commit it (Tab takes the model's offered ghost instead), then the model
-  answers by sampling one character.
+  commit it (Tab takes the model's offered ghost instead; shift+enter or
+  alt+enter writes a line break instead), then the model answers by
+  sampling one character.
 - ghost: the model's offered continuation, shown grey after the cursor;
   the chat's private copy of the story predicts it, and Tab takes it.
 - sample: pick the next token from the predicted distribution.
