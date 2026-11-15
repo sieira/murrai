@@ -22,6 +22,7 @@ from murrai.presentation.chat.lanes import (
 )
 from murrai.presentation.chat.panel import (
     CommandPanel,
+    FormCommand,
     description_fragments,
     list_fragments,
 )
@@ -341,7 +342,7 @@ def run_chat(
         if command.trains:
             if load is None:
                 status.fail(command.name, "no load function")
-            elif command.fields:
+            elif isinstance(command, FormCommand):
                 open_form(command)
             else:
                 spawn(command, status, schedule_swap)

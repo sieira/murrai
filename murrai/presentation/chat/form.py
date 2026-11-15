@@ -1,3 +1,4 @@
+import math
 from collections.abc import Callable
 from dataclasses import dataclass
 
@@ -26,7 +27,10 @@ def _whole(text):
 
 
 def _number(text):
-    return float(text)
+    value = float(text)
+    if not math.isfinite(value):
+        raise ValueError("not a finite number")
+    return value
 
 
 @dataclass(frozen=True)
@@ -79,6 +83,10 @@ class Field:
     check: str = ""
     choices: tuple = ()
     shape: bool = False
+
+    def __post_init__(self):
+        if self.check and self.check not in RULES:
+            raise ValueError(f"unknown check {self.check!r}")
 
 
 def _rejection(field):

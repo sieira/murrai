@@ -58,6 +58,9 @@ binds (AGENTS.md header).
 - learning rate: the step size applied to parameters using their gradients.
 - epoch: one full pass over the training data.
 - checkpoint: a snapshot of all parameters, written by a CheckpointStore.
+- shape: the settings that fix a model's architecture — window,
+  dimension, hidden, depth, heads, max_time; a checkpoint keeps the
+  shape it was trained with (ADR-0009).
 - record: the part of a checkpoint that says when the run happened, on
   what, and how well; kept as a small file beside the weights.
 - training run: one execution of the training loop over a corpus.

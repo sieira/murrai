@@ -561,17 +561,6 @@ def test_the_gpt_command_offers_its_knobs(corpus):
     assert fields[-1].choices == ("fresh",)
 
 
-def test_the_baked_command_carries_the_values(corpus):
-    command = _command(corpus, "retrain neural bigram", seed=0, neural_steps=20)
-    values = {**_defaults(command), "steps": 5}
-
-    baked = command.bake(values)
-
-    assert baked.given == values
-    assert baked.name == command.name
-    assert baked.trains
-
-
 def test_the_baked_command_trains_with_the_given_values(corpus, monkeypatch):
     captured = _capturing(monkeypatch, "train_neural_bigram")
     command = _command(corpus, "retrain neural bigram", seed=0, neural_steps=20)
@@ -600,8 +589,6 @@ def test_a_chosen_savegame_flows_to_the_trainer_by_its_name(corpus, monkeypatch)
     trainer.build()
 
     baked = trainer.bake({**_defaults(trainer), "start_from": "neural-bigram"})
-    assert baked.given["start_from"] == "neural-bigram"
-    assert "start" not in baked.given
 
     baked.build()
     assert captured["kwargs"]["checkpoint"].kind == "neural-bigram"
@@ -652,7 +639,7 @@ def test_a_baked_command_survives_the_trip_to_another_process(corpus):
 
     revived = pickle.loads(pickle.dumps(baked))
 
-    assert revived.given == baked.given
+    assert revived.name == baked.name
     assert revived.build().rollout("a", 5)
 
 

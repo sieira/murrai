@@ -10,9 +10,9 @@ from prompt_toolkit.widgets import Dialog
 
 from murrai.domain.bigram import Bigram
 from murrai.domain.tokenizer import TokenizerEncoderDecoder
-from murrai.presentation.chat import ChatSession, Command, run_chat
+from murrai.presentation.chat import ChatSession, run_chat
 from murrai.presentation.chat.form import Field, FormOverlay, TrainingForm
-from murrai.presentation.chat.panel import CommandPanel
+from murrai.presentation.chat.panel import Command, CommandPanel, FormCommand
 from murrai.presentation.chat.repl import GhostChat, chat_layout
 from murrai.presentation.chat.status import TrainingStatus
 
@@ -33,14 +33,12 @@ def _form_command(fields=None):
             "knobs",
             lambda: None,
             trains=True,
-            given=values,
         )
 
-    return Command(
+    return FormCommand(
         "retrain x",
         "knobs",
         lambda: None,
-        trains=True,
         fields=fields
         or (
             Field("steps", "steps", "int", 2000, check="whole above zero"),
@@ -53,6 +51,7 @@ def _form_command(fields=None):
             ),
         ),
         bake=bake,
+        trains=True,
     )
 
 

@@ -11,9 +11,16 @@ class Command:
     description: str
     build: Callable
     trains: bool = False
-    fields: tuple = ()
-    bake: Callable | None = None
-    given: dict | None = None
+
+
+@dataclass
+class FormCommand:
+    name: str
+    description: str
+    build: Callable
+    fields: tuple
+    bake: Callable
+    trains: bool = False
 
 
 class CommandPanel:

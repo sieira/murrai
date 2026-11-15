@@ -1,3 +1,5 @@
+import pytest
+
 from murrai.presentation.chat.form import (
     Field,
     TrainingForm,
@@ -5,7 +7,7 @@ from murrai.presentation.chat.form import (
     label_fragments,
 )
 from murrai.presentation.chat.lanes import ChatLog
-from murrai.presentation.chat.panel import Command
+from murrai.presentation.chat.panel import Command, FormCommand
 
 
 def _fields():
@@ -25,12 +27,12 @@ def _fields():
 
 
 def _form(fields=None, remembered=None, observer=None):
-    command = Command(
+    command = FormCommand(
         "retrain x",
         "same memory",
         lambda: None,
-        trains=True,
         fields=tuple(_fields() if fields is None else fields),
+        bake=lambda values: Command("retrain x", "same memory", lambda: None),
     )
     return TrainingForm(command, remembered=remembered, observer=observer)
 
@@ -314,3 +316,21 @@ def test_the_selected_choice_highlights_from_the_bracket_only():
         ("class:selected", "[fresh]"),
         ("", " char-gpt"),
     ]
+
+
+def test_a_field_rejects_an_unknown_check_at_construction():
+    with pytest.raises(ValueError):
+        Field("steps", "steps", "int", 2000, check="above zero")
+
+
+def test_a_number_check_rejects_a_value_that_is_not_finite():
+    form = _form(
+        fields=(Field("rate", "rate", "float", 1.0, check="number above zero"),),
+    )
+    form.open()
+    form.set_text("rate", "1e999")
+
+    values = form.accept()
+
+    assert values is None
+    assert form.visible

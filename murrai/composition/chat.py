@@ -20,7 +20,7 @@ from murrai.application.runs import (
     training_device,
 )
 from murrai.presentation.chat.form import FRESH, START_FROM, Field
-from murrai.presentation.chat.panel import Command
+from murrai.presentation.chat.panel import Command, FormCommand
 from murrai.presentation.chat.session import ChatSession
 
 
@@ -97,7 +97,7 @@ def _keeping(keeper, settings):
     return keep
 
 
-def _start_snapshot(store, values):
+def _checkpoint_snapshot(store, values):
     if store is None:
         return None
     name = values.get(START_FROM, FRESH)
@@ -113,6 +113,27 @@ def _device(values, prefer_mps):
     )
 
 
+def _settings(values):
+    return {
+        "steps": values["steps"],
+        "batch": values["batch"],
+        "learning_rate": values["learning_rate"],
+    }
+
+
+def _trainer_kwargs(values, seed, checkpoint, settings, extra, shape):
+    kwargs = {
+        **settings,
+        "seed": values.get("seed", seed),
+        "checkpoint": checkpoint,
+        **extra,
+    }
+    if checkpoint is None:
+        kwargs.update(merges=values["merges"])
+        kwargs.update((name, values[name]) for name in shape)
+    return kwargs
+
+
 def _run_counted(directory, seed, store, values, bus=None, keeper=None):
     return train_bigram(
         DirTextCorpus(directory),
@@ -124,94 +145,63 @@ def _run_counted(directory, seed, store, values, bus=None, keeper=None):
 
 
 def _run_neural(directory, seed, store, values, bus=None, keeper=None):
-    settings = {
-        "steps": values["steps"],
-        "batch": values["batch"],
-        "learning_rate": values["learning_rate"],
-    }
-    checkpoint = _start_snapshot(store, values)
-    kwargs = {
-        "steps": values["steps"],
-        "batch": values["batch"],
-        "learning_rate": values["learning_rate"],
-        "final_learning_rate": values["final_learning_rate"],
-        "seed": values.get("seed", seed),
-        "checkpoint": checkpoint,
-    }
-    if checkpoint is None:
-        kwargs.update(merges=values["merges"])
+    checkpoint = _checkpoint_snapshot(store, values)
     return train_neural_bigram(
         DirTextCorpus(directory).text(),
         bus=bus,
-        keeper=_keeping(keeper, settings),
-        **kwargs,
+        keeper=_keeping(keeper, _settings(values)),
+        **_trainer_kwargs(
+            values,
+            seed,
+            checkpoint,
+            _settings(values),
+            {"final_learning_rate": values["final_learning_rate"]},
+            (),
+        ),
     )
 
 
 def _run_mlp(directory, seed, store, values, bus=None, keeper=None):
-    settings = {
-        "steps": values["steps"],
-        "batch": values["batch"],
-        "learning_rate": values["learning_rate"],
-    }
-    checkpoint = _start_snapshot(store, values)
-    kwargs = {
-        "steps": values["steps"],
-        "batch": values["batch"],
-        "learning_rate": values["learning_rate"],
-        "patience": values["patience"],
-        "shrink": values["shrink"],
-        "holdout": values["holdout"],
-        "device": _device(values, prefer_mps=False),
-        "seed": values.get("seed", seed),
-        "checkpoint": checkpoint,
-    }
-    if checkpoint is None:
-        kwargs.update(
-            window=values["window"],
-            dimension=values["dimension"],
-            hidden=values["hidden"],
-            merges=values["merges"],
-        )
+    checkpoint = _checkpoint_snapshot(store, values)
     return train_mlp_lm(
         DirTextCorpus(directory).text(),
         bus=bus,
-        keeper=_keeping(keeper, settings),
-        **kwargs,
+        keeper=_keeping(keeper, _settings(values)),
+        **_trainer_kwargs(
+            values,
+            seed,
+            checkpoint,
+            _settings(values),
+            {
+                "patience": values["patience"],
+                "shrink": values["shrink"],
+                "holdout": values["holdout"],
+                "device": _device(values, prefer_mps=False),
+            },
+            ("window", "dimension", "hidden"),
+        ),
     )
 
 
 def _run_gpt(directory, seed, store, values, bus=None, keeper=None):
-    settings = {
-        "steps": values["steps"],
-        "batch": values["batch"],
-        "learning_rate": values["learning_rate"],
-    }
-    checkpoint = _start_snapshot(store, values)
-    kwargs = {
-        "steps": values["steps"],
-        "batch": values["batch"],
-        "learning_rate": values["learning_rate"],
-        "patience": values["patience"],
-        "shrink": values["shrink"],
-        "holdout": values["holdout"],
-        "device": _device(values, prefer_mps=True),
-        "seed": values.get("seed", seed),
-        "checkpoint": checkpoint,
-    }
-    if checkpoint is None:
-        kwargs.update(
-            depth=values["depth"],
-            dimension=values["dimension"],
-            heads=values["heads"],
-            max_time=values["max_time"],
-            merges=values["merges"],
-        )
+    checkpoint = _checkpoint_snapshot(store, values)
     return train_transformer_lm(
         DirTextCorpus(directory).text(),
         bus=bus,
-        keeper=_keeping(keeper, settings),
-        **kwargs,
+        keeper=_keeping(keeper, _settings(values)),
+        **_trainer_kwargs(
+            values,
+            seed,
+            checkpoint,
+            _settings(values),
+            {
+                "patience": values["patience"],
+                "shrink": values["shrink"],
+                "holdout": values["holdout"],
+                "device": _device(values, prefer_mps=True),
+            },
+            ("depth", "dimension", "heads", "max_time"),
+        ),
     )
 
 
@@ -229,7 +219,6 @@ def _bake_counted(directory, seed, store, clock, values):
             values,
         ),
         trains=True,
-        given=values,
     )
 
 
@@ -247,7 +236,6 @@ def _bake_neural(directory, seed, store, clock, values):
             values,
         ),
         trains=True,
-        given=values,
     )
 
 
@@ -265,7 +253,6 @@ def _bake_mlp(directory, seed, store, clock, values):
             values,
         ),
         trains=True,
-        given=values,
     )
 
 
@@ -283,7 +270,6 @@ def _bake_gpt(directory, seed, store, clock, values):
             values,
         ),
         trains=True,
-        given=values,
     )
 
 
@@ -418,13 +404,13 @@ def _gpt_fields(seed, store, steps):
 def _training_command(bake, directory, seed, store, clock, fields):
     defaults = {field.name: field.default for field in fields}
     baked = bake(directory, seed, store, clock, defaults)
-    return Command(
+    return FormCommand(
         baked.name,
         baked.description,
         baked.build,
-        trains=True,
         fields=fields,
         bake=partial(bake, directory, seed, store, clock),
+        trains=True,
     )
 
 

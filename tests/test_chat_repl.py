@@ -10,6 +10,7 @@ from murrai.domain.tokenizer import TokenizerEncoderDecoder
 from murrai.presentation.chat import ChatSession, Command, run_chat
 from murrai.presentation.chat.form import Field
 from murrai.presentation.chat.lanes import ChatLog
+from murrai.presentation.chat.panel import FormCommand
 from murrai.presentation.chat.repl import GhostChat, GhostSuggestions
 
 
@@ -323,23 +324,27 @@ def _steps_field(**extra):
     return Field("steps", "steps", "int", 2000, check="whole above zero", **extra)
 
 
+ACCEPTED = {}
+
+
 def _form_command(fields=None):
     def bake(values):
+        ACCEPTED.clear()
+        ACCEPTED.update(values)
         return Command(
             "retrain x",
             "knobs",
             lambda: _form_session(),
             trains=True,
-            given=values,
         )
 
-    return Command(
+    return FormCommand(
         "retrain x",
         "knobs",
         lambda: None,
-        trains=True,
         fields=fields or (_steps_field(),),
         bake=bake,
+        trains=True,
     )
 
 
@@ -406,7 +411,7 @@ def test_the_form_spawns_the_command_with_the_edited_values():
         _form_chat([_form_command()], spawn)(pipe)
 
     assert len(spawned) == 1
-    assert spawned[0].given == {"steps": 5}
+    assert ACCEPTED == {"steps": 5}
     assert spawned[0].name == "retrain x"
     assert spawned[0].trains
 
@@ -429,7 +434,8 @@ def test_the_form_remembers_edited_values_for_the_session():
         pipe.send_text("\x03")
         _form_chat([_form_command()], spawn)(pipe)
 
-    assert [run.given for run in spawned] == [{"steps": 5}, {"steps": 5}]
+    assert ACCEPTED == {"steps": 5}
+    assert len(spawned) == 2
 
 
 def test_a_bad_value_keeps_the_form_open_and_spawns_nothing():
@@ -489,7 +495,7 @@ def test_the_form_leaves_the_shape_out_of_a_savegame_run():
         pipe.send_text("\x03")
         _form_chat([_form_command(fields)], spawn)(pipe)
 
-    assert spawned[0].given == {"steps": 2000, "start_from": "char-gpt"}
+    assert ACCEPTED == {"steps": 2000, "start_from": "char-gpt"}
 
 
 def test_a_form_command_without_a_load_function_fails_at_the_pick():
@@ -547,7 +553,7 @@ def test_the_right_arrow_moves_to_the_next_choice():
         pipe.send_text("\x03")
         _form_chat([_form_command(fields)], spawn)(pipe)
 
-    assert spawned[0].given == {"steps": 2000, "start_from": "char-gpt"}
+    assert ACCEPTED == {"steps": 2000, "start_from": "char-gpt"}
 
 
 def test_the_left_arrow_moves_to_the_previous_choice():
@@ -580,4 +586,4 @@ def test_the_left_arrow_moves_to_the_previous_choice():
         pipe.send_text("\x03")
         _form_chat([_form_command(fields)], spawn)(pipe)
 
-    assert spawned[0].given == {"steps": 2000, "start_from": "fresh"}
+    assert ACCEPTED == {"steps": 2000, "start_from": "fresh"}
