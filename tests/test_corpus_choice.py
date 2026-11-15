@@ -74,7 +74,7 @@ def test_the_chosen_text_lands_in_the_run(tmp_path):
 
     counted.bake(_values(counted, text="philosophy")).build()
 
-    record = store.record("counted-bigram")
+    record = store.record("counted-bigram-philosophy")
     assert record.settings.corpus == str(tmp_path / "data" / "philosophy")
 
 
@@ -97,7 +97,7 @@ def test_the_chosen_text_trains_on_that_directory(tmp_path):
 
     counted.bake(_values(counted, text="philosophy")).build()
 
-    record = store.record("counted-bigram")
+    record = store.record("counted-bigram-philosophy")
     assert record.settings.corpus == str(tmp_path / "data" / "philosophy")
 
 
@@ -108,7 +108,7 @@ def test_the_default_text_keeps_the_configured_corpus(tmp_path):
 
     counted.bake(_values(counted)).build()
 
-    assert store.record("counted-bigram").settings.corpus == str(corpus)
+    assert store.record("counted-bigram-corpus").settings.corpus == str(corpus)
 
 
 def test_the_size_field_offers_the_caps(tmp_path):
@@ -177,8 +177,8 @@ def test_a_capped_counted_run_only_sees_the_capped_chars(tmp_path):
 
     counted.bake(_values(counted, size="100k")).build()
 
-    record = store.record("counted-bigram")
-    snapshot = store.load("counted-bigram")
+    record = store.record("counted-bigram-corpus")
+    snapshot = store.load("counted-bigram-corpus")
     pieces = TokenizerEncoderDecoder(snapshot.merges).pieces
     assert all("z" not in piece for piece in pieces[256:])
     assert record.settings.corpus_chars == 100000
@@ -235,7 +235,7 @@ def test_a_capped_counted_run_records_the_char_count_it_trained_on(tmp_path):
 
     counted.bake(_values(counted, size="100k")).build()
 
-    assert store.record("counted-bigram").settings.corpus_chars == 100000
+    assert store.record("counted-bigram-corpus").settings.corpus_chars == 100000
 
 
 def test_a_capped_neural_run_records_the_char_count_it_trained_on(tmp_path):
@@ -251,7 +251,7 @@ def test_a_capped_neural_run_records_the_char_count_it_trained_on(tmp_path):
 
     neural.bake(_values(neural, size="100k")).build()
 
-    assert store.record("neural-bigram").settings.corpus_chars == 100000
+    assert store.record("neural-bigram-corpus").settings.corpus_chars == 100000
 
 
 def test_an_uncapped_run_leaves_the_char_count_out_of_the_story(tmp_path):
@@ -261,7 +261,7 @@ def test_an_uncapped_run_leaves_the_char_count_out_of_the_story(tmp_path):
 
     counted.bake(_values(counted)).build()
 
-    assert store.record("counted-bigram").settings.corpus_chars is None
+    assert store.record("counted-bigram-corpus").settings.corpus_chars is None
 
 
 def test_the_form_accepts_a_chosen_text_and_size(tmp_path):
@@ -290,3 +290,13 @@ def test_a_missing_corpus_directory_still_builds_the_text_field(tmp_path):
 def _text_field_of(directory):
     counted = next(c for c in chat_commands(directory) if c.name == "counted bigram")
     return counted.fields[0]
+
+
+def test_a_checkpoint_s_name_carries_its_text(tmp_path):
+    corpus = _corpus_root(tmp_path, {"philosophy": "cddc" * 20})
+    store = InMemoryCheckpointStore()
+    counted = _command(corpus, "counted bigram", seed=0, store=store)
+
+    counted.bake(_values(counted, text="philosophy")).build()
+
+    assert store.names() == ["counted-bigram-philosophy"]

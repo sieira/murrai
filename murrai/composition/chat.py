@@ -43,6 +43,8 @@ def _load_description(record):
     parts = []
     if record.settings:
         parts.append(f"saved {_short_time(record.settings.saved_at)}")
+        if record.settings.corpus_chars is not None:
+            parts.append(f"{record.settings.corpus_chars // 1000}k chars")
     if record.gradient:
         parts.append(f"{record.gradient.steps} steps")
         if record.gradient.final_loss is not None:
@@ -73,12 +75,14 @@ def _trained_chat_session(run, directory, seed, store, clock, values, on_event=N
     if on_event is not None:
         bus.subscribe(on_event)
     kept = None
+    name = None
 
     def keep(model, settings):
-        nonlocal kept
+        nonlocal kept, name
         if store is None:
             return
-        store.save(model.kind, snapshot_of(model))
+        name = f"{model.kind}-{Path(directory).name}"
+        store.save(name, snapshot_of(model))
         kept = CheckpointRecord(
             settings=RunSettings(
                 saved_at=_saved_at(clock),
@@ -88,7 +92,7 @@ def _trained_chat_session(run, directory, seed, store, clock, values, on_event=N
             ),
             gradient=GradientRun(**settings) if settings else None,
         )
-        store.save_record(model.kind, kept)
+        store.save_record(name, kept)
 
     try:
         result = run(text, seed, store, values, bus=bus, keeper=keep)
@@ -103,8 +107,8 @@ def _trained_chat_session(run, directory, seed, store, clock, values, on_event=N
             kept = replace(kept, gradient=replace(kept.gradient, final_loss=final_loss))
         if perplexity is not None:
             kept = replace(kept, held_out_perplexity=perplexity)
-        store.save_record(result.model.kind, kept)
-    return ChatSession(result.model, seed)
+        store.save_record(name, kept)
+    return ChatSession(result.model, seed, checkpoint=name)
 
 
 def _keeping(keeper, settings):
@@ -220,74 +224,6 @@ def _run_gpt(text, seed, store, values, bus=None, keeper=None):
             },
             ("depth", "dimension", "heads", "max_time"),
         ),
-    )
-
-
-def _bake_counted(directory, seed, store, clock, values):
-    return Command(
-        "counted bigram",
-        "next-char odds tallied straight from the corpus",
-        partial(
-            _trained_chat_session,
-            _run_counted,
-            directory,
-            seed,
-            store,
-            clock,
-            values,
-        ),
-        trains=True,
-    )
-
-
-def _bake_neural(directory, seed, store, clock, values):
-    return Command(
-        "retrain neural bigram",
-        "same memory, trained by gradient descent",
-        partial(
-            _trained_chat_session,
-            _run_neural,
-            directory,
-            seed,
-            store,
-            clock,
-            values,
-        ),
-        trains=True,
-    )
-
-
-def _bake_mlp(directory, seed, store, clock, values):
-    return Command(
-        "retrain windowed mlp",
-        "eight tokens of memory through a hidden layer",
-        partial(
-            _trained_chat_session,
-            _run_mlp,
-            directory,
-            seed,
-            store,
-            clock,
-            values,
-        ),
-        trains=True,
-    )
-
-
-def _bake_gpt(directory, seed, store, clock, values):
-    return Command(
-        "retrain gpt",
-        "attention over the last sixty-four tokens",
-        partial(
-            _trained_chat_session,
-            _run_gpt,
-            directory,
-            seed,
-            store,
-            clock,
-            values,
-        ),
-        trains=True,
     )
 
 
@@ -453,15 +389,22 @@ def _gpt_fields(directory, seed, store, steps):
     )
 
 
-def _training_command(bake, directory, seed, store, clock, fields):
+def _training_command(name, description, run, directory, seed, store, clock, fields):
+    def bake(values):
+        return Command(
+            name,
+            description,
+            partial(_trained_chat_session, run, directory, seed, store, clock, values),
+            trains=True,
+        )
+
     defaults = {field.name: field.default for field in fields}
-    baked = bake(directory, seed, store, clock, defaults)
     return FormCommand(
-        baked.name,
-        baked.description,
-        baked.build,
+        name,
+        description,
+        bake(defaults).build,
         fields=fields,
-        bake=partial(bake, directory, seed, store, clock),
+        bake=bake,
         trains=True,
     )
 
@@ -470,7 +413,7 @@ def load_checkpoint_session(store, seed=0, name=None):
     if name is None:
         name = store.names()[-1]
     model = restore(store.load(name))
-    return ChatSession(model, seed)
+    return ChatSession(model, seed, checkpoint=name)
 
 
 def chat_commands(
@@ -495,7 +438,9 @@ def chat_commands(
     commands.extend(
         [
             _training_command(
-                _bake_counted,
+                "counted bigram",
+                "next-char odds tallied straight from the corpus",
+                _run_counted,
                 directory,
                 seed,
                 store,
@@ -503,7 +448,9 @@ def chat_commands(
                 _counted_fields(directory),
             ),
             _training_command(
-                _bake_neural,
+                "retrain neural bigram",
+                "same memory, trained by gradient descent",
+                _run_neural,
                 directory,
                 seed,
                 store,
@@ -511,7 +458,9 @@ def chat_commands(
                 _neural_fields(directory, seed, store, neural_steps),
             ),
             _training_command(
-                _bake_mlp,
+                "retrain windowed mlp",
+                "eight tokens of memory through a hidden layer",
+                _run_mlp,
                 directory,
                 seed,
                 store,
@@ -519,7 +468,9 @@ def chat_commands(
                 _mlp_fields(directory, seed, store, mlp_steps),
             ),
             _training_command(
-                _bake_gpt,
+                "retrain gpt",
+                "attention over the last sixty-four tokens",
+                _run_gpt,
                 directory,
                 seed,
                 store,
