@@ -11,7 +11,7 @@ from murrai.presentation.chat import ChatSession, Command, run_chat
 from murrai.presentation.chat.form import Field
 from murrai.presentation.chat.lanes import ChatLog
 from murrai.presentation.chat.panel import FormCommand
-from murrai.presentation.chat.repl import GhostChat, ShadowSuggestions
+from murrai.presentation.chat.repl import GhostChat, GhostSuggestions
 
 
 def _session(text="abab"):
@@ -249,9 +249,9 @@ def test_ghost_chat_takes_a_new_session():
     assert chat.session.text == ""
 
 
-def test_shadow_suggestions_forgets_the_old_model():
+def test_ghost_suggestions_forgets_the_old_model():
     chat = GhostChat(_session())
-    suggestions = ShadowSuggestions(chat)
+    suggestions = GhostSuggestions(chat)
     suggestions._roll_for("")
     assert suggestions._cache
 
@@ -260,7 +260,7 @@ def test_shadow_suggestions_forgets_the_old_model():
     assert suggestions._cache == {}
 
 
-def test_tab_takes_the_rest_of_the_shadow():
+def test_tab_takes_the_rest_of_the_ghost():
     session = _session()
     with create_pipe_input() as pipe:
         pipe.send_text("a\t\x03")
@@ -270,7 +270,7 @@ def test_tab_takes_the_rest_of_the_shadow():
     assert len(session.text) >= 10
 
 
-def test_enter_commits_the_typed_text_without_taking_the_shadow():
+def test_enter_commits_the_typed_text_without_taking_the_ghost():
     session = _session()
     with create_pipe_input() as pipe:
         pipe.send_text("ab\r\x03")
@@ -596,7 +596,7 @@ def _chat_with_tabs(count):
         return run_chat(session, input=pipe, output=DummyOutput())
 
 
-def test_a_second_tab_takes_a_fresh_shadow():
+def test_a_second_tab_takes_a_fresh_ghost():
     one = _chat_with_tabs(1)
     two = _chat_with_tabs(2)
 

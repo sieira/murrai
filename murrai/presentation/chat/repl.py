@@ -32,7 +32,7 @@ from murrai.presentation.chat.status import (
     status_fragments,
 )
 
-SHADOW_CHARS = 20
+GHOST_CHARS = 20
 TOP = 5
 STORY_TAIL_LINES = 20
 PANEL_WIDTH = 36
@@ -61,9 +61,9 @@ STYLE = Style.from_dict(
 
 
 class GhostChat:
-    def __init__(self, session, shadow_chars=SHADOW_CHARS):
+    def __init__(self, session, ghost_chars=GHOST_CHARS):
         self.session = session
-        self.shadow_chars = shadow_chars
+        self.ghost_chars = ghost_chars
         self._synced = ""
 
     def use(self, session):
@@ -82,20 +82,20 @@ class GhostChat:
         self.session.extend_user(buffer_text[common:])
         self._synced = buffer_text
 
-    def accept_rest(self, buffer_text: str, shadow: str) -> None:
+    def accept_rest(self, buffer_text: str, ghost: str) -> None:
         self.sync(buffer_text)
-        self.session.extend_generated(shadow)
+        self.session.extend_generated(ghost)
         self._synced = self.session.text
 
     def suggestions(self, buffer_text: str) -> str:
         if self.session is None:
             return ""
-        return self.session.rollout(buffer_text, self.shadow_chars)
+        return self.session.rollout(buffer_text, self.ghost_chars)
 
     def roll(self, buffer_text: str) -> tuple[list[int], str]:
         if self.session is None:
             return [], ""
-        return self.session.rollout_ids(buffer_text, self.shadow_chars)
+        return self.session.rollout_ids(buffer_text, self.ghost_chars)
 
     def die_bar(self, buffer_text: str, next_id: int | None = None):
         if self.session is None:
@@ -116,7 +116,7 @@ class GhostChat:
         return fragments
 
 
-class ShadowSuggestions(AutoSuggest):
+class GhostSuggestions(AutoSuggest):
     def __init__(self, chat: GhostChat):
         self._chat = chat
         self._cache: dict[str, tuple[str, int | None]] = {}
@@ -253,7 +253,7 @@ def run_chat(
     load=None,
 ):
     chat = GhostChat(session)
-    suggestions = ShadowSuggestions(chat)
+    suggestions = GhostSuggestions(chat)
     status = TrainingStatus(observer=observer)
     panel = CommandPanel(commands, observer)
     remembered: dict[str, dict] = {}
