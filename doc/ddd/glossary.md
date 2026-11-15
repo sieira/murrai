@@ -15,7 +15,7 @@ binds (AGENTS.md header).
 - one-hot: a vector of zeros with a single 1 marking one token id.
 - bigram: a model whose whole memory is the previous token; our baseline.
 - neural bigram: the same memory as a bigram, but its table is trained
-  by gradient descent on torch tensors instead of tallied (ADR-0009).
+  by gradient descent on torch tensors instead of tallied.
 - tokenizer: the `TokenizerEncoderDecoder`, turning text into tokens and
   back; byte-level BPE over 256 byte values (ADR-0008).
 - BPE: byte pair encoding; merges of the most frequent adjacent pairs,
@@ -48,8 +48,8 @@ binds (AGENTS.md header).
   gradient; the only training method we use.
 - autograd engine: code that computes every parameter's gradient for any
   computation, automatically; micrograd builds one (phase 1). It left
-  the training path when the neural bigram moved to torch (ADR-0009)
-  and remains as the phase's own tested artifact.
+  the training path when the neural bigram moved to torch and remains
+  as the phase's own tested artifact.
 - smoothing: counting a 1 before a 0 so nothing is impossible by
   construction.
 - held-out: a corpus slice kept out of training; perplexity is measured
