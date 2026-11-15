@@ -601,6 +601,8 @@ def test_a_second_tab_takes_a_fresh_ghost():
     two = _chat_with_tabs(2)
 
     assert len(two.text) > len(one.text)
+
+
 def _broken_line_session(text):
     return ChatSession(Bigram.fit(text, TokenizerEncoderDecoder()), 0)
 
@@ -709,4 +711,3 @@ def test_the_story_box_uses_its_height_not_a_fixed_twenty_lines():
     shown = [row.strip("│ \r") for row in full.split("\r\n")]
     visible = [c for c in "abcdefghijklmnopqrstuvwx" if c in shown]
     assert len(visible) >= 21
-
