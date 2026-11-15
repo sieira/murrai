@@ -316,7 +316,7 @@ def test_the_cursor_turns_green_while_chatting_and_resets_on_exit():
 
 
 def _form_session(text="abab5x"):
-    return ChatSession(Bigram.fit(text, Vocabulary.from_text(text)), 0)
+    return ChatSession(Bigram.fit(text, TokenizerEncoderDecoder()), 0)
 
 
 def _steps_field(**extra):

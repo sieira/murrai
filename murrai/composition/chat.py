@@ -129,17 +129,22 @@ def _run_neural(directory, seed, store, values, bus=None, keeper=None):
         "batch": values["batch"],
         "learning_rate": values["learning_rate"],
     }
+    start = _start_snapshot(store, values)
+    kwargs = {
+        "steps": values["steps"],
+        "batch": values["batch"],
+        "learning_rate": values["learning_rate"],
+        "final_learning_rate": values["final_learning_rate"],
+        "seed": values.get("seed", seed),
+        "start": start,
+    }
+    if start is None:
+        kwargs.update(merges=values["merges"])
     return train_neural_bigram(
         DirTextCorpus(directory).text(),
-        steps=values["steps"],
-        batch=values["batch"],
-        learning_rate=values["learning_rate"],
-        final_learning_rate=values["final_learning_rate"],
-        seed=values.get("seed", seed),
-        merges=values["merges"],
-        start=_start_snapshot(store, values),
         bus=bus,
         keeper=_keeping(keeper, settings),
+        **kwargs,
     )
 
 
@@ -149,23 +154,30 @@ def _run_mlp(directory, seed, store, values, bus=None, keeper=None):
         "batch": values["batch"],
         "learning_rate": values["learning_rate"],
     }
+    start = _start_snapshot(store, values)
+    kwargs = {
+        "steps": values["steps"],
+        "batch": values["batch"],
+        "learning_rate": values["learning_rate"],
+        "patience": values["patience"],
+        "shrink": values["shrink"],
+        "holdout": values["holdout"],
+        "device": _device(values, prefer_mps=False),
+        "seed": values.get("seed", seed),
+        "start": start,
+    }
+    if start is None:
+        kwargs.update(
+            window=values["window"],
+            dimension=values["dimension"],
+            hidden=values["hidden"],
+            merges=values["merges"],
+        )
     return train_mlp_lm(
         DirTextCorpus(directory).text(),
-        steps=values["steps"],
-        batch=values["batch"],
-        learning_rate=values["learning_rate"],
-        patience=values["patience"],
-        shrink=values["shrink"],
-        holdout=values["holdout"],
-        window=values["window"],
-        dimension=values["dimension"],
-        hidden=values["hidden"],
-        device=_device(values, prefer_mps=False),
-        seed=values.get("seed", seed),
-        merges=values["merges"],
-        start=_start_snapshot(store, values),
         bus=bus,
         keeper=_keeping(keeper, settings),
+        **kwargs,
     )
 
 
@@ -175,24 +187,31 @@ def _run_gpt(directory, seed, store, values, bus=None, keeper=None):
         "batch": values["batch"],
         "learning_rate": values["learning_rate"],
     }
+    start = _start_snapshot(store, values)
+    kwargs = {
+        "steps": values["steps"],
+        "batch": values["batch"],
+        "learning_rate": values["learning_rate"],
+        "patience": values["patience"],
+        "shrink": values["shrink"],
+        "holdout": values["holdout"],
+        "device": _device(values, prefer_mps=True),
+        "seed": values.get("seed", seed),
+        "start": start,
+    }
+    if start is None:
+        kwargs.update(
+            depth=values["depth"],
+            dimension=values["dimension"],
+            heads=values["heads"],
+            max_time=values["max_time"],
+            merges=values["merges"],
+        )
     return train_transformer_lm(
         DirTextCorpus(directory).text(),
-        steps=values["steps"],
-        batch=values["batch"],
-        learning_rate=values["learning_rate"],
-        patience=values["patience"],
-        shrink=values["shrink"],
-        holdout=values["holdout"],
-        depth=values["depth"],
-        dimension=values["dimension"],
-        heads=values["heads"],
-        max_time=values["max_time"],
-        device=_device(values, prefer_mps=True),
-        seed=values.get("seed", seed),
-        merges=values["merges"],
-        start=_start_snapshot(store, values),
         bus=bus,
         keeper=_keeping(keeper, settings),
+        **kwargs,
     )
 
 

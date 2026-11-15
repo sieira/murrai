@@ -464,6 +464,7 @@ def test_the_counted_command_only_asks_for_the_holdout(corpus):
 
     assert counted.fields == (
         Field("holdout", "holdout", "float", 0.1, check="from zero below one"),
+        Field("merges", "merges", "int", 300, check="whole above zero", shape=True),
     )
 
 
@@ -476,6 +477,7 @@ def test_the_neural_command_offers_its_knobs(corpus):
         ("learning_rate", "learning rate", "float", 3.0),
         ("final_learning_rate", "final learning rate", "float", 0.1),
         ("seed", "seed", "int", 0),
+        ("merges", "merges", "int", 300),
         ("start_from", "start from", "choice", "fresh"),
     ]
     assert fields[-1].choices == ("fresh",)
@@ -483,10 +485,10 @@ def test_the_neural_command_offers_its_knobs(corpus):
 
 def test_the_start_from_choice_lists_the_saved_models(corpus):
     store = InMemoryCheckpointStore()
-    store.save("char-gpt", Snapshot(kind="char-gpt", chars=("a", "b"), state={}))
+    store.save("gpt", Snapshot(kind="gpt", merges=(), state={}))
     store.save(
         "neural-bigram",
-        Snapshot(kind="neural-bigram", chars=("a", "b"), state={}),
+        Snapshot(kind="neural-bigram", merges=(), state={}),
     )
 
     field = _field(
@@ -498,7 +500,7 @@ def test_the_start_from_choice_lists_the_saved_models(corpus):
         store=store,
     )
 
-    assert field.choices == ("fresh", "char-gpt", "neural-bigram")
+    assert field.choices == ("fresh", "gpt", "neural-bigram")
 
 
 def test_the_mlp_command_offers_its_knobs(corpus):
@@ -516,14 +518,21 @@ def test_the_mlp_command_offers_its_knobs(corpus):
         ("holdout", "holdout", 0.1),
         ("seed", "seed", 0),
         ("device", "device", "auto"),
+        ("merges", "merges", 300),
         ("start_from", "start from", "fresh"),
     ]
-    assert [f.name for f in fields if f.shape] == ["window", "dimension", "hidden"]
-    assert fields[-2].choices == ("auto", "prefer gpu", "cpu")
+    assert [f.name for f in fields if f.shape] == [
+        "window",
+        "dimension",
+        "hidden",
+        "merges",
+    ]
+    assert fields[-3].choices == ("auto", "prefer gpu", "cpu")
+    assert fields[-1].choices == ("fresh",)
 
 
 def test_the_gpt_command_offers_its_knobs(corpus):
-    fields = _command(corpus, "retrain char gpt", seed=0, gpt_steps=20).fields
+    fields = _command(corpus, "retrain gpt", seed=0, gpt_steps=20).fields
 
     assert [(f.name, f.label, f.default) for f in fields] == [
         ("steps", "steps", 20),
@@ -538,6 +547,7 @@ def test_the_gpt_command_offers_its_knobs(corpus):
         ("holdout", "holdout", 0.1),
         ("seed", "seed", 0),
         ("device", "device", "auto"),
+        ("merges", "merges", 300),
         ("start_from", "start from", "fresh"),
     ]
     assert [f.name for f in fields if f.shape] == [
@@ -545,8 +555,10 @@ def test_the_gpt_command_offers_its_knobs(corpus):
         "dimension",
         "heads",
         "max_time",
+        "merges",
     ]
-    assert fields[-2].choices == ("auto", "prefer gpu", "cpu")
+    assert fields[-3].choices == ("auto", "prefer gpu", "cpu")
+    assert fields[-1].choices == ("fresh",)
 
 
 def test_the_baked_command_carries_the_values(corpus):
@@ -608,21 +620,29 @@ def test_a_saved_start_leaves_the_shape_to_the_savegame(corpus, monkeypatch):
     gpt_captured = _capturing(monkeypatch, "train_transformer_lm")
     mlp_captured = _capturing(monkeypatch, "train_mlp_lm")
     store = InMemoryCheckpointStore()
-    gpt = _command(corpus, "retrain char gpt", seed=0, gpt_steps=20, store=store)
+    gpt = _command(corpus, "retrain gpt", seed=0, gpt_steps=20, store=store)
     mlp = _command(corpus, "retrain windowed mlp", seed=0, mlp_steps=20, store=store)
     gpt.build()
     mlp.build()
 
     gpt.bake(
-        {**_defaults(gpt), "start_from": "char-gpt", "depth": 9, "max_time": 128},
+        {**_defaults(gpt), "start_from": "gpt", "depth": 9, "max_time": 128},
     ).build()
     mlp.bake(
         {**_defaults(mlp), "start_from": "windowed-mlp", "window": 3, "hidden": 9},
     ).build()
 
     for captured in (gpt_captured, mlp_captured):
-        assert captured["kwargs"]["start"].kind in ("char-gpt", "windowed-mlp")
-        for shape in ("depth", "dimension", "heads", "max_time", "window", "hidden"):
+        assert captured["kwargs"]["start"].kind in ("gpt", "windowed-mlp")
+        for shape in (
+            "depth",
+            "dimension",
+            "heads",
+            "max_time",
+            "window",
+            "hidden",
+            "merges",
+        ):
             assert shape not in captured["kwargs"]
 
 
@@ -642,7 +662,7 @@ def test_the_device_choice_picks_where_the_training_runs(corpus, monkeypatch):
     _stub_trainer(monkeypatch, "train_mlp_lm", mlp_captured)
     _stub_trainer(monkeypatch, "train_transformer_lm", gpt_captured)
     mlp = _command(corpus, "retrain windowed mlp", seed=0, mlp_steps=20)
-    gpt = _command(corpus, "retrain char gpt", seed=0, gpt_steps=20)
+    gpt = _command(corpus, "retrain gpt", seed=0, gpt_steps=20)
 
     mlp.bake(_defaults(mlp)).build()
     gpt.bake(_defaults(gpt)).build()
