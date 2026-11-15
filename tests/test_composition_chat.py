@@ -604,7 +604,7 @@ def test_a_chosen_savegame_flows_to_the_trainer_by_its_name(corpus, monkeypatch)
     assert "start" not in baked.given
 
     baked.build()
-    assert captured["kwargs"]["start"].kind == "neural-bigram"
+    assert captured["kwargs"]["checkpoint"].kind == "neural-bigram"
 
 
 def test_a_fresh_start_hands_the_trainer_no_snapshot(corpus, monkeypatch):
@@ -613,7 +613,7 @@ def test_a_fresh_start_hands_the_trainer_no_snapshot(corpus, monkeypatch):
 
     command.bake(_defaults(command)).build()
 
-    assert captured["kwargs"]["start"] is None
+    assert captured["kwargs"]["checkpoint"] is None
 
 
 def test_a_saved_start_leaves_the_shape_to_the_savegame(corpus, monkeypatch):
@@ -633,7 +633,7 @@ def test_a_saved_start_leaves_the_shape_to_the_savegame(corpus, monkeypatch):
     ).build()
 
     for captured in (gpt_captured, mlp_captured):
-        assert captured["kwargs"]["start"].kind in ("gpt", "windowed-mlp")
+        assert captured["kwargs"]["checkpoint"].kind in ("gpt", "windowed-mlp")
         for shape in (
             "depth",
             "dimension",

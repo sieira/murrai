@@ -96,7 +96,7 @@ def _reject_contradictory_shape(checkpoint, **knobs):
     mismatches = [
         f"{name}={value}"
         for name, value in knobs.items()
-        if value != checkpoint.state.get(name, value)
+        if value is not None and value != checkpoint.state.get(name, value)
     ]
     if mismatches:
         raise ValueError(
@@ -181,9 +181,9 @@ def train_mlp_lm(
     steps,
     batch,
     seed,
-    window=4,
-    dimension=16,
-    hidden=128,
+    window=None,
+    dimension=None,
+    hidden=None,
     learning_rate=1.0,
     patience=200,
     shrink=0.5,
@@ -207,11 +207,18 @@ def train_mlp_lm(
     )
     tokenizer = _checkpoint_tokenizer(train, merges, checkpoint, bus)
     if checkpoint is None:
-        model = MlpLM(tokenizer, window=window, dimension=dimension, hidden=hidden).to(
+        window = window or 4
+        model = MlpLM(
+            tokenizer,
+            window=window,
+            dimension=dimension or 16,
+            hidden=hidden or 128,
+        ).to(
             device,
         )
     else:
         model = MlpLM.from_state(tokenizer, checkpoint.state).to(device)
+        window = model.window
     optimizer = torch.optim.SGD(model.parameters(), lr=learning_rate)
 
     ids = [
@@ -278,10 +285,10 @@ def train_transformer_lm(
     steps,
     batch,
     seed,
-    depth=4,
-    dimension=64,
-    max_time=64,
-    heads=1,
+    depth=None,
+    dimension=None,
+    max_time=None,
+    heads=None,
     learning_rate=1e-3,
     patience=200,
     shrink=0.5,
@@ -306,15 +313,17 @@ def train_transformer_lm(
     )
     tokenizer = _checkpoint_tokenizer(train, merges, checkpoint, bus)
     if checkpoint is None:
+        max_time = max_time or 64
         model = TransformerLM(
             tokenizer,
-            depth=depth,
-            dimension=dimension,
+            depth=depth or 4,
+            dimension=dimension or 64,
             max_time=max_time,
-            heads=heads,
+            heads=heads or 1,
         ).to(device)
     else:
         model = TransformerLM.from_state(tokenizer, checkpoint.state).to(device)
+        max_time = model.max_time
     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
 
     ids = [

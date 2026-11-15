@@ -37,7 +37,8 @@ as its starting point, rebuild the weights, and keep training. The
 tokenizer travels unchanged, and the new run fits no merge list. The
 learning rate and the plateau schedule come from the new run. The
 trainer rejects a call whose shape settings contradict the checkpoint;
-the checkpoint keeps its own shape. The counted bigram has no gradient
+shape settings left out leave the shape to the checkpoint. The counted
+bigram has no gradient
 steps, so it always counts from scratch.
 
 ## Consequences

@@ -129,16 +129,16 @@ def _run_neural(directory, seed, store, values, bus=None, keeper=None):
         "batch": values["batch"],
         "learning_rate": values["learning_rate"],
     }
-    start = _start_snapshot(store, values)
+    checkpoint = _start_snapshot(store, values)
     kwargs = {
         "steps": values["steps"],
         "batch": values["batch"],
         "learning_rate": values["learning_rate"],
         "final_learning_rate": values["final_learning_rate"],
         "seed": values.get("seed", seed),
-        "start": start,
+        "checkpoint": checkpoint,
     }
-    if start is None:
+    if checkpoint is None:
         kwargs.update(merges=values["merges"])
     return train_neural_bigram(
         DirTextCorpus(directory).text(),
@@ -154,7 +154,7 @@ def _run_mlp(directory, seed, store, values, bus=None, keeper=None):
         "batch": values["batch"],
         "learning_rate": values["learning_rate"],
     }
-    start = _start_snapshot(store, values)
+    checkpoint = _start_snapshot(store, values)
     kwargs = {
         "steps": values["steps"],
         "batch": values["batch"],
@@ -164,9 +164,9 @@ def _run_mlp(directory, seed, store, values, bus=None, keeper=None):
         "holdout": values["holdout"],
         "device": _device(values, prefer_mps=False),
         "seed": values.get("seed", seed),
-        "start": start,
+        "checkpoint": checkpoint,
     }
-    if start is None:
+    if checkpoint is None:
         kwargs.update(
             window=values["window"],
             dimension=values["dimension"],
@@ -187,7 +187,7 @@ def _run_gpt(directory, seed, store, values, bus=None, keeper=None):
         "batch": values["batch"],
         "learning_rate": values["learning_rate"],
     }
-    start = _start_snapshot(store, values)
+    checkpoint = _start_snapshot(store, values)
     kwargs = {
         "steps": values["steps"],
         "batch": values["batch"],
@@ -197,9 +197,9 @@ def _run_gpt(directory, seed, store, values, bus=None, keeper=None):
         "holdout": values["holdout"],
         "device": _device(values, prefer_mps=True),
         "seed": values.get("seed", seed),
-        "start": start,
+        "checkpoint": checkpoint,
     }
-    if start is None:
+    if checkpoint is None:
         kwargs.update(
             depth=values["depth"],
             dimension=values["dimension"],
