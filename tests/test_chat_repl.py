@@ -587,3 +587,17 @@ def test_the_left_arrow_moves_to_the_previous_choice():
         _form_chat([_form_command(fields)], spawn)(pipe)
 
     assert ACCEPTED == {"steps": 2000, "start_from": "fresh"}
+
+
+def _chat_with_tabs(count):
+    session = _session()
+    with create_pipe_input() as pipe:
+        pipe.send_text("a" + "\t" * count + "\x03")
+        return run_chat(session, input=pipe, output=DummyOutput())
+
+
+def test_a_second_tab_takes_a_fresh_shadow():
+    one = _chat_with_tabs(1)
+    two = _chat_with_tabs(2)
+
+    assert len(two.text) > len(one.text)
