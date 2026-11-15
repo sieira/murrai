@@ -260,7 +260,7 @@ def test_ghost_suggestions_forgets_the_old_model():
     assert suggestions._cache == {}
 
 
-def test_tab_takes_the_rest_of_the_shadow():
+def test_tab_takes_the_rest_of_the_ghost():
     session = _session()
     with create_pipe_input() as pipe:
         pipe.send_text("a\t\x03")
@@ -270,7 +270,7 @@ def test_tab_takes_the_rest_of_the_shadow():
     assert len(session.text) >= 10
 
 
-def test_enter_commits_the_typed_text_without_taking_the_shadow():
+def test_enter_commits_the_typed_text_without_taking_the_ghost():
     session = _session()
     with create_pipe_input() as pipe:
         pipe.send_text("ab\r\x03")
@@ -587,3 +587,17 @@ def test_the_left_arrow_moves_to_the_previous_choice():
         _form_chat([_form_command(fields)], spawn)(pipe)
 
     assert ACCEPTED == {"steps": 2000, "start_from": "fresh"}
+
+
+def _chat_with_tabs(count):
+    session = _session()
+    with create_pipe_input() as pipe:
+        pipe.send_text("a" + "\t" * count + "\x03")
+        return run_chat(session, input=pipe, output=DummyOutput())
+
+
+def test_a_second_tab_takes_a_fresh_ghost():
+    one = _chat_with_tabs(1)
+    two = _chat_with_tabs(2)
+
+    assert len(two.text) > len(one.text)

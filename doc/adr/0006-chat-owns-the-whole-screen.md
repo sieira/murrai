@@ -17,8 +17,8 @@ together.
   cursor lives inside it. The cursor is a block, drawn green.
 - The story pane mirrors the session: typed text plain, generated text
   cyan, showing the tail. The write pane holds the live line with the
-  model's offered shadow after the cursor. Tab takes the whole shadow;
-  Enter commits the typed text alone and never takes the shadow.
+  model's offered ghost after the cursor. Tab takes the whole ghost;
+  Enter commits the typed text alone and never takes it.
 - ctrl-p opens a command panel on the right: a list of command names,
   moved with the arrow keys, with the highlighted command's description
   in a box below. The list is rebuilt each time the panel opens. Escape
