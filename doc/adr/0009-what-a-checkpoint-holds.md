@@ -32,6 +32,14 @@ session writes the record again once the result exists, so the run
 numbers join it. Both writes happen inside the training process,
 before anything crosses the pipe to the chat (ADR-0005).
 
+A checkpoint is also a starting point: a gradient trainer may rebuild
+its weights from one and train on. The tokenizer travels unchanged and
+no new merging is fitted; the learning rate and the plateau schedule
+come from the new run. A call whose shape settings contradict the
+checkpoint is rejected: the checkpoint keeps its own shape. The
+counted bigram has no gradient steps, so it always counts from
+scratch.
+
 ## Consequences
 
 - The weights file is written once. The record file is written twice
