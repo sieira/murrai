@@ -5,6 +5,7 @@ from pathlib import Path
 import pytest
 import torch
 
+from murrai.application.checkpoints import snapshot_of
 from murrai.application.runs import train_neural_bigram
 from murrai.domain.bigram import Bigram
 from murrai.domain.neural_bigram import NeuralBigram
@@ -85,3 +86,42 @@ def test_neural_bigram_generation_is_deterministic_and_decodes():
     first = model.generate(8, seed=3)
     assert first == model.generate(8, seed=3)
     assert len(first) >= 8
+
+
+def test_training_continues_from_a_snapshot():
+    first = train_neural_bigram("ab" * 400, steps=60, batch=64, seed=0)
+    second = train_neural_bigram(
+        "ab" * 400,
+        steps=60,
+        batch=64,
+        seed=0,
+        checkpoint=snapshot_of(first.model),
+    )
+    assert second.loss_curve[0] < first.loss_curve[0]
+    assert second.loss_curve[0] == pytest.approx(first.loss_curve[-1], abs=0.01)
+    assert second.loss_curve[-1] < second.loss_curve[0]
+
+
+def test_continuing_from_an_untrained_snapshot_repeats_the_fresh_run():
+    fresh = train_neural_bigram("ab" * 400, steps=20, batch=64, seed=0)
+    tokenizer = TokenizerEncoderDecoder().fit("ab" * 400, 300)
+    repeated = train_neural_bigram(
+        "ab" * 400,
+        steps=20,
+        batch=64,
+        seed=0,
+        checkpoint=snapshot_of(NeuralBigram(tokenizer)),
+    )
+    assert repeated.loss_curve == fresh.loss_curve
+
+
+def test_the_checkpoint_s_tokenizer_travels_unchanged():
+    first = train_neural_bigram("xy" * 400, steps=5, batch=64, seed=0)
+    second = train_neural_bigram(
+        "ab" * 400,
+        steps=5,
+        batch=64,
+        seed=0,
+        checkpoint=snapshot_of(first.model),
+    )
+    assert second.model.tokenizer.merges == first.model.tokenizer.merges

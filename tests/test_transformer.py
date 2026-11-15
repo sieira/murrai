@@ -3,6 +3,7 @@ import math
 import pytest
 import torch
 
+from murrai.application.checkpoints import snapshot_of
 from murrai.application.runs import train_transformer_lm
 from murrai.domain.tokenizer import TokenizerEncoderDecoder
 from murrai.domain.transformer import TransformerLM
@@ -224,3 +225,84 @@ def test_the_requested_device_trains_the_same_curve():
         device=torch.device("cpu"),
     )
     assert explicit.loss_curve == default.loss_curve
+
+
+def test_training_continues_from_a_snapshot():
+    first = train_transformer_lm(
+        "ab" * 200,
+        steps=40,
+        batch=8,
+        seed=0,
+        depth=1,
+        dimension=8,
+        max_time=8,
+    )
+    second = train_transformer_lm(
+        "ab" * 200,
+        steps=40,
+        batch=8,
+        seed=0,
+        depth=1,
+        dimension=8,
+        max_time=8,
+        checkpoint=snapshot_of(first.model),
+    )
+    assert second.loss_curve[0] < first.loss_curve[0]
+    assert second.loss_curve[0] == pytest.approx(first.loss_curve[-1], abs=0.05)
+    assert second.loss_curve[-1] < second.loss_curve[0]
+
+
+def test_continuing_from_an_untrained_snapshot_repeats_the_fresh_run():
+    torch.manual_seed(0)
+    tokenizer = TokenizerEncoderDecoder().fit("ab" * 200, 300)
+    fresh_model = TransformerLM(
+        tokenizer,
+        depth=1,
+        dimension=8,
+        max_time=8,
+    )
+    fresh = train_transformer_lm(
+        "ab" * 200,
+        steps=10,
+        batch=8,
+        seed=0,
+        depth=1,
+        dimension=8,
+        max_time=8,
+        holdout=0,
+        checkpoint=snapshot_of(fresh_model),
+    )
+    plain = train_transformer_lm(
+        "ab" * 200,
+        steps=10,
+        batch=8,
+        seed=0,
+        depth=1,
+        dimension=8,
+        max_time=8,
+        holdout=0,
+    )
+    assert fresh.loss_curve == plain.loss_curve
+
+
+def test_continuing_rejects_a_contradictory_shape():
+    first = train_transformer_lm(
+        "ab" * 200,
+        steps=5,
+        batch=8,
+        seed=0,
+        depth=1,
+        dimension=8,
+        max_time=8,
+    )
+    with pytest.raises(ValueError):
+        train_transformer_lm(
+            "ab" * 200,
+            steps=5,
+            batch=8,
+            seed=0,
+            depth=2,
+            dimension=8,
+            max_time=8,
+            checkpoint=snapshot_of(first.model),
+        )

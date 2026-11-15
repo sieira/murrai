@@ -131,13 +131,13 @@ def test_the_neural_checkpoint_records_its_info(corpus):
     ).build()
 
     record = store.record("neural-bigram")
-    assert record.saved_at == "2027-01-15T08:00:00+00:00"
-    assert record.corpus == str(corpus)
-    assert record.seed == 0
-    assert record.steps == 20
-    assert record.batch == 64
-    assert record.learning_rate == 3.0
-    assert isinstance(record.final_loss, float)
+    assert record.settings.saved_at == "2027-01-15T08:00:00+00:00"
+    assert record.settings.corpus == str(corpus)
+    assert record.settings.seed == 0
+    assert record.gradient.steps == 20
+    assert record.gradient.batch == 64
+    assert record.gradient.learning_rate == 3.0
+    assert isinstance(record.gradient.final_loss, float)
     assert record.held_out_perplexity is None
 
 
@@ -152,9 +152,8 @@ def test_the_counted_checkpoint_records_no_steps(corpus):
     ).build()
 
     record = store.record("counted-bigram")
-    assert record.saved_at == "2027-01-15T08:00:00+00:00"
-    assert record.steps is None
-    assert record.final_loss is None
+    assert record.settings.saved_at == "2027-01-15T08:00:00+00:00"
+    assert record.gradient is None
     assert isinstance(record.held_out_perplexity, float)
 
 
@@ -170,9 +169,9 @@ def test_the_mlp_checkpoint_records_its_info(corpus):
     ).build()
 
     record = store.record("windowed-mlp")
-    assert record.learning_rate == 0.5
-    assert record.steps == 20
-    assert record.batch == 256
+    assert record.gradient.learning_rate == 0.5
+    assert record.gradient.steps == 20
+    assert record.gradient.batch == 256
     assert isinstance(record.held_out_perplexity, float)
 
 
@@ -187,7 +186,7 @@ def test_the_gpt_checkpoint_records_its_info(corpus):
         clock=_clock_at_2027,
     ).build()
 
-    assert store.record("gpt").learning_rate == 0.001
+    assert store.record("gpt").gradient.learning_rate == 0.001
 
 
 def test_the_checkpoint_records_the_last_loss_of_the_run(corpus, monkeypatch):
@@ -210,7 +209,7 @@ def test_the_checkpoint_records_the_last_loss_of_the_run(corpus, monkeypatch):
     ).build()
 
     record = store.record("neural-bigram")
-    assert record.final_loss == captured["result"].loss_curve[-1]
+    assert record.gradient.final_loss == captured["result"].loss_curve[-1]
 
 
 def test_the_load_command_describes_the_checkpoint(corpus):
@@ -223,7 +222,7 @@ def test_the_load_command_describes_the_checkpoint(corpus):
         store=store,
         clock=_clock_at_2027,
     ).build()
-    final_loss = store.record("neural-bigram").final_loss
+    final_loss = store.record("neural-bigram").gradient.final_loss
 
     loader = _command(
         corpus,
@@ -342,8 +341,9 @@ def test_training_saves_the_model_before_the_metrics_run(tmp_path, monkeypatch):
     with pytest.raises(RuntimeError):
         command.build()
     assert store.names() == ["gpt"]
-    assert store.record("gpt").steps == 5
-    assert store.record("gpt").final_loss is None
+    gpt_record = store.record("gpt")
+    assert gpt_record.gradient.steps == 5
+    assert gpt_record.gradient.final_loss is None
 
 
 def test_the_retrain_command_trains_and_saves(corpus):

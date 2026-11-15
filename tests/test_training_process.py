@@ -39,8 +39,8 @@ def test_a_training_runs_in_its_own_process_and_reports_over_a_pipe(tmp_path):
     assert lanes[-1] == "[train] retrain neural bigram finished"
     assert store.names() == ["neural-bigram"]
     record = store.record("neural-bigram")
-    assert record.steps == 20
-    assert record.corpus == str(tmp_path)
+    assert record.gradient.steps == 20
+    assert record.settings.corpus == str(tmp_path)
     assert delivered == ["neural-bigram"]
     session = load_checkpoint_session(store, seed=0, name=delivered[0])
     session.extend_user("a")

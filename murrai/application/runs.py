@@ -5,6 +5,7 @@ from dataclasses import dataclass
 import torch
 import torch.nn.functional as F
 
+from murrai.application.checkpoints import Snapshot
 from murrai.application.ports import Corpus, EventBus, TrainingEvent
 from murrai.domain.bigram import Bigram
 from murrai.domain.mlp import MlpLM
@@ -18,7 +19,7 @@ class TrainingResult:
     model: Bigram
     train_chars: int
     held_out_chars: int
-    held_out_perplexity: float
+    held_out_perplexity: float | None
 
 
 @dataclass
@@ -75,8 +76,32 @@ def train_bigram(
         model=model,
         train_chars=len(train),
         held_out_chars=len(held_out),
-        held_out_perplexity=model.perplexity(held_out),
+        held_out_perplexity=model.perplexity(held_out) if held_out else None,
     )
+
+
+def _checkpoint_tokenizer(train, merges, checkpoint, bus):
+    if checkpoint is None:
+        return TokenizerEncoderDecoder().fit(
+            train,
+            merges,
+            bus=_stage_bus(bus, "tokenising"),
+        )
+    return TokenizerEncoderDecoder(checkpoint.merges)
+
+
+def _reject_contradictory_shape(checkpoint, **knobs):
+    if checkpoint is None:
+        return
+    mismatches = [
+        f"{name}={value}"
+        for name, value in knobs.items()
+        if value != checkpoint.state.get(name, value)
+    ]
+    if mismatches:
+        raise ValueError(
+            f"a checkpoint keeps its own shape; pass no {', '.join(mismatches)}",
+        )
 
 
 def train_neural_bigram(
@@ -89,13 +114,14 @@ def train_neural_bigram(
     bus: EventBus | None = None,
     keeper=None,
     merges: int = 300,
+    checkpoint: Snapshot | None = None,
 ):
-    tokenizer = TokenizerEncoderDecoder().fit(
-        train,
-        merges,
-        bus=_stage_bus(bus, "tokenising"),
-    )
-    model = NeuralBigram(tokenizer)
+    tokenizer = _checkpoint_tokenizer(train, merges, checkpoint, bus)
+    _reject_contradictory_shape(checkpoint)
+    if checkpoint is None:
+        model = NeuralBigram(tokenizer)
+    else:
+        model = NeuralBigram.from_state(tokenizer, checkpoint.state)
     ids = [
         tokenizer.vocab_size,
         *tokenizer.encode(train, bus=_stage_bus(bus, "encoding")),
@@ -143,7 +169,7 @@ class MlpTrainingResult:
     rate_curve: list[float]
     train_chars: int
     held_out_chars: int
-    held_out_perplexity: float
+    held_out_perplexity: float | None
 
 
 def train_mlp_lm(
@@ -162,20 +188,26 @@ def train_mlp_lm(
     bus: EventBus | None = None,
     keeper=None,
     merges: int = 300,
+    checkpoint: Snapshot | None = None,
 ):
     device = torch.device(device) if device is not None else torch.device("cpu")
     cut = int(len(text) * (1 - holdout))
     train, held_out = text[:cut], text[cut:]
 
-    tokenizer = TokenizerEncoderDecoder().fit(
-        train,
-        merges,
-        bus=_stage_bus(bus, "tokenising"),
-    )
     torch.manual_seed(seed)
-    model = MlpLM(tokenizer, window=window, dimension=dimension, hidden=hidden).to(
-        device,
+    _reject_contradictory_shape(
+        checkpoint,
+        window=window,
+        dimension=dimension,
+        hidden=hidden,
     )
+    tokenizer = _checkpoint_tokenizer(train, merges, checkpoint, bus)
+    if checkpoint is None:
+        model = MlpLM(tokenizer, window=window, dimension=dimension, hidden=hidden).to(
+            device,
+        )
+    else:
+        model = MlpLM.from_state(tokenizer, checkpoint.state).to(device)
     optimizer = torch.optim.SGD(model.parameters(), lr=learning_rate)
 
     ids = [
@@ -223,7 +255,7 @@ def train_mlp_lm(
         rate_curve=rate_curve,
         train_chars=len(train),
         held_out_chars=len(held_out),
-        held_out_perplexity=model.perplexity(held_out),
+        held_out_perplexity=model.perplexity(held_out) if held_out else None,
     )
 
 
@@ -234,7 +266,7 @@ class TransformerTrainingResult:
     rate_curve: list[float]
     train_chars: int
     held_out_chars: int
-    held_out_perplexity: float
+    held_out_perplexity: float | None
 
 
 def train_transformer_lm(
@@ -254,24 +286,31 @@ def train_transformer_lm(
     bus: EventBus | None = None,
     keeper=None,
     merges: int = 300,
+    checkpoint: Snapshot | None = None,
 ):
     device = torch.device(device) if device is not None else torch.device("cpu")
     cut = int(len(text) * (1 - holdout))
     train, held_out = text[:cut], text[cut:]
 
-    tokenizer = TokenizerEncoderDecoder().fit(
-        train,
-        merges,
-        bus=_stage_bus(bus, "tokenising"),
-    )
     torch.manual_seed(seed)
-    model = TransformerLM(
-        tokenizer,
+    _reject_contradictory_shape(
+        checkpoint,
         depth=depth,
         dimension=dimension,
         max_time=max_time,
         heads=heads,
-    ).to(device)
+    )
+    tokenizer = _checkpoint_tokenizer(train, merges, checkpoint, bus)
+    if checkpoint is None:
+        model = TransformerLM(
+            tokenizer,
+            depth=depth,
+            dimension=dimension,
+            max_time=max_time,
+            heads=heads,
+        ).to(device)
+    else:
+        model = TransformerLM.from_state(tokenizer, checkpoint.state).to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
 
     ids = [
@@ -323,5 +362,5 @@ def train_transformer_lm(
         rate_curve=rate_curve,
         train_chars=len(train),
         held_out_chars=len(held_out),
-        held_out_perplexity=model.perplexity(held_out),
+        held_out_perplexity=model.perplexity(held_out) if held_out else None,
     )

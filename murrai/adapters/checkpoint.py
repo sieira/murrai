@@ -1,12 +1,16 @@
 import json
 import os
 import tempfile
-from dataclasses import asdict
 from pathlib import Path
 
 import torch
 
-from murrai.application.checkpoints import CheckpointRecord, Snapshot
+from murrai.application.checkpoints import (
+    CheckpointRecord,
+    GradientRun,
+    RunSettings,
+    Snapshot,
+)
 
 
 def _state_to_cpu(state):
@@ -65,10 +69,27 @@ class FileCheckpointStore:
         )
 
     def save_record(self, name, record):
+        data = {}
+        if record.settings:
+            data.update(
+                saved_at=record.settings.saved_at,
+                corpus=record.settings.corpus,
+                seed=record.settings.seed,
+            )
+        if record.gradient:
+            data.update(
+                steps=record.gradient.steps,
+                batch=record.gradient.batch,
+                learning_rate=record.gradient.learning_rate,
+            )
+            if record.gradient.final_loss is not None:
+                data["final_loss"] = record.gradient.final_loss
+        if record.held_out_perplexity is not None:
+            data["held_out_perplexity"] = record.held_out_perplexity
         _written_atomically(
             self._root,
             self._record_path(name),
-            lambda file: file.write(json.dumps(asdict(record)).encode()),
+            lambda file: file.write(json.dumps(data).encode()),
         )
 
     def load(self, name):
@@ -82,7 +103,29 @@ class FileCheckpointStore:
         path = self._record_path(name)
         if not path.exists():
             return CheckpointRecord()
-        return CheckpointRecord(**json.loads(path.read_text()))
+        data = json.loads(path.read_text())
+        return CheckpointRecord(
+            settings=(
+                RunSettings(
+                    saved_at=data["saved_at"],
+                    corpus=data["corpus"],
+                    seed=data["seed"],
+                )
+                if "saved_at" in data
+                else None
+            ),
+            gradient=(
+                GradientRun(
+                    steps=data["steps"],
+                    batch=data["batch"],
+                    learning_rate=data["learning_rate"],
+                    final_loss=data.get("final_loss"),
+                )
+                if "steps" in data
+                else None
+            ),
+            held_out_perplexity=data.get("held_out_perplexity"),
+        )
 
     def names(self):
         return sorted(path.stem for path in self._root.glob("*.pt"))

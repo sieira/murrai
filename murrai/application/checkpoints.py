@@ -15,14 +15,24 @@ class Snapshot:
 
 
 @dataclass(frozen=True)
-class CheckpointRecord:
-    saved_at: str | None = None
-    corpus: str | None = None
-    seed: int | None = None
-    steps: int | None = None
-    batch: int | None = None
-    learning_rate: float | None = None
+class RunSettings:
+    saved_at: str
+    corpus: str
+    seed: int
+
+
+@dataclass(frozen=True)
+class GradientRun:
+    steps: int
+    batch: int
+    learning_rate: float
     final_loss: float | None = None
+
+
+@dataclass(frozen=True)
+class CheckpointRecord:
+    settings: RunSettings | None = None
+    gradient: GradientRun | None = None
     held_out_perplexity: float | None = None
 
 
