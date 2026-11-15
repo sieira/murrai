@@ -19,6 +19,7 @@ class RunSettings:
     saved_at: str
     corpus: str
     seed: int
+    corpus_chars: int | None = None
 
 
 @dataclass(frozen=True)

@@ -131,7 +131,9 @@ def _train_in_process(command, connection):
 
     try:
         built = command.build(on_event=on_event)
-        connection.send(("done", built.kind if built is not None else None))
+        connection.send(
+            ("done", built.checkpoint if built is not None else None),
+        )
     except Exception as error:
         connection.send(("failed", str(error)))
     finally:
@@ -155,9 +157,8 @@ def _pump(name, connection, status, on_built=None):
                 ),
             )
         elif message[0] == "done":
-            built = message[1]
-            if built is not None and on_built is not None:
-                on_built(built)
+            if on_built is not None:
+                on_built(message[1])
             status.finish(name)
             return
         else:

@@ -6,18 +6,19 @@ import torch
 
 import murrai.composition.chat as murrai_composition_chat
 from murrai.adapters.checkpoint import FileCheckpointStore, InMemoryCheckpointStore
-from murrai.application.checkpoints import Snapshot
+from murrai.application.checkpoints import CheckpointRecord, RunSettings, Snapshot
 from murrai.application.ports import TrainingEvent
 from murrai.application.runs import training_device
 from murrai.composition.chat import chat_commands
 from murrai.domain.transformer import TransformerLM
-from murrai.presentation.chat.form import Field
 
 
 @pytest.fixture
 def corpus(tmp_path):
-    (tmp_path / "story.txt").write_text("aabbaabb" * 20)
-    return tmp_path
+    corpus = tmp_path / "corpus"
+    corpus.mkdir()
+    (corpus / "story.txt").write_text("aabbaabb" * 20)
+    return corpus
 
 
 def test_chat_commands_list_the_models(corpus):
@@ -106,17 +107,21 @@ def test_training_commands_save_a_checkpoint(corpus):
         store=store,
     )
     _command(corpus, "counted bigram", store=store).build()
-    assert store.names() == ["counted-bigram"]
+    assert store.names() == ["counted-bigram-corpus"]
     _command(corpus, "retrain neural bigram", store=store, neural_steps=20).build()
-    assert store.names() == ["counted-bigram", "neural-bigram"]
+    assert store.names() == ["counted-bigram-corpus", "neural-bigram-corpus"]
     _command(corpus, "retrain windowed mlp", store=store, mlp_steps=20).build()
-    assert store.names() == ["counted-bigram", "neural-bigram", "windowed-mlp"]
+    assert store.names() == [
+        "counted-bigram-corpus",
+        "neural-bigram-corpus",
+        "windowed-mlp-corpus",
+    ]
     _command(corpus, "retrain gpt", store=store, gpt_steps=20).build()
     assert store.names() == [
-        "counted-bigram",
-        "gpt",
-        "neural-bigram",
-        "windowed-mlp",
+        "counted-bigram-corpus",
+        "gpt-corpus",
+        "neural-bigram-corpus",
+        "windowed-mlp-corpus",
     ]
 
 
@@ -135,7 +140,7 @@ def test_the_neural_checkpoint_records_its_info(corpus):
         clock=_clock_at_2027,
     ).build()
 
-    record = store.record("neural-bigram")
+    record = store.record("neural-bigram-corpus")
     assert record.settings.saved_at == "2027-01-15T08:00:00+00:00"
     assert record.settings.corpus == str(corpus)
     assert record.settings.seed == 0
@@ -156,7 +161,7 @@ def test_the_counted_checkpoint_records_no_steps(corpus):
         clock=_clock_at_2027,
     ).build()
 
-    record = store.record("counted-bigram")
+    record = store.record("counted-bigram-corpus")
     assert record.settings.saved_at == "2027-01-15T08:00:00+00:00"
     assert record.gradient is None
     assert isinstance(record.held_out_perplexity, float)
@@ -173,7 +178,7 @@ def test_the_mlp_checkpoint_records_its_info(corpus):
         clock=_clock_at_2027,
     ).build()
 
-    record = store.record("windowed-mlp")
+    record = store.record("windowed-mlp-corpus")
     assert record.gradient.learning_rate == 0.5
     assert record.gradient.steps == 20
     assert record.gradient.batch == 256
@@ -191,7 +196,7 @@ def test_the_gpt_checkpoint_records_its_info(corpus):
         clock=_clock_at_2027,
     ).build()
 
-    assert store.record("gpt").gradient.learning_rate == 0.001
+    assert store.record("gpt-corpus").gradient.learning_rate == 0.001
 
 
 def test_the_checkpoint_records_the_last_loss_of_the_run(corpus, monkeypatch):
@@ -213,7 +218,7 @@ def test_the_checkpoint_records_the_last_loss_of_the_run(corpus, monkeypatch):
         store=store,
     ).build()
 
-    record = store.record("neural-bigram")
+    record = store.record("neural-bigram-corpus")
     assert record.gradient.final_loss == captured["result"].loss_curve[-1]
 
 
@@ -227,11 +232,11 @@ def test_the_load_command_describes_the_checkpoint(corpus):
         store=store,
         clock=_clock_at_2027,
     ).build()
-    final_loss = store.record("neural-bigram").gradient.final_loss
+    final_loss = store.record("neural-bigram-corpus").gradient.final_loss
 
     loader = _command(
         corpus,
-        "load neural-bigram",
+        "load neural-bigram-corpus",
         seed=0,
         store=store,
         clock=_clock_at_2027,
@@ -244,10 +249,10 @@ def test_the_load_command_describes_the_checkpoint(corpus):
 def test_a_checkpoint_without_a_record_keeps_the_old_load_line(corpus):
     store = InMemoryCheckpointStore()
     store.save(
-        "neural-bigram",
+        "neural-bigram-corpus",
         Snapshot(kind="neural-bigram", merges=(), state={}),
     )
-    loader = _command(corpus, "load neural-bigram", seed=0, store=store)
+    loader = _command(corpus, "load neural-bigram-corpus", seed=0, store=store)
     assert loader.description == "pick up this trained model"
 
 
@@ -262,7 +267,7 @@ def test_the_load_command_restores_the_trained_model(corpus):
     )
     trainer.build()
 
-    loader = _command(corpus, "load neural-bigram", seed=0, store=store)
+    loader = _command(corpus, "load neural-bigram-corpus", seed=0, store=store)
     assert not loader.trains
     session = loader.build()
     session.extend_user("a")
@@ -308,7 +313,7 @@ def test_commands_offer_loading_and_retraining(corpus):
     )
 
     names = [command.name for command in commands]
-    assert "load neural-bigram" in names
+    assert "load neural-bigram-corpus" in names
     assert "counted bigram" in names
     assert "retrain neural bigram" in names
     assert "retrain windowed mlp" in names
@@ -326,7 +331,7 @@ def test_the_load_command_builds_a_working_session(corpus):
     )
     trainer.build()
 
-    loader = _command(corpus, "load neural-bigram", seed=0, store=store)
+    loader = _command(corpus, "load neural-bigram-corpus", seed=0, store=store)
     session = loader.build()
 
     session.extend_user("a")
@@ -340,13 +345,15 @@ def test_training_saves_the_model_before_the_metrics_run(tmp_path, monkeypatch):
         raise RuntimeError("metrics blew up")
 
     monkeypatch.setattr(TransformerLM, "perplexity", broken_perplexity)
-    (tmp_path / "story.txt").write_text("aabbaabb" * 20)
+    corpus = tmp_path / "corpus"
+    corpus.mkdir()
+    (corpus / "story.txt").write_text("aabbaabb" * 20)
     store = FileCheckpointStore(tmp_path / "checkpoints")
-    command = _command(tmp_path, "retrain gpt", seed=0, gpt_steps=5, store=store)
+    command = _command(corpus, "retrain gpt", seed=0, gpt_steps=5, store=store)
     with pytest.raises(RuntimeError):
         command.build()
-    assert store.names() == ["gpt"]
-    gpt_record = store.record("gpt")
+    assert store.names() == ["gpt-corpus"]
+    gpt_record = store.record("gpt-corpus")
     assert gpt_record.gradient.steps == 5
     assert gpt_record.gradient.final_loss is None
 
@@ -363,7 +370,7 @@ def test_the_retrain_command_trains_and_saves(corpus):
     )
     session = retrainer.build()
 
-    assert store.names() == ["neural-bigram"]
+    assert store.names() == ["neural-bigram-corpus"]
     session.extend_user("a")
     assert session.rollout("a", 5)
 
@@ -391,9 +398,12 @@ def test_training_commands_survive_a_trip_to_another_process(corpus):
     ]
 
     for command in trains:
-        assert pickle.loads(pickle.dumps(command)).name == command.name
+        baked = command.bake({f.name: f.default for f in command.fields})
+        assert pickle.loads(pickle.dumps(baked)).name == command.name
 
-    revived = pickle.loads(pickle.dumps(trains[0]))
+    revived = pickle.loads(
+        pickle.dumps(trains[0].bake({f.name: f.default for f in trains[0].fields})),
+    )
     assert revived.build().rollout("a", 5)
 
 
@@ -459,19 +469,24 @@ def _capturing(monkeypatch, name, **capture):
     return capture
 
 
-def test_the_counted_command_only_asks_for_the_holdout(corpus):
+def test_the_counted_command_offers_its_knobs(corpus):
     counted = _command(corpus, "counted bigram", seed=0)
 
-    assert counted.fields == (
-        Field("holdout", "holdout", "float", 0.1, check="from zero below one"),
-        Field("merges", "merges", "int", 300, check="whole above zero", shape=True),
-    )
+    assert [(f.name, f.label, f.kind, f.default) for f in counted.fields] == [
+        ("text", "text", "choice", corpus.name),
+        ("size", "size", "choice", "all"),
+        ("holdout", "holdout", "float", 0.1),
+        ("merges", "merges", "int", 300),
+    ]
+    assert counted.fields[-1].check == "whole above zero"
 
 
 def test_the_neural_command_offers_its_knobs(corpus):
     fields = _command(corpus, "retrain neural bigram", seed=0, neural_steps=20).fields
 
     assert [(f.name, f.label, f.kind, f.default) for f in fields] == [
+        ("text", "text", "choice", corpus.name),
+        ("size", "size", "choice", "all"),
         ("steps", "steps", "int", 20),
         ("batch", "batch", "int", 64),
         ("learning_rate", "learning rate", "float", 3.0),
@@ -485,9 +500,9 @@ def test_the_neural_command_offers_its_knobs(corpus):
 
 def test_the_start_from_choice_lists_the_saved_models(corpus):
     store = InMemoryCheckpointStore()
-    store.save("gpt", Snapshot(kind="gpt", merges=(), state={}))
+    store.save("gpt-corpus", Snapshot(kind="gpt", merges=(), state={}))
     store.save(
-        "neural-bigram",
+        "neural-bigram-corpus",
         Snapshot(kind="neural-bigram", merges=(), state={}),
     )
 
@@ -500,13 +515,15 @@ def test_the_start_from_choice_lists_the_saved_models(corpus):
         store=store,
     )
 
-    assert field.choices == ("fresh", "gpt", "neural-bigram")
+    assert field.choices == ("fresh", "gpt-corpus", "neural-bigram-corpus")
 
 
 def test_the_mlp_command_offers_its_knobs(corpus):
     fields = _command(corpus, "retrain windowed mlp", seed=0, mlp_steps=20).fields
 
     assert [(f.name, f.label, f.default) for f in fields] == [
+        ("text", "text", corpus.name),
+        ("size", "size", "all"),
         ("steps", "steps", 20),
         ("batch", "batch", 256),
         ("learning_rate", "learning rate", 0.5),
@@ -535,6 +552,8 @@ def test_the_gpt_command_offers_its_knobs(corpus):
     fields = _command(corpus, "retrain gpt", seed=0, gpt_steps=20).fields
 
     assert [(f.name, f.label, f.default) for f in fields] == [
+        ("text", "text", corpus.name),
+        ("size", "size", "all"),
         ("steps", "steps", 20),
         ("batch", "batch", 256),
         ("learning_rate", "learning rate", 0.001),
@@ -588,7 +607,7 @@ def test_a_chosen_savegame_flows_to_the_trainer_by_its_name(corpus, monkeypatch)
     )
     trainer.build()
 
-    baked = trainer.bake({**_defaults(trainer), "start_from": "neural-bigram"})
+    baked = trainer.bake({**_defaults(trainer), "start_from": "neural-bigram-corpus"})
 
     baked.build()
     assert captured["kwargs"]["checkpoint"].kind == "neural-bigram"
@@ -613,10 +632,15 @@ def test_a_saved_start_leaves_the_shape_to_the_savegame(corpus, monkeypatch):
     mlp.build()
 
     gpt.bake(
-        {**_defaults(gpt), "start_from": "gpt", "depth": 9, "max_time": 128},
+        {**_defaults(gpt), "start_from": "gpt-corpus", "depth": 9, "max_time": 128},
     ).build()
     mlp.bake(
-        {**_defaults(mlp), "start_from": "windowed-mlp", "window": 3, "hidden": 9},
+        {
+            **_defaults(mlp),
+            "start_from": "windowed-mlp-corpus",
+            "window": 3,
+            "hidden": 9,
+        },
     ).build()
 
     for captured in (gpt_captured, mlp_captured):
@@ -670,3 +694,32 @@ def test_the_counted_bake_takes_the_holdout(corpus, monkeypatch):
     counted.bake({**_defaults(counted), "holdout": 0.5}).build()
 
     assert captured["kwargs"]["holdout"] == 0.5
+
+
+def test_the_load_line_shows_the_capped_size(corpus):
+    store = InMemoryCheckpointStore()
+    _command(
+        corpus,
+        "counted bigram",
+        seed=0,
+        store=store,
+        clock=_clock_at_2027,
+    )
+    store.save(
+        "counted-bigram-corpus",
+        Snapshot(kind="counted-bigram", merges=(), state={}),
+    )
+    store.save_record(
+        "counted-bigram-corpus",
+        CheckpointRecord(
+            settings=RunSettings(
+                saved_at="2027-01-15T08:00:00+00:00",
+                corpus=str(corpus),
+                seed=0,
+                corpus_chars=100000,
+            ),
+        ),
+    )
+
+    loader = _command(corpus, "load counted-bigram-corpus", seed=0, store=store)
+    assert "100k chars" in loader.description

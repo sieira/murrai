@@ -5,11 +5,12 @@ from murrai.application.ports import LanguageModel
 
 
 class ChatSession:
-    def __init__(self, model: LanguageModel, seed: int):
+    def __init__(self, model: LanguageModel, seed: int, checkpoint: str | None = None):
         self._model = model
         self._rng = random.Random(seed)
         self._ids: list[int] = []
         self._origins: list[str] = []
+        self.checkpoint = checkpoint
 
     @property
     def kind(self) -> str:

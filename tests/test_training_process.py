@@ -5,6 +5,9 @@ import pytest
 
 from murrai.adapters.checkpoint import FileCheckpointStore
 from murrai.composition.chat import chat_commands, load_checkpoint_session
+from murrai.domain.bigram import Bigram
+from murrai.domain.tokenizer import TokenizerEncoderDecoder
+from murrai.presentation.chat import ChatSession
 from murrai.presentation.chat.lanes import ChatLog
 from murrai.presentation.chat.status import TrainingStatus, spawn_training
 
@@ -19,29 +22,32 @@ def _wait_for(log, text, seconds=60):
 
 
 def test_a_training_runs_in_its_own_process_and_reports_over_a_pipe(tmp_path):
-    (tmp_path / "story.txt").write_text("aabbaabb" * 20)
+    corpus = tmp_path / "corpus"
+    corpus.mkdir()
+    (corpus / "story.txt").write_text("aabbaabb" * 20)
     store = FileCheckpointStore(tmp_path / "checkpoints")
     command = next(
         c
-        for c in chat_commands(tmp_path, seed=0, store=store, neural_steps=20)
+        for c in chat_commands(corpus, seed=0, store=store, neural_steps=20)
         if c.name == "retrain neural bigram"
     )
+    baked = command.bake({f.name: f.default for f in command.fields})
     log = ChatLog()
     status = TrainingStatus(observer=log)
     delivered = []
 
-    spawn_training(command, status, delivered.append)
+    spawn_training(baked, status, delivered.append)
     _wait_for(log, "finished")
 
     lanes = [line.split(" ", 1)[1] for line in log.lines]
     assert lanes[0] == "[train] retrain neural bigram started"
     assert "[train] retrain neural bigram training 20/20" in lanes
     assert lanes[-1] == "[train] retrain neural bigram finished"
-    assert store.names() == ["neural-bigram"]
-    record = store.record("neural-bigram")
+    assert store.names() == ["neural-bigram-corpus"]
+    record = store.record("neural-bigram-corpus")
     assert record.gradient.steps == 20
-    assert record.settings.corpus == str(tmp_path)
-    assert delivered == ["neural-bigram"]
+    assert record.settings.corpus == str(corpus)
+    assert delivered == ["neural-bigram-corpus"]
     session = load_checkpoint_session(store, seed=0, name=delivered[0])
     session.extend_user("a")
     probabilities = [p for _, p in session.dice()]
@@ -60,18 +66,21 @@ class BrokenStore:
 
 
 def test_a_failing_checkpoint_save_reports_failed(tmp_path):
-    (tmp_path / "story.txt").write_text("aabbaabb" * 20)
+    corpus = tmp_path / "corpus"
+    corpus.mkdir()
+    (corpus / "story.txt").write_text("aabbaabb" * 20)
     store = BrokenStore()
     command = next(
         c
-        for c in chat_commands(tmp_path, seed=0, store=store)
+        for c in chat_commands(corpus, seed=0, store=store)
         if c.name == "counted bigram"
     )
+    baked = command.bake({f.name: f.default for f in command.fields})
     log = ChatLog()
     status = TrainingStatus(observer=log)
     delivered = []
 
-    spawn_training(command, status, delivered.append)
+    spawn_training(baked, status, delivered.append)
     _wait_for(log, "failed")
 
     assert delivered == []
@@ -91,26 +100,47 @@ def test_a_training_that_cannot_leave_the_process_is_reported_failed():
 
 
 def test_the_counted_bigram_trains_in_a_process_and_swaps_in(tmp_path):
-    (tmp_path / "story.txt").write_text("aabbaabb" * 20)
+    corpus = tmp_path / "corpus"
+    corpus.mkdir()
+    (corpus / "story.txt").write_text("aabbaabb" * 20)
     store = FileCheckpointStore(tmp_path / "checkpoints")
     command = next(
         c
-        for c in chat_commands(tmp_path, seed=0, store=store)
+        for c in chat_commands(corpus, seed=0, store=store)
         if c.name == "counted bigram"
     )
+    baked = command.bake({f.name: f.default for f in command.fields})
     log = ChatLog()
     status = TrainingStatus(observer=log)
     delivered = []
 
-    spawn_training(command, status, delivered.append)
+    spawn_training(baked, status, delivered.append)
     _wait_for(log, "finished")
 
-    assert delivered == ["counted-bigram"]
-    assert store.names() == ["counted-bigram"]
+    assert delivered == ["counted-bigram-corpus"]
+    assert store.names() == ["counted-bigram-corpus"]
     session = load_checkpoint_session(store, seed=0, name=delivered[0])
     session.extend_user("a")
     probabilities = [p for _, p in session.dice()]
     assert pytest.approx(sum(probabilities)) == 1.0
+
+
+class Nameless:
+    name = "nameless"
+
+    def build(self, on_event=None):
+        return ChatSession(Bigram.fit("ab", TokenizerEncoderDecoder()), 0)
+
+
+def test_a_build_without_a_checkpoint_still_swaps():
+    log = ChatLog()
+    status = TrainingStatus(observer=log)
+    delivered = []
+
+    spawn_training(Nameless(), status, delivered.append)
+    _wait_for(log, "finished")
+
+    assert delivered == [None]
 
 
 class Noisy:

@@ -2,8 +2,9 @@ import time
 from dataclasses import replace
 from datetime import UTC, datetime
 from functools import partial
+from pathlib import Path
 
-from murrai.adapters.corpus import DirTextCorpus
+from murrai.adapters.corpus import DirTextCorpus, TextCorpus
 from murrai.adapters.events import ListenerBus
 from murrai.application.checkpoints import (
     CheckpointRecord,
@@ -42,6 +43,8 @@ def _load_description(record):
     parts = []
     if record.settings:
         parts.append(f"saved {_short_time(record.settings.saved_at)}")
+        if record.settings.corpus_chars is not None:
+            parts.append(f"{record.settings.corpus_chars // 1000}k chars")
     if record.gradient:
         parts.append(f"{record.gradient.steps} steps")
         if record.gradient.final_loss is not None:
@@ -51,29 +54,48 @@ def _load_description(record):
     return " · ".join(parts) or "pick up this trained model"
 
 
+def _chosen_directory(directory, values):
+    return Path(directory).parent / values["text"]
+
+
+SIZES = {"all": None, "100k": 100000, "500k": 500000}
+
+
+def _sliced_text(directory, values):
+    text = DirTextCorpus(directory).text()
+    cap = SIZES[values["size"]]
+    return text if cap is None else text[:cap]
+
+
 def _trained_chat_session(run, directory, seed, store, clock, values, on_event=None):
+    directory = _chosen_directory(directory, values)
+    text = _sliced_text(directory, values)
+    cap = SIZES[values["size"]]
     bus = ListenerBus()
     if on_event is not None:
         bus.subscribe(on_event)
     kept = None
+    name = None
 
     def keep(model, settings):
-        nonlocal kept
+        nonlocal kept, name
         if store is None:
             return
-        store.save(model.kind, snapshot_of(model))
+        name = f"{model.kind}-{Path(directory).name}"
+        store.save(name, snapshot_of(model))
         kept = CheckpointRecord(
             settings=RunSettings(
                 saved_at=_saved_at(clock),
                 corpus=str(directory),
                 seed=seed,
+                corpus_chars=len(text) if cap is not None else None,
             ),
             gradient=GradientRun(**settings) if settings else None,
         )
-        store.save_record(model.kind, kept)
+        store.save_record(name, kept)
 
     try:
-        result = run(directory, seed, store, values, bus=bus, keeper=keep)
+        result = run(text, seed, store, values, bus=bus, keeper=keep)
         bus.flush()
     finally:
         if on_event is not None:
@@ -85,8 +107,8 @@ def _trained_chat_session(run, directory, seed, store, clock, values, on_event=N
             kept = replace(kept, gradient=replace(kept.gradient, final_loss=final_loss))
         if perplexity is not None:
             kept = replace(kept, held_out_perplexity=perplexity)
-        store.save_record(result.model.kind, kept)
-    return ChatSession(result.model, seed)
+        store.save_record(name, kept)
+    return ChatSession(result.model, seed, checkpoint=name)
 
 
 def _keeping(keeper, settings):
@@ -134,9 +156,9 @@ def _trainer_kwargs(values, seed, checkpoint, settings, extra, shape):
     return kwargs
 
 
-def _run_counted(directory, seed, store, values, bus=None, keeper=None):
+def _run_counted(text, seed, store, values, bus=None, keeper=None):
     return train_bigram(
-        DirTextCorpus(directory),
+        TextCorpus(text),
         holdout=values["holdout"],
         merges=values["merges"],
         bus=bus,
@@ -144,10 +166,10 @@ def _run_counted(directory, seed, store, values, bus=None, keeper=None):
     )
 
 
-def _run_neural(directory, seed, store, values, bus=None, keeper=None):
+def _run_neural(text, seed, store, values, bus=None, keeper=None):
     checkpoint = _checkpoint_snapshot(store, values)
     return train_neural_bigram(
-        DirTextCorpus(directory).text(),
+        text,
         bus=bus,
         keeper=_keeping(keeper, _settings(values)),
         **_trainer_kwargs(
@@ -161,10 +183,10 @@ def _run_neural(directory, seed, store, values, bus=None, keeper=None):
     )
 
 
-def _run_mlp(directory, seed, store, values, bus=None, keeper=None):
+def _run_mlp(text, seed, store, values, bus=None, keeper=None):
     checkpoint = _checkpoint_snapshot(store, values)
     return train_mlp_lm(
-        DirTextCorpus(directory).text(),
+        text,
         bus=bus,
         keeper=_keeping(keeper, _settings(values)),
         **_trainer_kwargs(
@@ -183,10 +205,10 @@ def _run_mlp(directory, seed, store, values, bus=None, keeper=None):
     )
 
 
-def _run_gpt(directory, seed, store, values, bus=None, keeper=None):
+def _run_gpt(text, seed, store, values, bus=None, keeper=None):
     checkpoint = _checkpoint_snapshot(store, values)
     return train_transformer_lm(
-        DirTextCorpus(directory).text(),
+        text,
         bus=bus,
         keeper=_keeping(keeper, _settings(values)),
         **_trainer_kwargs(
@@ -205,76 +227,34 @@ def _run_gpt(directory, seed, store, values, bus=None, keeper=None):
     )
 
 
-def _bake_counted(directory, seed, store, clock, values):
-    return Command(
-        "counted bigram",
-        "next-char odds tallied straight from the corpus",
-        partial(
-            _trained_chat_session,
-            _run_counted,
-            directory,
-            seed,
-            store,
-            clock,
-            values,
-        ),
-        trains=True,
-    )
-
-
-def _bake_neural(directory, seed, store, clock, values):
-    return Command(
-        "retrain neural bigram",
-        "same memory, trained by gradient descent",
-        partial(
-            _trained_chat_session,
-            _run_neural,
-            directory,
-            seed,
-            store,
-            clock,
-            values,
-        ),
-        trains=True,
-    )
-
-
-def _bake_mlp(directory, seed, store, clock, values):
-    return Command(
-        "retrain windowed mlp",
-        "eight tokens of memory through a hidden layer",
-        partial(
-            _trained_chat_session,
-            _run_mlp,
-            directory,
-            seed,
-            store,
-            clock,
-            values,
-        ),
-        trains=True,
-    )
-
-
-def _bake_gpt(directory, seed, store, clock, values):
-    return Command(
-        "retrain gpt",
-        "attention over the last sixty-four tokens",
-        partial(
-            _trained_chat_session,
-            _run_gpt,
-            directory,
-            seed,
-            store,
-            clock,
-            values,
-        ),
-        trains=True,
-    )
-
-
 def _holdout_field():
     return Field("holdout", "holdout", "float", 0.1, check="from zero below one")
+
+
+def _text_field(directory):
+    parent = Path(directory).parent
+    choices = (
+        tuple(
+            sorted(
+                entry.name
+                for entry in parent.iterdir()
+                if entry.is_dir() and any(entry.glob("*.txt"))
+            ),
+        )
+        if parent.exists()
+        else ()
+    )
+    return Field(
+        "text",
+        "text",
+        "choice",
+        Path(directory).name,
+        choices=choices or (Path(directory).name,),
+    )
+
+
+def _size_field():
+    return Field("size", "size", "choice", "all", choices=("all", "100k", "500k"))
 
 
 def _seed_field(seed):
@@ -300,15 +280,19 @@ def _merges_field():
     return Field("merges", "merges", "int", 300, check="whole above zero", shape=True)
 
 
-def _counted_fields():
+def _counted_fields(directory):
     return (
+        _text_field(directory),
+        _size_field(),
         _holdout_field(),
         _merges_field(),
     )
 
 
-def _neural_fields(seed, store, steps):
+def _neural_fields(directory, seed, store, steps):
     return (
+        _text_field(directory),
+        _size_field(),
         Field("steps", "steps", "int", steps, check="whole above zero"),
         Field("batch", "batch", "int", 64, check="whole above zero"),
         Field(
@@ -331,8 +315,10 @@ def _neural_fields(seed, store, steps):
     )
 
 
-def _mlp_fields(seed, store, steps):
+def _mlp_fields(directory, seed, store, steps):
     return (
+        _text_field(directory),
+        _size_field(),
         Field("steps", "steps", "int", steps, check="whole above zero"),
         Field("batch", "batch", "int", 256, check="whole above zero"),
         Field(
@@ -362,8 +348,10 @@ def _mlp_fields(seed, store, steps):
     )
 
 
-def _gpt_fields(seed, store, steps):
+def _gpt_fields(directory, seed, store, steps):
     return (
+        _text_field(directory),
+        _size_field(),
         Field("steps", "steps", "int", steps, check="whole above zero"),
         Field("batch", "batch", "int", 256, check="whole above zero"),
         Field(
@@ -401,15 +389,22 @@ def _gpt_fields(seed, store, steps):
     )
 
 
-def _training_command(bake, directory, seed, store, clock, fields):
+def _training_command(name, description, run, directory, seed, store, clock, fields):
+    def bake(values):
+        return Command(
+            name,
+            description,
+            partial(_trained_chat_session, run, directory, seed, store, clock, values),
+            trains=True,
+        )
+
     defaults = {field.name: field.default for field in fields}
-    baked = bake(directory, seed, store, clock, defaults)
     return FormCommand(
-        baked.name,
-        baked.description,
-        baked.build,
+        name,
+        description,
+        bake(defaults).build,
         fields=fields,
-        bake=partial(bake, directory, seed, store, clock),
+        bake=bake,
         trains=True,
     )
 
@@ -418,7 +413,7 @@ def load_checkpoint_session(store, seed=0, name=None):
     if name is None:
         name = store.names()[-1]
     model = restore(store.load(name))
-    return ChatSession(model, seed)
+    return ChatSession(model, seed, checkpoint=name)
 
 
 def chat_commands(
@@ -443,36 +438,44 @@ def chat_commands(
     commands.extend(
         [
             _training_command(
-                _bake_counted,
+                "counted bigram",
+                "next-char odds tallied straight from the corpus",
+                _run_counted,
                 directory,
                 seed,
                 store,
                 clock,
-                _counted_fields(),
+                _counted_fields(directory),
             ),
             _training_command(
-                _bake_neural,
+                "retrain neural bigram",
+                "same memory, trained by gradient descent",
+                _run_neural,
                 directory,
                 seed,
                 store,
                 clock,
-                _neural_fields(seed, store, neural_steps),
+                _neural_fields(directory, seed, store, neural_steps),
             ),
             _training_command(
-                _bake_mlp,
+                "retrain windowed mlp",
+                "eight tokens of memory through a hidden layer",
+                _run_mlp,
                 directory,
                 seed,
                 store,
                 clock,
-                _mlp_fields(seed, store, mlp_steps),
+                _mlp_fields(directory, seed, store, mlp_steps),
             ),
             _training_command(
-                _bake_gpt,
+                "retrain gpt",
+                "attention over the last sixty-four tokens",
+                _run_gpt,
                 directory,
                 seed,
                 store,
                 clock,
-                _gpt_fields(seed, store, gpt_steps),
+                _gpt_fields(directory, seed, store, gpt_steps),
             ),
         ],
     )
