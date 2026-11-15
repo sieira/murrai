@@ -32,15 +32,6 @@ session writes the record again once the result exists, so the run
 numbers join it. Both writes happen inside the training process,
 before anything crosses the pipe to the chat (ADR-0005).
 
-## Continuing from a checkpoint
-
-Each trainer accepts a checkpoint as its optional starting point. The
-checkpoint's tokenizer is used unchanged: the new text is encoded
-through the saved merge list, and no new merging is fitted. The weights
-rebuild from the record and train on. The learning rate is whatever the
-run says, the optimizer's memory starts empty, and the schedule
-restarts.
-
 ## Consequences
 
 - The weights file is written once. The record file is written twice

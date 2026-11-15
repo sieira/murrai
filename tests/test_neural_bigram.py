@@ -95,7 +95,7 @@ def test_training_continues_from_a_snapshot():
         steps=60,
         batch=64,
         seed=0,
-        start=snapshot_of(first.model),
+        checkpoint=snapshot_of(first.model),
     )
     assert second.loss_curve[0] < first.loss_curve[0]
     assert second.loss_curve[0] == pytest.approx(first.loss_curve[-1], abs=0.01)
@@ -110,6 +110,18 @@ def test_continuing_from_an_untrained_snapshot_repeats_the_fresh_run():
         steps=20,
         batch=64,
         seed=0,
-        start=snapshot_of(NeuralBigram(tokenizer)),
+        checkpoint=snapshot_of(NeuralBigram(tokenizer)),
     )
     assert repeated.loss_curve == fresh.loss_curve
+
+
+def test_the_checkpoint_s_tokenizer_travels_unchanged():
+    first = train_neural_bigram("xy" * 400, steps=5, batch=64, seed=0)
+    second = train_neural_bigram(
+        "ab" * 400,
+        steps=5,
+        batch=64,
+        seed=0,
+        checkpoint=snapshot_of(first.model),
+    )
+    assert second.model.tokenizer.merges == first.model.tokenizer.merges

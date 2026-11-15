@@ -80,6 +80,30 @@ def train_bigram(
     )
 
 
+def _checkpoint_tokenizer(train, merges, checkpoint, bus):
+    if checkpoint is None:
+        return TokenizerEncoderDecoder().fit(
+            train,
+            merges,
+            bus=_stage_bus(bus, "tokenising"),
+        )
+    return TokenizerEncoderDecoder(checkpoint.merges)
+
+
+def _reject_contradictory_shape(checkpoint, **knobs):
+    if checkpoint is None:
+        return
+    mismatches = [
+        f"{name}={value}"
+        for name, value in knobs.items()
+        if value != checkpoint.state.get(name, value)
+    ]
+    if mismatches:
+        raise ValueError(
+            f"a checkpoint keeps its own shape; pass no {', '.join(mismatches)}",
+        )
+
+
 def train_neural_bigram(
     train,
     steps,
@@ -90,18 +114,14 @@ def train_neural_bigram(
     bus: EventBus | None = None,
     keeper=None,
     merges: int = 300,
-    start: Snapshot | None = None,
+    checkpoint: Snapshot | None = None,
 ):
-    if start is None:
-        tokenizer = TokenizerEncoderDecoder().fit(
-            train,
-            merges,
-            bus=_stage_bus(bus, "tokenising"),
-        )
+    tokenizer = _checkpoint_tokenizer(train, merges, checkpoint, bus)
+    _reject_contradictory_shape(checkpoint)
+    if checkpoint is None:
         model = NeuralBigram(tokenizer)
     else:
-        tokenizer = TokenizerEncoderDecoder(start.merges)
-        model = NeuralBigram.from_state(tokenizer, start.state)
+        model = NeuralBigram.from_state(tokenizer, checkpoint.state)
     ids = [
         tokenizer.vocab_size,
         *tokenizer.encode(train, bus=_stage_bus(bus, "encoding")),
@@ -168,25 +188,26 @@ def train_mlp_lm(
     bus: EventBus | None = None,
     keeper=None,
     merges: int = 300,
-    start: Snapshot | None = None,
+    checkpoint: Snapshot | None = None,
 ):
     device = torch.device(device) if device is not None else torch.device("cpu")
     cut = int(len(text) * (1 - holdout))
     train, held_out = text[:cut], text[cut:]
 
     torch.manual_seed(seed)
-    if start is None:
-        tokenizer = TokenizerEncoderDecoder().fit(
-            train,
-            merges,
-            bus=_stage_bus(bus, "tokenising"),
-        )
+    _reject_contradictory_shape(
+        checkpoint,
+        window=window,
+        dimension=dimension,
+        hidden=hidden,
+    )
+    tokenizer = _checkpoint_tokenizer(train, merges, checkpoint, bus)
+    if checkpoint is None:
         model = MlpLM(tokenizer, window=window, dimension=dimension, hidden=hidden).to(
             device,
         )
     else:
-        tokenizer = TokenizerEncoderDecoder(start.merges)
-        model = MlpLM.from_state(tokenizer, start.state).to(device)
+        model = MlpLM.from_state(tokenizer, checkpoint.state).to(device)
     optimizer = torch.optim.SGD(model.parameters(), lr=learning_rate)
 
     ids = [
@@ -265,19 +286,22 @@ def train_transformer_lm(
     bus: EventBus | None = None,
     keeper=None,
     merges: int = 300,
-    start: Snapshot | None = None,
+    checkpoint: Snapshot | None = None,
 ):
     device = torch.device(device) if device is not None else torch.device("cpu")
     cut = int(len(text) * (1 - holdout))
     train, held_out = text[:cut], text[cut:]
 
     torch.manual_seed(seed)
-    if start is None:
-        tokenizer = TokenizerEncoderDecoder().fit(
-            train,
-            merges,
-            bus=_stage_bus(bus, "tokenising"),
-        )
+    _reject_contradictory_shape(
+        checkpoint,
+        depth=depth,
+        dimension=dimension,
+        max_time=max_time,
+        heads=heads,
+    )
+    tokenizer = _checkpoint_tokenizer(train, merges, checkpoint, bus)
+    if checkpoint is None:
         model = TransformerLM(
             tokenizer,
             depth=depth,
@@ -286,8 +310,7 @@ def train_transformer_lm(
             heads=heads,
         ).to(device)
     else:
-        tokenizer = TokenizerEncoderDecoder(start.merges)
-        model = TransformerLM.from_state(tokenizer, start.state).to(device)
+        model = TransformerLM.from_state(tokenizer, checkpoint.state).to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
 
     ids = [

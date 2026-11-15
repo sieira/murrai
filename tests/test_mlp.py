@@ -115,7 +115,7 @@ def test_training_continues_from_a_snapshot():
         batch=16,
         seed=0,
         learning_rate=0.1,
-        start=snapshot_of(first.model),
+        checkpoint=snapshot_of(first.model),
     )
     assert second.loss_curve[0] < first.loss_curve[0]
     assert second.loss_curve[0] == pytest.approx(first.loss_curve[-1], abs=0.01)
@@ -135,7 +135,7 @@ def test_continuing_from_an_untrained_snapshot_repeats_the_fresh_run():
         dimension=8,
         hidden=16,
         holdout=0,
-        start=snapshot_of(fresh_model),
+        checkpoint=snapshot_of(fresh_model),
     )
     plain = train_mlp_lm(
         "ab" * 200,
@@ -148,3 +148,26 @@ def test_continuing_from_an_untrained_snapshot_repeats_the_fresh_run():
         holdout=0,
     )
     assert fresh.loss_curve == plain.loss_curve
+
+
+def test_continuing_rejects_a_contradictory_shape():
+    first = train_mlp_lm(
+        "ab" * 200,
+        steps=5,
+        batch=8,
+        seed=0,
+        window=2,
+        dimension=8,
+        hidden=16,
+    )
+    with pytest.raises(ValueError):
+        train_mlp_lm(
+            "ab" * 200,
+            steps=5,
+            batch=8,
+            seed=0,
+            window=4,
+            dimension=8,
+            hidden=16,
+            checkpoint=snapshot_of(first.model),
+        )
