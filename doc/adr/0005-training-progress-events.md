@@ -43,10 +43,12 @@ left nothing on disk.
   left from its own clock. Without a bus, a trainer does nothing extra.
 - A training runs in its own process, started with `spawn`. The child
   sends `("step", step, total)`, then `("done", name)`, where name is
-  the checkpoint the training saved under, or `("failed", reason)` over
-  a pipe; a thread in the chat turns steps into calls on the status
-  registry and hands the name to the screen's event loop, where a `load`
-  function turns it into the session that replaces the chat's. A child
+  the checkpoint the training saved under, or nothing when the run
+  saved no checkpoint, or `("failed", reason)` over a pipe; a thread in
+  the chat turns steps into calls on the status registry and hands the
+  name to the screen's event loop, where a `load` function turns it
+  into the session that replaces the chat's. Every finished training
+  swaps, named or not. A child
   that ends without a result counts as failed. The child's standard
   output and error are silenced, because the chat owns the terminal. A
   command that trains is therefore picklable (a `functools.partial` of a
