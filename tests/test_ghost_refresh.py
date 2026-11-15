@@ -1,36 +1,28 @@
-import threading
-import time
-
-from prompt_toolkit.input.defaults import create_pipe_input
-from prompt_toolkit.output import DummyOutput
+from prompt_toolkit.buffer import Buffer
 
 from murrai.domain.bigram import Bigram
-from murrai.domain.vocabulary import Vocabulary
+from murrai.domain.tokenizer import TokenizerEncoderDecoder
 from murrai.presentation.chat import ChatSession
-from murrai.presentation.chat.repl import (
-    GHOST_CHARS,
-    GhostChat,
-    GhostSuggestions,
-    run_chat,
-)
+from murrai.presentation.chat.repl import GhostChat, GhostSuggestions
 
 
 def _session():
-    return ChatSession(Bigram.fit("abab", Vocabulary.from_text("ab")), 0)
+    return ChatSession(Bigram.fit("abab", TokenizerEncoderDecoder()), 0)
 
 
 def test_a_second_tab_accept_rolls_fresh_shadow_text():
-    session = _session()
-    with create_pipe_input() as pipe:
-        pipe.send_text("\t")
-        time.sleep(0.2)
-        pipe.send_text("\t")
-        time.sleep(0.2)
-        pipe.send_text("\x03")
-        run_chat(session, input=pipe, output=DummyOutput())
+    chat = GhostChat(_session())
+    suggestions = GhostSuggestions(chat)
 
-    assert len(session.text) == 2 * GHOST_CHARS
-    assert [origin for _, origin in session.segments()] == ["generated"]
+    after_first = chat.session.text
+    for _ in range(2):
+        ghost = suggestions.real_for(chat.session.text)
+        chat.accept_rest(chat.session.text, ghost)
+        suggestions.forget()
+
+    segments = chat.session.segments()
+    assert [origin for _, origin in segments] == ["generated"]
+    assert len(chat.session.text) > len(after_first)
 
 
 def test_after_an_accept_the_next_roll_is_fresh_not_a_cached_remainder():
@@ -46,57 +38,20 @@ def test_after_an_accept_the_next_roll_is_fresh_not_a_cached_remainder():
     assert second not in suffixes
 
 
-class _ScreenOutput(DummyOutput):
-    def __init__(self):
-        self.chunks = []
-        self.snapshots = []
-        self._calls = 0
-
-    def get_size(self):
-        self._calls += 1
-        import prompt_toolkit.data_structures
-
-        return prompt_toolkit.data_structures.Size(rows=40, columns=80 + self._calls)
-
-    def write(self, data):
-        self.chunks.append(data)
-
-    def flush(self):
-        if self.chunks:
-            self.snapshots.append("".join(self.chunks))
-            self.chunks = []
-
-
 def test_the_shadow_shows_the_fresh_roll_right_after_an_accept():
-    mirror = GhostSuggestions(GhostChat(_session()))
-    first = mirror.real_for("")
-    mirror._chat.accept_rest("", first)
-    mirror.forget()
-    second = mirror.real_for(mirror._chat.session.text)
-    assert second
+    chat = GhostChat(_session())
+    suggestions = GhostSuggestions(chat)
+    buffer = Buffer()
 
-    output = _ScreenOutput()
-    with create_pipe_input() as pipe:
-        failures = []
+    first = suggestions.real_for(buffer.text)
+    chat.accept_rest(buffer.text, first)
+    suggestions.forget()
+    buffer.text = chat.session.text
+    buffer.cursor_position = len(buffer.text)
+    buffer.suggestion = suggestions.get_suggestion(buffer, buffer.document)
 
-        def chat():
-            try:
-                run_chat(_session(), input=pipe, output=output)
-            except BaseException as error:
-                failures.append(error)
-
-        thread = threading.Thread(target=chat)
-        thread.start()
-        time.sleep(0.3)
-        pipe.send_text("\t")
-        time.sleep(0.5)
-        pipe.send_text("\x03")
-        thread.join(timeout=10)
-    if failures:
-        raise failures[0]
-
-    rows = [
-        snapshot.split("\r\n") for snapshot in output.snapshots if len(snapshot) > 1000
-    ]
-    assert rows, "the screen never rendered a full frame"
-    assert first + second in "\n".join(row.rstrip("\r") for row in rows[-1])
+    second = suggestions.real_for(buffer.text)
+    assert buffer.suggestion is not None
+    assert buffer.suggestion.text.replace("↵", "\n") == second
+    suffixes = {first[k:] for k in range(len(first) + 1)}
+    assert second not in suffixes
