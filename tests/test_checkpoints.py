@@ -1,3 +1,4 @@
+import json
 from dataclasses import FrozenInstanceError
 
 import pytest
@@ -6,6 +7,8 @@ import torch
 from murrai.adapters.checkpoint import FileCheckpointStore, InMemoryCheckpointStore
 from murrai.application.checkpoints import (
     CheckpointRecord,
+    GradientRun,
+    RunSettings,
     Snapshot,
     restore,
     snapshot_of,
@@ -105,23 +108,69 @@ def test_a_snapshot_is_frozen(counted):
 
 def test_the_file_store_keeps_the_record_beside_the_weights(tmp_path, counted):
     store = FileCheckpointStore(tmp_path)
-    record = CheckpointRecord(saved_at="2027-01-15T08:00:00+00:00", steps=3)
+    record = CheckpointRecord(
+        settings=RunSettings(
+            saved_at="2027-01-15T08:00:00+00:00",
+            corpus="data/corpus",
+            seed=0,
+        ),
+        gradient=GradientRun(steps=3, batch=64, learning_rate=3.0),
+    )
     store.save("counted-bigram", snapshot_of(counted))
     store.save_record("counted-bigram", record)
 
     assert store.record("counted-bigram") == record
 
 
+def test_the_record_is_frozen():
+    record = CheckpointRecord()
+    with pytest.raises(FrozenInstanceError):
+        record.held_out_perplexity = 2.0
+
+
+def test_the_store_translates_the_record_to_flat_json(tmp_path, counted):
+    store = FileCheckpointStore(tmp_path)
+    store.save("counted-bigram", snapshot_of(counted))
+    store.save_record(
+        "counted-bigram",
+        CheckpointRecord(
+            settings=RunSettings(
+                saved_at="2027-01-15T08:00:00+00:00",
+                corpus="data/corpus",
+                seed=0,
+            ),
+            gradient=GradientRun(steps=3, batch=64, learning_rate=3.0, final_loss=0.5),
+            held_out_perplexity=1.5,
+        ),
+    )
+
+    data = json.loads((tmp_path / "counted-bigram.json").read_text())
+    assert data == {
+        "saved_at": "2027-01-15T08:00:00+00:00",
+        "corpus": "data/corpus",
+        "seed": 0,
+        "steps": 3,
+        "batch": 64,
+        "learning_rate": 3.0,
+        "final_loss": 0.5,
+        "held_out_perplexity": 1.5,
+    }
+    assert store.record("counted-bigram").gradient.final_loss == 0.5
+
+
 def test_reading_the_record_never_opens_the_weights(tmp_path, counted, monkeypatch):
     store = FileCheckpointStore(tmp_path)
     store.save("counted-bigram", snapshot_of(counted))
-    store.save_record("counted-bigram", CheckpointRecord(steps=3))
+    store.save_record(
+        "counted-bigram",
+        CheckpointRecord(gradient=GradientRun(steps=3, batch=64, learning_rate=3.0)),
+    )
 
     def refuse(path, *args, **kwargs):
         raise AssertionError("reading the record opened the weights")
 
     monkeypatch.setattr("murrai.adapters.checkpoint.torch.load", refuse)
-    assert store.record("counted-bigram").steps == 3
+    assert store.record("counted-bigram").gradient.steps == 3
 
 
 def test_a_checkpoint_without_a_record_file_reads_an_empty_record(tmp_path, counted):
@@ -134,9 +183,12 @@ def test_a_checkpoint_without_a_record_file_reads_an_empty_record(tmp_path, coun
 def test_the_memory_store_carries_the_record(counted):
     store = InMemoryCheckpointStore()
     store.save("counted-bigram", snapshot_of(counted))
-    store.save_record("counted-bigram", CheckpointRecord(steps=3))
+    store.save_record(
+        "counted-bigram",
+        CheckpointRecord(gradient=GradientRun(steps=3, batch=64, learning_rate=3.0)),
+    )
 
-    assert store.record("counted-bigram") == CheckpointRecord(steps=3)
+    assert store.record("counted-bigram").gradient.steps == 3
 
 
 def test_restore_rejects_an_unknown_kind():

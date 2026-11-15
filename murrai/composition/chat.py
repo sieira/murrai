@@ -5,7 +5,13 @@ from functools import partial
 
 from murrai.adapters.corpus import DirTextCorpus
 from murrai.adapters.events import ListenerBus
-from murrai.application.checkpoints import CheckpointRecord, restore, snapshot_of
+from murrai.application.checkpoints import (
+    CheckpointRecord,
+    GradientRun,
+    RunSettings,
+    restore,
+    snapshot_of,
+)
 from murrai.application.runs import (
     train_bigram,
     train_mlp_lm,
@@ -26,24 +32,19 @@ def _short_time(stamp):
 
 
 def _result_info(result):
-    info = {}
     curve = getattr(result, "loss_curve", [])
-    if curve:
-        info["final_loss"] = curve[-1]
     perplexity = getattr(result, "held_out_perplexity", None)
-    if perplexity is not None:
-        info["held_out_perplexity"] = perplexity
-    return info
+    return curve[-1] if curve else None, perplexity
 
 
 def _load_description(record):
     parts = []
-    if record.saved_at:
-        parts.append(f"saved {_short_time(record.saved_at)}")
-    if record.steps is not None:
-        parts.append(f"{record.steps} steps")
-    if record.final_loss is not None:
-        parts.append(f"loss {record.final_loss:.2f}")
+    if record.settings:
+        parts.append(f"saved {_short_time(record.settings.saved_at)}")
+    if record.gradient:
+        parts.append(f"{record.gradient.steps} steps")
+        if record.gradient.final_loss is not None:
+            parts.append(f"loss {record.gradient.final_loss:.2f}")
     if record.held_out_perplexity is not None:
         parts.append(f"ppl {record.held_out_perplexity:.1f}")
     return " · ".join(parts) or "pick up this trained model"
@@ -68,10 +69,12 @@ def _trained_chat_session(
             return
         store.save(model.kind, snapshot_of(model))
         kept = CheckpointRecord(
-            saved_at=_saved_at(clock),
-            corpus=str(directory),
-            seed=seed,
-            **settings,
+            settings=RunSettings(
+                saved_at=_saved_at(clock),
+                corpus=str(directory),
+                seed=seed,
+            ),
+            gradient=GradientRun(**settings) if settings else None,
         )
         store.save_record(model.kind, kept)
 
@@ -83,7 +86,12 @@ def _trained_chat_session(
             bus.unsubscribe(on_event)
 
     if kept is not None:
-        store.save_record(result.model.kind, replace(kept, **_result_info(result)))
+        final_loss, perplexity = _result_info(result)
+        if kept.gradient is not None and final_loss is not None:
+            kept = replace(kept, gradient=replace(kept.gradient, final_loss=final_loss))
+        if perplexity is not None:
+            kept = replace(kept, held_out_perplexity=perplexity)
+        store.save_record(result.model.kind, kept)
     return ChatSession(result.model, seed)
 
 

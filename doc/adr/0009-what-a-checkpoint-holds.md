@@ -17,12 +17,13 @@ A checkpoint holds four things: the model kind, the tokenizer's merge
 list, the weights, and a record of its run. The record is a frozen
 dataclass, `CheckpointRecord`. The store keeps it as a small JSON file
 beside the weights file, so reading the record never opens the
-weights. Its fields, each written when the run produced them:
-`saved_at` (ISO time, UTC), `corpus` (the corpus directory as given),
-`seed`, `steps`, `batch`, `learning_rate`, `final_loss` (the last loss
-in the curve), and `held_out_perplexity`. The counted bigram has no
-steps and no loss curve; the neural bigram has no held-out
-perplexity. A field the run did not produce is empty.
+weights. The record carries the run's settings (`saved_at` as ISO time
+in UTC, `corpus`, and `seed`), and, when the run produced them, a
+gradient run (`steps`, `batch`, `learning_rate`, and `final_loss`, the
+last loss in the curve, written once the curve is known) and
+`held_out_perplexity`. The counted bigram has no gradient run; the
+neural bigram has no held-out perplexity. A run that holds out no text
+reports no perplexity. A part the run did not produce is absent.
 
 Composition assembles the record because it holds the settings and the
 run result. A trainer hands its keeper the finished model, as before;
