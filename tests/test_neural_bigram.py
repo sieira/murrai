@@ -3,6 +3,7 @@ from collections import Counter
 from pathlib import Path
 
 import pytest
+import torch
 
 from murrai.application.runs import train_neural_bigram
 from murrai.domain.bigram import Bigram
@@ -18,10 +19,19 @@ def test_neural_bigram_fresh_predicts_uniform_over_next_tokens():
     assert model.probs([0]) == pytest.approx([1 / 256] * 256)
 
 
+def test_batch_loss_is_a_torch_tensor_and_backprops():
+    model = NeuralBigram(TokenizerEncoderDecoder())
+    loss = model.batch_loss([A], [B])
+    assert isinstance(loss, torch.Tensor)
+    loss.backward()
+    assert model.weights.grad is not None
+    assert model.weights.grad.abs().sum() > 0
+
+
 def test_neural_bigram_batch_loss_is_the_nll_of_real_next_tokens():
     model = NeuralBigram(TokenizerEncoderDecoder())
     loss = model.batch_loss([A], [B])
-    assert loss.data == pytest.approx(-math.log(1 / 256))
+    assert loss.item() == pytest.approx(-math.log(1 / 256))
 
 
 def _aesop():

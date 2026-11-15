@@ -114,7 +114,7 @@ def train_neural_bigram(
         loss = model.batch_loss(prevs, nexts)
         loss.backward()
         model.update(rate)
-        loss_curve.append(loss.data)
+        loss_curve.append(loss.item())
         if bus is not None:
             bus.emit(TrainingEvent(step=step + 1, total_steps=steps))
     if keeper is not None:
