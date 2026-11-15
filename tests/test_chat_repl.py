@@ -602,8 +602,7 @@ def test_a_second_tab_takes_a_fresh_ghost():
 
     assert len(two.text) > len(one.text)
 def _broken_line_session(text):
-    vocabulary = Vocabulary.from_text(text)
-    return ChatSession(Bigram.fit(text, vocabulary), 0)
+    return ChatSession(Bigram.fit(text, TokenizerEncoderDecoder()), 0)
 
 
 def test_the_story_renders_typed_line_breaks_as_lines():

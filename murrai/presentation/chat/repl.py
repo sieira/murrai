@@ -112,7 +112,9 @@ class GhostChat:
             fragments.append((style, f" {mark} {shown_piece} {p:6.1%}"))
         if hit is not None and hit not in [piece for piece, _ in shown]:
             p = next(p for piece, p in dice if piece == hit)
-            fragments.append(("class:die-hit", f" » {hit.replace(chr(10), '↵')} {p:6.1%}"))
+            fragments.append(
+                ("class:die-hit", f" » {hit.replace(chr(10), '↵')} {p:6.1%}"),
+            )
         if len(dice) > TOP:
             fragments.append(("class:more", f"   ... {len(dice) - TOP} more"))
         return fragments

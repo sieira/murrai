@@ -6,7 +6,7 @@ from prompt_toolkit.output import DummyOutput
 
 from murrai.application.runs import train_neural_bigram
 from murrai.domain.bigram import Bigram
-from murrai.domain.vocabulary import Vocabulary
+from murrai.domain.tokenizer import TokenizerEncoderDecoder
 from murrai.presentation.chat import ChatSession
 from murrai.presentation.chat.repl import GhostChat, plain_text, run_chat
 
@@ -41,7 +41,7 @@ def test_alt_enter_breaks_the_line_and_enter_still_commits():
 
 
 def _newline_heavy_chat():
-    model = Bigram.fit("a\na\n", Vocabulary.from_text("a\n"))
+    model = Bigram.fit("a\na\n", TokenizerEncoderDecoder())
     return GhostChat(ChatSession(model, 0))
 
 
