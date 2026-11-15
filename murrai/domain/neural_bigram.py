@@ -1,7 +1,6 @@
-import math
 import random
 
-from murrai.domain.autograd import Value
+import torch
 
 
 class NeuralBigram:
@@ -11,51 +10,40 @@ class NeuralBigram:
         self.tokenizer = tokenizer
         self.start = tokenizer.vocab_size
         rows = tokenizer.vocab_size + 1
-        self.weights = [
-            [Value(0.0) for _ in range(tokenizer.vocab_size)] for _ in range(rows)
-        ]
+        self.weights = torch.zeros(
+            rows,
+            tokenizer.vocab_size,
+            requires_grad=True,
+        )
 
     def logits(self, prev_id):
         return self.weights[prev_id]
 
     def state(self):
-        return {"weights": [[value.data for value in row] for row in self.weights]}
+        return {"weights": self.weights.tolist()}
 
     @classmethod
     def from_state(cls, tokenizer, state):
         model = cls(tokenizer)
-        for row, values in zip(model.weights, state["weights"], strict=False):
-            for value, data in zip(row, values, strict=False):
-                value.data = data
+        with torch.no_grad():
+            model.weights.copy_(
+                torch.tensor(state["weights"], dtype=torch.float32),
+            )
         return model
 
     def batch_loss(self, prev_ids, next_ids):
-        loss = Value(0.0)
-        rows = {}
-        for prev, nxt in zip(prev_ids, next_ids, strict=False):
-            rows.setdefault(prev, []).append(nxt)
-        for prev, targets in rows.items():
-            row = self.logits(prev)
-            exps = [logit.exp() for logit in row]
-            normalizer = exps[0]
-            for e in exps[1:]:
-                normalizer = normalizer + e
-            for nxt in targets:
-                loss = loss + -(exps[nxt] / normalizer).log()
-        return loss * (1.0 / len(prev_ids))
+        prevs = torch.tensor(prev_ids, dtype=torch.long)
+        nexts = torch.tensor(next_ids, dtype=torch.long)
+        return torch.nn.functional.cross_entropy(self.weights[prevs], nexts)
 
     def probs(self, context_ids):
         prev = context_ids[-1] if context_ids else self.start
-        row = self.logits(prev)
-        exps = [_exp(logit.data) for logit in row]
-        total = sum(exps)
-        return [e / total for e in exps]
+        return torch.softmax(self.weights[prev], dim=-1).tolist()
 
     def update(self, learning_rate):
-        for row in self.weights:
-            for weight in row:
-                weight.data -= learning_rate * weight.grad
-                weight.grad = 0.0
+        with torch.no_grad():
+            self.weights -= learning_rate * self.weights.grad
+            self.weights.grad.zero_()
 
     def generate(self, n_tokens, seed):
         rng = random.Random(seed)
@@ -75,7 +63,3 @@ class NeuralBigram:
             if r < so_far:
                 return i
         return len(self.probs([prev_id])) - 1
-
-
-def _exp(x):
-    return math.exp(x) if x < 300 else math.exp(300)
