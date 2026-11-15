@@ -81,6 +81,10 @@ binds (AGENTS.md header).
 - turn: one exchange; the user types their part and presses Enter to
   commit it (Tab takes the model's offered shadow instead), then the model
   answers by sampling one character.
+- ghost: the chat's private copy of the story that predicts ahead; it
+  offers the shadow and the next character's odds.
+- shadow: the model's offered continuation, shown grey after the cursor;
+  Tab takes it.
 - sample: pick the next token from the predicted distribution.
 - temperature: flattens or sharpens the distribution before sampling.
 - top-k: sample only from the k most likely tokens.

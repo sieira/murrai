@@ -11,7 +11,7 @@ from murrai.presentation.chat import ChatSession, Command, run_chat
 from murrai.presentation.chat.form import Field
 from murrai.presentation.chat.lanes import ChatLog
 from murrai.presentation.chat.panel import FormCommand
-from murrai.presentation.chat.repl import GhostChat, GhostSuggestions
+from murrai.presentation.chat.repl import GhostChat, ShadowSuggestions
 
 
 def _session(text="abab"):
@@ -249,9 +249,9 @@ def test_ghost_chat_takes_a_new_session():
     assert chat.session.text == ""
 
 
-def test_ghost_suggestions_forgets_the_old_model():
+def test_shadow_suggestions_forgets_the_old_model():
     chat = GhostChat(_session())
-    suggestions = GhostSuggestions(chat)
+    suggestions = ShadowSuggestions(chat)
     suggestions._roll_for("")
     assert suggestions._cache
 

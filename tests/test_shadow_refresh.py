@@ -3,7 +3,7 @@ from prompt_toolkit.buffer import Buffer
 from murrai.domain.bigram import Bigram
 from murrai.domain.tokenizer import TokenizerEncoderDecoder
 from murrai.presentation.chat import ChatSession
-from murrai.presentation.chat.repl import GhostChat, GhostSuggestions
+from murrai.presentation.chat.repl import GhostChat, ShadowSuggestions
 
 
 def _session():
@@ -12,22 +12,22 @@ def _session():
 
 def test_a_second_tab_accept_rolls_fresh_shadow_text():
     chat = GhostChat(_session())
-    suggestions = GhostSuggestions(chat)
+    suggestions = ShadowSuggestions(chat)
 
-    after_first = chat.session.text
+    before = chat.session.text
     for _ in range(2):
-        ghost = suggestions.real_for(chat.session.text)
-        chat.accept_rest(chat.session.text, ghost)
+        shadow = suggestions.real_for(chat.session.text)
+        chat.accept_rest(chat.session.text, shadow)
         suggestions.forget()
 
     segments = chat.session.segments()
     assert [origin for _, origin in segments] == ["generated"]
-    assert len(chat.session.text) > len(after_first)
+    assert len(chat.session.text) > len(before)
 
 
 def test_after_an_accept_the_next_roll_is_fresh_not_a_cached_remainder():
     chat = GhostChat(_session())
-    suggestions = GhostSuggestions(chat)
+    suggestions = ShadowSuggestions(chat)
     first = suggestions.real_for("")
     chat.accept_rest("", first)
     suggestions.forget()
@@ -40,7 +40,7 @@ def test_after_an_accept_the_next_roll_is_fresh_not_a_cached_remainder():
 
 def test_the_shadow_shows_the_fresh_roll_right_after_an_accept():
     chat = GhostChat(_session())
-    suggestions = GhostSuggestions(chat)
+    suggestions = ShadowSuggestions(chat)
     buffer = Buffer()
 
     first = suggestions.real_for(buffer.text)

@@ -9,7 +9,7 @@ from murrai.domain.tokenizer import TokenizerEncoderDecoder
 from murrai.presentation.chat import ChatSession
 from murrai.presentation.chat.repl import (
     GhostChat,
-    GhostSuggestions,
+    ShadowSuggestions,
     plain_text,
     run_chat,
 )
@@ -25,25 +25,25 @@ def chat(model):
     return GhostChat(ChatSession(model, seed=0))
 
 
-def test_the_ghost_is_a_twenty_token_rollout(chat):
-    suggestion = GhostSuggestions(chat).get_suggestion(None, Document("a"))
+def test_the_shadow_is_a_twenty_token_rollout(chat):
+    suggestion = ShadowSuggestions(chat).get_suggestion(None, Document("a"))
     assert isinstance(suggestion, Suggestion)
     assert len(suggestion.text) >= 20
 
 
-def test_the_ghost_survives_text_absent_from_the_corpus(chat):
-    suggestion = GhostSuggestions(chat).get_suggestion(None, Document("az"))
+def test_the_shadow_survives_text_absent_from_the_corpus(chat):
+    suggestion = ShadowSuggestions(chat).get_suggestion(None, Document("az"))
     assert suggestion is not None
 
 
-def test_the_ghost_advances_after_an_accept_instead_of_rerolling(chat):
-    suggestions = GhostSuggestions(chat)
+def test_the_shadow_advances_after_an_accept_instead_of_rerolling(chat):
+    suggestions = ShadowSuggestions(chat)
     first = suggestions.get_suggestion(None, Document("a")).text
     after_one = suggestions.get_suggestion(None, Document("a" + first[0])).text
     assert after_one == first[1:]
 
 
-def test_the_ghost_is_deterministic_per_seed(model):
+def test_the_shadow_is_deterministic_per_seed(model):
     one = GhostChat(ChatSession(model, seed=3))
     two = GhostChat(ChatSession(model, seed=3))
     assert one.suggestions("ab") == two.suggestions("ab")
@@ -55,18 +55,18 @@ def newline_chat():
     return GhostChat(ChatSession(model, seed=0))
 
 
-def test_the_ghost_shows_newlines_as_a_marker(newline_chat):
+def test_the_shadow_shows_newlines_as_a_marker(newline_chat):
     real = newline_chat.suggestions("")
     if "\n" not in real:
         pytest.skip("rollout held no newline")
-    suggestions = GhostSuggestions(newline_chat)
+    suggestions = ShadowSuggestions(newline_chat)
     shown = suggestions.get_suggestion(None, Document("")).text
     assert "\n" not in shown
     assert "↵" in shown
 
 
-def test_the_ghost_keeps_the_real_roll_for_acceptance(newline_chat):
-    suggestions = GhostSuggestions(newline_chat)
+def test_the_shadow_keeps_the_real_roll_for_acceptance(newline_chat):
+    suggestions = ShadowSuggestions(newline_chat)
     shown = suggestions.get_suggestion(None, Document("")).text
     real = suggestions.real_for("")
     assert shown.replace("↵", "\n") == real
@@ -92,20 +92,20 @@ def test_sync_survives_a_deletion(chat):
 
 
 def test_accept_rest_lands_the_whole_suggestion(chat):
-    ghost = chat.suggestions("a")
+    shadow = chat.suggestions("a")
     chat.sync("a")
-    chat.accept_rest("a", ghost)
-    assert chat.session.text == "a" + ghost
-    assert chat.session.segments()[-1] == (ghost, "generated")
+    chat.accept_rest("a", shadow)
+    assert chat.session.text == "a" + shadow
+    assert chat.session.segments()[-1] == (shadow, "generated")
 
 
 def test_the_die_bar_marks_what_tab_will_accept(chat):
-    ids, ghost = chat.roll("a")
+    ids, shadow = chat.roll("a")
     chat.sync("a")
     bar = chat.die_bar("a", ids[0])
     text = plain_text(bar)
     assert chat.session.text
-    assert ghost
+    assert shadow
     assert "»" in text
     assert "%" in text
 

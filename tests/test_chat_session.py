@@ -37,8 +37,8 @@ def test_text_absent_from_the_corpus_extends_without_corrupting(model):
 
 def test_rollout_samples_the_next_n_tokens(model):
     session = ChatSession(model, seed=0)
-    ghost = session.rollout("a", 5)
-    assert len(ghost) >= 5
+    shadow = session.rollout("a", 5)
+    assert len(shadow) >= 5
 
 
 def test_rollout_is_deterministic_per_seed(model):
