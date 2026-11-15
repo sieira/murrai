@@ -1,8 +1,15 @@
+from dataclasses import FrozenInstanceError
+
 import pytest
 import torch
 
 from murrai.adapters.checkpoint import FileCheckpointStore, InMemoryCheckpointStore
-from murrai.application.checkpoints import Snapshot, restore, snapshot_of
+from murrai.application.checkpoints import (
+    CheckpointRecord,
+    Snapshot,
+    restore,
+    snapshot_of,
+)
 from murrai.application.runs import train_mlp_lm, train_neural_bigram
 from murrai.domain.bigram import Bigram
 from murrai.domain.mlp import MlpLM
@@ -88,6 +95,48 @@ def test_a_snapshot_round_trips_the_tokenizer_merges():
     assert restored.tokenizer.merges == tokenizer.merges
     assert restored.tokenizer.encode("abab") == tokenizer.encode("abab")
     torch.testing.assert_close(restored.probs([ord("a")]), model.probs([ord("a")]))
+
+
+def test_a_snapshot_is_frozen(counted):
+    snapshot = snapshot_of(counted)
+    with pytest.raises(FrozenInstanceError):
+        snapshot.kind = "nonsense"
+
+
+def test_the_file_store_keeps_the_record_beside_the_weights(tmp_path, counted):
+    store = FileCheckpointStore(tmp_path)
+    record = CheckpointRecord(saved_at="2027-01-15T08:00:00+00:00", steps=3)
+    store.save("counted-bigram", snapshot_of(counted))
+    store.save_record("counted-bigram", record)
+
+    assert store.record("counted-bigram") == record
+
+
+def test_reading_the_record_never_opens_the_weights(tmp_path, counted, monkeypatch):
+    store = FileCheckpointStore(tmp_path)
+    store.save("counted-bigram", snapshot_of(counted))
+    store.save_record("counted-bigram", CheckpointRecord(steps=3))
+
+    def refuse(path, *args, **kwargs):
+        raise AssertionError("reading the record opened the weights")
+
+    monkeypatch.setattr("murrai.adapters.checkpoint.torch.load", refuse)
+    assert store.record("counted-bigram").steps == 3
+
+
+def test_a_checkpoint_without_a_record_file_reads_an_empty_record(tmp_path, counted):
+    store = FileCheckpointStore(tmp_path)
+    store.save("counted-bigram", snapshot_of(counted))
+
+    assert store.record("counted-bigram") == CheckpointRecord()
+
+
+def test_the_memory_store_carries_the_record(counted):
+    store = InMemoryCheckpointStore()
+    store.save("counted-bigram", snapshot_of(counted))
+    store.save_record("counted-bigram", CheckpointRecord(steps=3))
+
+    assert store.record("counted-bigram") == CheckpointRecord(steps=3)
 
 
 def test_restore_rejects_an_unknown_kind():

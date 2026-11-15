@@ -2,6 +2,7 @@ import pytest
 
 import murrai.composition.chat as murrai_composition_chat
 from murrai.adapters.checkpoint import FileCheckpointStore, InMemoryCheckpointStore
+from murrai.application.checkpoints import Snapshot
 from murrai.application.ports import TrainingEvent
 from murrai.application.runs import training_device
 from murrai.composition.chat import chat_commands
@@ -114,6 +115,138 @@ def test_training_commands_save_a_checkpoint(corpus):
     ]
 
 
+def _clock_at_2027():
+    return 1_800_000_000
+
+
+def test_the_neural_checkpoint_records_its_info(corpus):
+    store = InMemoryCheckpointStore()
+    _command(
+        corpus,
+        "retrain neural bigram",
+        seed=0,
+        neural_steps=20,
+        store=store,
+        clock=_clock_at_2027,
+    ).build()
+
+    record = store.record("neural-bigram")
+    assert record.saved_at == "2027-01-15T08:00:00+00:00"
+    assert record.corpus == str(corpus)
+    assert record.seed == 0
+    assert record.steps == 20
+    assert record.batch == 64
+    assert record.learning_rate == 3.0
+    assert isinstance(record.final_loss, float)
+    assert record.held_out_perplexity is None
+
+
+def test_the_counted_checkpoint_records_no_steps(corpus):
+    store = InMemoryCheckpointStore()
+    _command(
+        corpus,
+        "counted bigram",
+        seed=0,
+        store=store,
+        clock=_clock_at_2027,
+    ).build()
+
+    record = store.record("counted-bigram")
+    assert record.saved_at == "2027-01-15T08:00:00+00:00"
+    assert record.steps is None
+    assert record.final_loss is None
+    assert isinstance(record.held_out_perplexity, float)
+
+
+def test_the_mlp_checkpoint_records_its_info(corpus):
+    store = InMemoryCheckpointStore()
+    _command(
+        corpus,
+        "retrain windowed mlp",
+        seed=0,
+        mlp_steps=20,
+        store=store,
+        clock=_clock_at_2027,
+    ).build()
+
+    record = store.record("windowed-mlp")
+    assert record.learning_rate == 0.5
+    assert record.steps == 20
+    assert record.batch == 256
+    assert isinstance(record.held_out_perplexity, float)
+
+
+def test_the_gpt_checkpoint_records_its_info(corpus):
+    store = InMemoryCheckpointStore()
+    _command(
+        corpus,
+        "retrain gpt",
+        seed=0,
+        gpt_steps=20,
+        store=store,
+        clock=_clock_at_2027,
+    ).build()
+
+    assert store.record("gpt").learning_rate == 0.001
+
+
+def test_the_checkpoint_records_the_last_loss_of_the_run(corpus, monkeypatch):
+    real = murrai_composition_chat.train_neural_bigram
+    captured = {}
+
+    def recorder(text, **kwargs):
+        result = real(text, **kwargs)
+        captured["result"] = result
+        return result
+
+    monkeypatch.setattr(murrai_composition_chat, "train_neural_bigram", recorder)
+    store = InMemoryCheckpointStore()
+    _command(
+        corpus,
+        "retrain neural bigram",
+        seed=0,
+        neural_steps=20,
+        store=store,
+    ).build()
+
+    record = store.record("neural-bigram")
+    assert record.final_loss == captured["result"].loss_curve[-1]
+
+
+def test_the_load_command_describes_the_checkpoint(corpus):
+    store = InMemoryCheckpointStore()
+    _command(
+        corpus,
+        "retrain neural bigram",
+        seed=0,
+        neural_steps=20,
+        store=store,
+        clock=_clock_at_2027,
+    ).build()
+    final_loss = store.record("neural-bigram").final_loss
+
+    loader = _command(
+        corpus,
+        "load neural-bigram",
+        seed=0,
+        store=store,
+        clock=_clock_at_2027,
+    )
+    assert loader.description == (
+        f"saved 2027-01-15 08:00 · 20 steps · loss {final_loss:.2f}"
+    )
+
+
+def test_a_checkpoint_without_a_record_keeps_the_old_load_line(corpus):
+    store = InMemoryCheckpointStore()
+    store.save(
+        "neural-bigram",
+        Snapshot(kind="neural-bigram", merges=(), state={}),
+    )
+    loader = _command(corpus, "load neural-bigram", seed=0, store=store)
+    assert loader.description == "pick up this trained model"
+
+
 def test_the_load_command_restores_the_trained_model(corpus):
     store = InMemoryCheckpointStore()
     trainer = _command(
@@ -209,6 +342,8 @@ def test_training_saves_the_model_before_the_metrics_run(tmp_path, monkeypatch):
     with pytest.raises(RuntimeError):
         command.build()
     assert store.names() == ["gpt"]
+    assert store.record("gpt").steps == 5
+    assert store.record("gpt").final_loss is None
 
 
 def test_the_retrain_command_trains_and_saves(corpus):

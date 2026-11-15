@@ -58,6 +58,8 @@ binds (AGENTS.md header).
 - learning rate: the step size applied to parameters using their gradients.
 - epoch: one full pass over the training data.
 - checkpoint: a snapshot of all parameters, written by a CheckpointStore.
+- record: the part of a checkpoint that says when the run happened, on
+  what, and how well; kept as a small file beside the weights.
 - training run: one execution of the training loop over a corpus.
 - training event: one step's progress — step, total steps — self-sufficient,
   so its reader never asks the trainer (ADR-0005).
