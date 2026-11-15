@@ -1,4 +1,4 @@
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 from murrai.domain.bigram import Bigram
 from murrai.domain.mlp import MlpLM
@@ -7,20 +7,30 @@ from murrai.domain.tokenizer import TokenizerEncoderDecoder
 from murrai.domain.transformer import TransformerLM
 
 
-@dataclass
+@dataclass(frozen=True)
 class Snapshot:
     kind: str
     merges: tuple
     state: dict
-    info: dict = field(default_factory=dict)
 
 
-def snapshot_of(model, info=None):
+@dataclass(frozen=True)
+class CheckpointRecord:
+    saved_at: str | None = None
+    corpus: str | None = None
+    seed: int | None = None
+    steps: int | None = None
+    batch: int | None = None
+    learning_rate: float | None = None
+    final_loss: float | None = None
+    held_out_perplexity: float | None = None
+
+
+def snapshot_of(model):
     return Snapshot(
         kind=model.kind,
         merges=model.tokenizer.merges,
         state=model.state(),
-        info=info or {},
     )
 
 

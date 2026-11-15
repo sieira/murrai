@@ -2,7 +2,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Protocol, runtime_checkable
 
-from murrai.application.checkpoints import Snapshot
+from murrai.application.checkpoints import CheckpointRecord, Snapshot
 from murrai.domain.tokenizer import TokenizerEncoderDecoder
 
 
@@ -36,6 +36,10 @@ class LanguageModel(Protocol):
 class CheckpointStore(Protocol):
     def save(self, name: str, snapshot: Snapshot) -> None: ...
 
+    def save_record(self, name: str, record: CheckpointRecord) -> None: ...
+
     def load(self, name: str) -> Snapshot: ...
+
+    def record(self, name: str) -> CheckpointRecord: ...
 
     def names(self) -> list[str]: ...

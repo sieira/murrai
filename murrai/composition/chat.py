@@ -5,7 +5,7 @@ from functools import partial
 
 from murrai.adapters.corpus import DirTextCorpus
 from murrai.adapters.events import ListenerBus
-from murrai.application.checkpoints import restore, snapshot_of
+from murrai.application.checkpoints import CheckpointRecord, restore, snapshot_of
 from murrai.application.runs import (
     train_bigram,
     train_mlp_lm,
@@ -36,19 +36,17 @@ def _result_info(result):
     return info
 
 
-def _load_description(info):
-    if not info:
-        return "pick up this trained model"
+def _load_description(record):
     parts = []
-    if "saved_at" in info:
-        parts.append(f"saved {_short_time(info['saved_at'])}")
-    if "steps" in info:
-        parts.append(f"{info['steps']} steps")
-    if "final_loss" in info:
-        parts.append(f"loss {info['final_loss']:.2f}")
-    if "held_out_perplexity" in info:
-        parts.append(f"ppl {info['held_out_perplexity']:.1f}")
-    return " · ".join(parts)
+    if record.saved_at:
+        parts.append(f"saved {_short_time(record.saved_at)}")
+    if record.steps is not None:
+        parts.append(f"{record.steps} steps")
+    if record.final_loss is not None:
+        parts.append(f"loss {record.final_loss:.2f}")
+    if record.held_out_perplexity is not None:
+        parts.append(f"ppl {record.held_out_perplexity:.1f}")
+    return " · ".join(parts) or "pick up this trained model"
 
 
 def _trained_chat_session(
@@ -68,16 +66,14 @@ def _trained_chat_session(
         nonlocal kept
         if store is None:
             return
-        kept = snapshot_of(
-            model,
-            info={
-                "saved_at": _saved_at(clock),
-                "corpus": str(directory),
-                "seed": seed,
-                **settings,
-            },
+        store.save(model.kind, snapshot_of(model))
+        kept = CheckpointRecord(
+            saved_at=_saved_at(clock),
+            corpus=str(directory),
+            seed=seed,
+            **settings,
         )
-        store.save(model.kind, kept)
+        store.save_record(model.kind, kept)
 
     try:
         result = builder(directory, seed, bus=bus, keeper=keep)
@@ -87,23 +83,24 @@ def _trained_chat_session(
             bus.unsubscribe(on_event)
 
     if kept is not None:
-        store.save(
-            result.model.kind,
-            replace(kept, info={**kept.info, **_result_info(result)}),
-        )
+        store.save_record(result.model.kind, replace(kept, **_result_info(result)))
     return ChatSession(result.model, seed)
 
 
-def counted_from_directory(directory, seed=0, bus=None, keeper=None):
+def _keeping(keeper, settings):
     def keep(model):
         if keeper is not None:
-            keeper(model, {})
+            keeper(model, settings)
 
+    return keep
+
+
+def counted_from_directory(directory, seed=0, bus=None, keeper=None):
     return train_bigram(
         DirTextCorpus(directory),
         holdout=0.1,
         bus=bus,
-        keeper=keep,
+        keeper=_keeping(keeper, {}),
     )
 
 
@@ -117,15 +114,11 @@ def neural_from_directory(
 ):
     settings = {"steps": steps, "batch": batch, "learning_rate": 3.0}
 
-    def keep(model):
-        if keeper is not None:
-            keeper(model, settings)
-
     return train_neural_bigram(
         DirTextCorpus(directory).text(),
         seed=seed,
         bus=bus,
-        keeper=keep,
+        keeper=_keeping(keeper, settings),
         **settings,
     )
 
@@ -140,10 +133,6 @@ def mlp_from_directory(
 ):
     settings = {"steps": steps, "batch": batch, "learning_rate": 0.5}
 
-    def keep(model):
-        if keeper is not None:
-            keeper(model, settings)
-
     return train_mlp_lm(
         DirTextCorpus(directory).text(),
         seed=seed,
@@ -153,7 +142,7 @@ def mlp_from_directory(
         hidden=256,
         device=training_device(prefer_mps=False),
         bus=bus,
-        keeper=keep,
+        keeper=_keeping(keeper, settings),
         **settings,
     )
 
@@ -168,10 +157,6 @@ def gpt_from_directory(
 ):
     settings = {"steps": steps, "batch": batch, "learning_rate": 1e-3}
 
-    def keep(model):
-        if keeper is not None:
-            keeper(model, settings)
-
     return train_transformer_lm(
         DirTextCorpus(directory).text(),
         seed=seed,
@@ -180,7 +165,7 @@ def gpt_from_directory(
         max_time=64,
         device=training_device(prefer_mps=True),
         bus=bus,
-        keeper=keep,
+        keeper=_keeping(keeper, settings),
         **settings,
     )
 
@@ -207,7 +192,7 @@ def chat_commands(
             commands.append(
                 Command(
                     f"load {name}",
-                    _load_description(store.load(name).info),
+                    _load_description(store.record(name)),
                     lambda name=name: load_checkpoint_session(store, seed, name),
                 ),
             )

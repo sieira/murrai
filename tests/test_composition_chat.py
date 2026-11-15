@@ -130,23 +130,15 @@ def test_the_neural_checkpoint_records_its_info(corpus):
         clock=_clock_at_2027,
     ).build()
 
-    info = store.load("neural-bigram").info
-    assert set(info) == {
-        "saved_at",
-        "corpus",
-        "seed",
-        "steps",
-        "batch",
-        "learning_rate",
-        "final_loss",
-    }
-    assert info["saved_at"] == "2027-01-15T08:00:00+00:00"
-    assert info["corpus"] == str(corpus)
-    assert info["seed"] == 0
-    assert info["steps"] == 20
-    assert info["batch"] == 64
-    assert info["learning_rate"] == 3.0
-    assert isinstance(info["final_loss"], float)
+    record = store.record("neural-bigram")
+    assert record.saved_at == "2027-01-15T08:00:00+00:00"
+    assert record.corpus == str(corpus)
+    assert record.seed == 0
+    assert record.steps == 20
+    assert record.batch == 64
+    assert record.learning_rate == 3.0
+    assert isinstance(record.final_loss, float)
+    assert record.held_out_perplexity is None
 
 
 def test_the_counted_checkpoint_records_no_steps(corpus):
@@ -159,10 +151,11 @@ def test_the_counted_checkpoint_records_no_steps(corpus):
         clock=_clock_at_2027,
     ).build()
 
-    info = store.load("counted-bigram").info
-    assert set(info) == {"saved_at", "corpus", "seed", "held_out_perplexity"}
-    assert info["saved_at"] == "2027-01-15T08:00:00+00:00"
-    assert isinstance(info["held_out_perplexity"], float)
+    record = store.record("counted-bigram")
+    assert record.saved_at == "2027-01-15T08:00:00+00:00"
+    assert record.steps is None
+    assert record.final_loss is None
+    assert isinstance(record.held_out_perplexity, float)
 
 
 def test_the_mlp_checkpoint_records_its_info(corpus):
@@ -176,20 +169,11 @@ def test_the_mlp_checkpoint_records_its_info(corpus):
         clock=_clock_at_2027,
     ).build()
 
-    info = store.load("windowed-mlp").info
-    assert set(info) == {
-        "saved_at",
-        "corpus",
-        "seed",
-        "steps",
-        "batch",
-        "learning_rate",
-        "final_loss",
-        "held_out_perplexity",
-    }
-    assert info["learning_rate"] == 0.5
-    assert info["steps"] == 20
-    assert info["batch"] == 256
+    record = store.record("windowed-mlp")
+    assert record.learning_rate == 0.5
+    assert record.steps == 20
+    assert record.batch == 256
+    assert isinstance(record.held_out_perplexity, float)
 
 
 def test_the_gpt_checkpoint_records_its_info(corpus):
@@ -203,18 +187,7 @@ def test_the_gpt_checkpoint_records_its_info(corpus):
         clock=_clock_at_2027,
     ).build()
 
-    info = store.load("gpt").info
-    assert set(info) == {
-        "saved_at",
-        "corpus",
-        "seed",
-        "steps",
-        "batch",
-        "learning_rate",
-        "final_loss",
-        "held_out_perplexity",
-    }
-    assert info["learning_rate"] == 0.001
+    assert store.record("gpt").learning_rate == 0.001
 
 
 def test_the_checkpoint_records_the_last_loss_of_the_run(corpus, monkeypatch):
@@ -236,8 +209,8 @@ def test_the_checkpoint_records_the_last_loss_of_the_run(corpus, monkeypatch):
         store=store,
     ).build()
 
-    info = store.load("neural-bigram").info
-    assert info["final_loss"] == captured["result"].loss_curve[-1]
+    record = store.record("neural-bigram")
+    assert record.final_loss == captured["result"].loss_curve[-1]
 
 
 def test_the_load_command_describes_the_checkpoint(corpus):
@@ -250,7 +223,7 @@ def test_the_load_command_describes_the_checkpoint(corpus):
         store=store,
         clock=_clock_at_2027,
     ).build()
-    info = store.load("neural-bigram").info
+    final_loss = store.record("neural-bigram").final_loss
 
     loader = _command(
         corpus,
@@ -260,11 +233,11 @@ def test_the_load_command_describes_the_checkpoint(corpus):
         clock=_clock_at_2027,
     )
     assert loader.description == (
-        f"saved 2027-01-15 08:00 · 20 steps · loss {info['final_loss']:.2f}"
+        f"saved 2027-01-15 08:00 · 20 steps · loss {final_loss:.2f}"
     )
 
 
-def test_a_checkpoint_without_info_keeps_the_old_load_line(corpus):
+def test_a_checkpoint_without_a_record_keeps_the_old_load_line(corpus):
     store = InMemoryCheckpointStore()
     store.save(
         "neural-bigram",
@@ -369,6 +342,8 @@ def test_training_saves_the_model_before_the_metrics_run(tmp_path, monkeypatch):
     with pytest.raises(RuntimeError):
         command.build()
     assert store.names() == ["gpt"]
+    assert store.record("gpt").steps == 5
+    assert store.record("gpt").final_loss is None
 
 
 def test_the_retrain_command_trains_and_saves(corpus):
