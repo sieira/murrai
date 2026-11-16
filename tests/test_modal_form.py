@@ -3,6 +3,7 @@ import time
 
 from prompt_toolkit.data_structures import Size
 from prompt_toolkit.input.defaults import create_pipe_input
+from prompt_toolkit.key_binding import KeyBindings
 from prompt_toolkit.layout import Window
 from prompt_toolkit.layout.containers import FloatContainer
 from prompt_toolkit.output import DummyOutput
@@ -12,8 +13,14 @@ from murrai.domain.bigram import Bigram
 from murrai.domain.tokenizer import TokenizerEncoderDecoder
 from murrai.presentation.chat import ChatSession, run_chat
 from murrai.presentation.chat.form import Field, FormOverlay, TrainingForm
+from murrai.presentation.chat.menu import Menu, MenuBar
 from murrai.presentation.chat.panel import Command, CommandPanel, FormCommand
-from murrai.presentation.chat.repl import GhostChat, chat_layout
+from murrai.presentation.chat.repl import (
+    AboutDialog,
+    GhostChat,
+    chat_layout,
+    menu_screen,
+)
 from murrai.presentation.chat.status import TrainingStatus
 
 
@@ -63,6 +70,9 @@ def _layout_parts(command):
         on_cancel=lambda: None,
         focus=focused.append,
     )
+    menubar = MenuBar((Menu("models"), Menu("sessions"), Menu("about")))
+    menu_bar, dropdowns = menu_screen(menubar, KeyBindings())
+    about = AboutDialog(on_close=lambda: None, focus=focused.append)
     layout = chat_layout(
         story=Window(),
         editor=Window(),
@@ -72,6 +82,10 @@ def _layout_parts(command):
         overlay=overlay,
         status=TrainingStatus(),
         chat=GhostChat(None),
+        menubar=menubar,
+        menu_bar=menu_bar,
+        dropdowns=dropdowns,
+        about=about,
     )
     return layout, overlay, focused
 
@@ -81,11 +95,11 @@ def test_the_form_is_a_float_over_the_chat_and_not_a_column():
 
     root = layout.container
     assert isinstance(root, FloatContainer)
-    assert [root.floats] == [[overlay.float]]
+    assert root.floats[0] is overlay.float
 
     rows = root.content.get_children()
-    assert len(rows) == 2
-    columns = rows[0].get_children()
+    assert len(rows) == 3
+    columns = rows[1].get_children()
     assert len(columns) == 2
 
     float_content = root.floats[0].content
@@ -181,12 +195,12 @@ def test_the_open_form_floats_a_titled_box_over_the_story():
     title_row = next(row for row in rows if "retrain x" in row)
     assert title_row.index("retrain x") >= 4
     assert rows.index(title_row) >= 2
-    assert rows[0].count("┌") == 1
+    assert rows[1].count("┌") == 1
 
 
 def test_closing_the_form_leaves_no_box_behind():
-    # a lone escape is delivered only after the parser flush (0.5s) plus the
-    # key processor timeout (1s) have both passed
+    # a lone escape is delivered only after the parser flush (0.1s) plus the
+    # key processor timeout (0.1s) have both passed
     output = _chat_screen([("\x10", 0.3), ("\r", 0.3), ("\x1b", 1.6)])
 
     screens = _screens(output)

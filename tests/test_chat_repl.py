@@ -662,6 +662,50 @@ def _wait_for_row(output, text, seconds=10):
     raise AssertionError(f"no row {text!r} showed up on the screen")
 
 
+def _wait_for_screen(output, text, seconds=10):
+    deadline = time.monotonic() + seconds
+    while time.monotonic() < deadline:
+        large = [s for s in output.snapshots if len(s) > 1000]
+        if large and text in large[-1]:
+            return large[-1]
+        time.sleep(0.05)
+    raise AssertionError(f"{text!r} never showed up on the screen")
+
+
+def test_alt_keys_drive_the_menu_bar_and_the_about_dialog():
+    session = _session()
+    output = _ScreenOutput()
+    with create_pipe_input() as pipe:
+        failures = []
+
+        def chat():
+            try:
+                run_chat(session, commands=[], input=pipe, output=output)
+            except BaseException as error:
+                failures.append(error)
+
+        thread = threading.Thread(target=chat)
+        thread.start()
+        pipe.send_text("\x1bm")
+        time.sleep(0.3)
+        pipe.send_text("\x1b")
+        time.sleep(0.3)
+        pipe.send_text("\x1ba")
+        time.sleep(0.3)
+        pipe.send_text("\r")
+        _wait_for_screen(output, "built from scratch")
+        pipe.send_text("\x1b")
+        time.sleep(0.3)
+        pipe.send_text("xy\r")
+        time.sleep(0.3)
+        pipe.send_text("\x03")
+        thread.join(timeout=10)
+    if failures:
+        raise failures[0]
+
+    assert session.text == "xy"
+
+
 def test_the_story_fills_the_box_with_one_row_per_line():
     session = _broken_line_session("\n".join("abcdefghijkl"))
     session.extend_user("\n".join("abcdefghijkl"))
