@@ -1,6 +1,7 @@
 import contextlib
 
 from prompt_toolkit.application import Application
+from prompt_toolkit.application.current import get_app
 from prompt_toolkit.auto_suggest import AutoSuggest, Suggestion
 from prompt_toolkit.cursor_shapes import CursorShape
 from prompt_toolkit.filters import Condition
@@ -16,7 +17,14 @@ from prompt_toolkit.layout.controls import (
 )
 from prompt_toolkit.mouse_events import MouseEventType
 from prompt_toolkit.styles import Style
-from prompt_toolkit.widgets import Dialog, Frame, MenuContainer, MenuItem, TextArea
+from prompt_toolkit.widgets import (
+    Dialog,
+    Frame,
+    MenuContainer,
+    MenuItem,
+    TextArea,
+)
+from prompt_toolkit.widgets.base import Border
 
 from murrai.presentation.chat.form import FormOverlay, TrainingForm
 from murrai.presentation.chat.lanes import (
@@ -65,6 +73,10 @@ STYLE = Style.from_dict(
         "menu-bar": "bg:ansiblue fg:ansiwhite",
         "menu-bar.selected-item": "bg:ansiwhite fg:ansiblue",
         "menu": "bg:ansiblue fg:ansiwhite",
+        "menu-border": "bg:ansiblue fg:ansiblue",
+        "menu-item": "bg:ansiblue fg:ansiwhite",
+        "menu-item.selected": "bg:ansiwhite fg:ansiblue",
+        "shadow": "bg:#000087",
     },
 )
 
@@ -262,6 +274,69 @@ def chat_body(
 
 ABOUT_TEXT = "murrAI - a conversational language model built from scratch, one machine"
 ABOUT_WIDTH = 78
+
+
+class ChatMenu(MenuContainer):
+    def _submenu(self, level=0):
+        def get_text_fragments():
+            result = []
+            if level < len(self.selected_menu):
+                menu = self._get_menu(level)
+                if menu.children:
+                    width = menu.width + 4
+                    result.append(("class:menu-border", Border.TOP_LEFT))
+                    result.append(("class:menu-border", Border.HORIZONTAL * width))
+                    result.append(("class:menu-border", Border.TOP_RIGHT))
+                    result.append(("", "\n"))
+                    selected_item = (
+                        self.selected_menu[level + 1]
+                        if level + 1 < len(self.selected_menu)
+                        else -1
+                    )
+
+                    def one_item(i, item):
+                        def mouse_handler(mouse_event):
+                            if item.disabled:
+                                return
+                            hover = mouse_event.event_type == MouseEventType.MOUSE_MOVE
+                            if hover:
+                                self.selected_menu = [
+                                    *self.selected_menu[: level + 1],
+                                    i,
+                                ]
+                            elif (
+                                mouse_event.event_type == MouseEventType.MOUSE_UP
+                                and item.handler
+                            ):
+                                get_app().layout.focus_last()
+                                item.handler()
+
+                        if i == selected_item:
+                            yield ("[SetCursorPosition]", "")
+                            style = "class:menu-item.selected"
+                        else:
+                            style = "class:menu-item"
+                        yield ("class:menu-border", Border.VERTICAL)
+                        yield (
+                            style,
+                            f"  {item.text}".ljust(width - 2)
+                            + ("> " if item.children else "  "),
+                            mouse_handler,
+                        )
+                        yield ("class:menu-border", Border.VERTICAL)
+                        yield ("", "\n")
+
+                    for i, item in enumerate(menu.children):
+                        result.extend(one_item(i, item))
+                    result.append(("class:menu-border", Border.BOTTOM_LEFT))
+                    result.append(("class:menu-border", Border.HORIZONTAL * width))
+                    result.append(("class:menu-border", Border.BOTTOM_RIGHT))
+            return result
+
+        return Window(
+            FormattedTextControl(get_text_fragments, show_cursor=False),
+            style="class:menu",
+        )
 
 
 class AboutDialog:
@@ -492,7 +567,7 @@ def run_chat(
             key_bindings=panel_keys,
         ),
     )
-    menu_container = MenuContainer(
+    menu_container = ChatMenu(
         body=chat_body(
             story=story,
             editor=editor,
