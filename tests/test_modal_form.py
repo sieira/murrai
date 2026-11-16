@@ -146,7 +146,7 @@ def _text(rows):
     return "\n".join(row.replace("\r", "") for row in rows)
 
 
-def _chat_screen(keys):
+def _chat_screen(keys, command=None):
     output = _ScreenOutput()
     with create_pipe_input() as pipe:
         box = {}
@@ -156,7 +156,7 @@ def _chat_screen(keys):
             try:
                 box["session"] = run_chat(
                     _story_session(),
-                    commands=[_form_command()],
+                    commands=[command or _form_command()],
                     input=pipe,
                     output=output,
                     load=lambda name: _story_session(),
@@ -193,6 +193,39 @@ def test_the_open_form_floats_a_titled_box_over_the_story():
     assert title_row.index("retrain x") >= 4
     assert rows.index(title_row) >= 2
     assert rows[1].count("┌") == 1
+
+
+def test_the_dialog_shows_the_hint_of_the_selected_field():
+    command = _form_command(
+        (
+            Field(
+                "steps",
+                "steps",
+                "int",
+                2000,
+                check="whole above zero",
+                about="how many batches to train on",
+            ),
+            Field(
+                "final_learning_rate",
+                "final learning rate",
+                "float",
+                0.1,
+                check="number above zero",
+                about="where the step size ends",
+            ),
+        ),
+    )
+    output = _chat_screen(
+        [("\x10", 0.3), ("\r", 0.3), ("\t", 0.3)],
+        command=command,
+    )
+
+    screens = [_text(rows) for rows in _screens(output)]
+    first = next(i for i, screen in enumerate(screens) if "how many batches" in screen)
+    last = max(i for i, screen in enumerate(screens) if "step size ends" in screen)
+    assert "how many batches" not in screens[last]
+    assert "step size ends" not in screens[first]
 
 
 def test_closing_the_form_leaves_no_box_behind():

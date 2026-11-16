@@ -1,4 +1,5 @@
 import math
+import textwrap
 from collections.abc import Callable
 from dataclasses import dataclass
 
@@ -83,6 +84,7 @@ class Field:
     check: str = ""
     choices: tuple = ()
     shape: bool = False
+    about: str = ""
 
     def __post_init__(self):
         if self.check and self.check not in RULES:
@@ -216,6 +218,14 @@ def message_fragments(form):
     return [("class:failed", form.message)]
 
 
+def hint_fragments(form, width=None):
+    field = form.current
+    if field is None or not field.about:
+        return []
+    text = textwrap.fill(field.about, width) if width else field.about
+    return [("class:hint", text)]
+
+
 class FormOverlay:
     def __init__(self, on_accept, on_cancel, focus):
         self.form = None
@@ -256,6 +266,12 @@ class FormOverlay:
                 rows.append(self._choice_row(field))
             else:
                 rows.extend(self._text_rows(field))
+        rows.append(
+            Window(
+                FormattedTextControl(lambda: hint_fragments(self.form, FORM_WIDTH - 2)),
+                wrap_lines=True,
+            ),
+        )
         rows.append(
             Window(
                 FormattedTextControl(lambda: message_fragments(self.form)),

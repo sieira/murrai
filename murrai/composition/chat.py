@@ -14,6 +14,8 @@ from murrai.application.checkpoints import (
     snapshot_of,
 )
 from murrai.application.runs import (
+    chip_profile,
+    suggested_defaults,
     train_bigram,
     train_mlp_lm,
     train_neural_bigram,
@@ -228,7 +230,16 @@ def _run_gpt(text, seed, store, values, bus=None, keeper=None):
 
 
 def _holdout_field():
-    return Field("holdout", "holdout", "float", 0.1, check="from zero below one")
+    return Field(
+        "holdout",
+        "holdout",
+        "float",
+        0.1,
+        check="from zero below one",
+        about=(
+            "a slice of the corpus kept out of training; perplexity is measured there"
+        ),
+    )
 
 
 def _text_field(directory):
@@ -250,20 +261,47 @@ def _text_field(directory):
         "choice",
         Path(directory).name,
         choices=choices or (Path(directory).name,),
+        about="which corpus folder trains the model",
     )
 
 
 def _size_field():
-    return Field("size", "size", "choice", "all", choices=("all", "100k", "500k"))
+    return Field(
+        "size",
+        "size",
+        "choice",
+        "all",
+        choices=("all", "100k", "500k"),
+        about=(
+            "how much of the corpus to train on; the small sizes are for quick checks"
+        ),
+    )
 
 
 def _seed_field(seed):
-    return Field("seed", "seed", "int", seed, check="whole number")
+    return Field(
+        "seed",
+        "seed",
+        "int",
+        seed,
+        check="whole number",
+        about="the random start; same seed, same run",
+    )
 
 
 def _start_field(store):
     names = store.names() if store is not None else ()
-    return Field(START_FROM, "start from", "choice", FRESH, choices=(FRESH, *names))
+    return Field(
+        START_FROM,
+        "start from",
+        "choice",
+        FRESH,
+        choices=(FRESH, *names),
+        about=(
+            "continue from a saved checkpoint instead of fresh;"
+            " the shape fields lock to what it was trained with"
+        ),
+    )
 
 
 def _device_field(default):
@@ -273,11 +311,23 @@ def _device_field(default):
         "choice",
         default,
         choices=("auto", "prefer gpu", "cpu"),
+        about="which chip trains the model; auto picks the gpu when one is present",
     )
 
 
 def _merges_field():
-    return Field("merges", "merges", "int", 300, check="whole above zero", shape=True)
+    return Field(
+        "merges",
+        "merges",
+        "int",
+        300,
+        check="whole above zero",
+        shape=True,
+        about=(
+            "byte pairs the tokenizer learns from the corpus; more merges means"
+            " longer tokens, so the same context length covers more characters"
+        ),
+    )
 
 
 def _counted_fields(directory):
@@ -289,18 +339,52 @@ def _counted_fields(directory):
     )
 
 
-def _neural_fields(directory, seed, store, steps):
+def _steps_field(steps, about):
+    return Field("steps", "steps", "int", steps, check="whole above zero", about=about)
+
+
+def _batch_field(chip, fixed, about):
+    return Field(
+        "batch",
+        "batch",
+        "int",
+        _tuned(chip, "batch", fixed),
+        check="whole above zero",
+        about=about,
+    )
+
+
+def _learning_rate_field(chip, fixed, about):
+    return Field(
+        "learning_rate",
+        "learning rate",
+        "float",
+        fixed,
+        check="number above zero",
+        about=about,
+    )
+
+
+def _neural_fields(directory, seed, store, steps, chip):
     return (
         _text_field(directory),
         _size_field(),
-        Field("steps", "steps", "int", steps, check="whole above zero"),
-        Field("batch", "batch", "int", 64, check="whole above zero"),
-        Field(
-            "learning_rate",
-            "learning rate",
-            "float",
+        _steps_field(
+            steps,
+            "how many batches to train on; more steps means more passes"
+            " over the corpus, until improvements stop",
+        ),
+        _batch_field(
+            chip,
+            64,
+            "how many sequences train at once; a bigger batch averages"
+            " more text into each step",
+        ),
+        _learning_rate_field(
+            chip,
             3.0,
-            check="number above zero",
+            "the step size for gradient descent; small learns slowly,"
+            " large overshoots and the loss jitters",
         ),
         Field(
             "final_learning_rate",
@@ -308,6 +392,7 @@ def _neural_fields(directory, seed, store, steps):
             "float",
             0.1,
             check="number above zero",
+            about="where the step size ends; the last steps land gently",
         ),
         _seed_field(seed),
         _merges_field(),
@@ -315,31 +400,73 @@ def _neural_fields(directory, seed, store, steps):
     )
 
 
-def _mlp_fields(directory, seed, store, steps):
+def _mlp_fields(directory, seed, store, steps, chip):
     return (
         _text_field(directory),
         _size_field(),
-        Field("steps", "steps", "int", steps, check="whole above zero"),
-        Field("batch", "batch", "int", 256, check="whole above zero"),
-        Field(
-            "learning_rate",
-            "learning rate",
-            "float",
-            0.5,
-            check="number above zero",
+        _steps_field(
+            steps,
+            "how many batches to train on; more steps means more passes"
+            " over the corpus, until improvements stop",
         ),
-        Field("window", "window", "int", 8, check="whole above zero", shape=True),
+        _batch_field(
+            chip,
+            256,
+            "how many sequences train at once; a bigger batch averages"
+            " more text into each step",
+        ),
+        _learning_rate_field(
+            chip,
+            0.5,
+            "the step size for gradient descent; small learns slowly,"
+            " large overshoots and the loss jitters",
+        ),
+        Field(
+            "window",
+            "window",
+            "int",
+            8,
+            check="whole above zero",
+            shape=True,
+            about="how many previous tokens the model sees at once, its context window",
+        ),
         Field(
             "dimension",
             "dimension",
             "int",
-            32,
+            _tuned(chip, "dimension", 32),
             check="whole above zero",
             shape=True,
+            about=(
+                "the width of the model's vectors; the main size knob;"
+                " too small and extra steps buy nothing"
+            ),
         ),
-        Field("hidden", "hidden", "int", 256, check="whole above zero", shape=True),
-        Field("patience", "patience", "int", 1000, check="whole zero or more"),
-        Field("shrink", "shrink", "float", 0.5, check="between zero and one"),
+        Field(
+            "hidden",
+            "hidden",
+            "int",
+            _tuned(chip, "hidden", 256),
+            check="whole above zero",
+            shape=True,
+            about="the size of the hidden layer between the lookups and the prediction",
+        ),
+        Field(
+            "patience",
+            "patience",
+            "int",
+            1000,
+            check="whole zero or more",
+            about="how many steps without improvement before the learning rate shrinks",
+        ),
+        Field(
+            "shrink",
+            "shrink",
+            "float",
+            0.5,
+            check="between zero and one",
+            about="how much the learning rate shrinks each time patience runs out",
+        ),
         _holdout_field(),
         _seed_field(seed),
         _device_field("auto"),
@@ -348,45 +475,98 @@ def _mlp_fields(directory, seed, store, steps):
     )
 
 
-def _gpt_fields(directory, seed, store, steps):
+def _gpt_fields(directory, seed, store, steps, chip):
     return (
         _text_field(directory),
         _size_field(),
-        Field("steps", "steps", "int", steps, check="whole above zero"),
-        Field("batch", "batch", "int", 256, check="whole above zero"),
-        Field(
-            "learning_rate",
-            "learning rate",
-            "float",
-            0.001,
-            check="number above zero",
+        _steps_field(
+            steps,
+            "how many batches to train on; more steps means more passes"
+            " over the corpus, until improvements stop",
         ),
-        Field("depth", "depth", "int", 4, check="whole above zero", shape=True),
+        _batch_field(
+            chip,
+            256,
+            "how many sequences train at once; a bigger batch averages"
+            " more text into each step",
+        ),
+        _learning_rate_field(
+            chip,
+            0.001,
+            "the step size for gradient descent; small learns slowly,"
+            " large overshoots and the loss jitters",
+        ),
+        Field(
+            "depth",
+            "depth",
+            "int",
+            _tuned(chip, "depth", 4),
+            check="whole above zero",
+            shape=True,
+            about=(
+                "how many attention blocks are stacked;"
+                " each block re-reads the same window"
+            ),
+        ),
         Field(
             "dimension",
             "dimension",
             "int",
-            64,
+            _tuned(chip, "dimension", 64),
             check="whole above zero",
             shape=True,
+            about=(
+                "the width of the model's vectors; the main size knob;"
+                " too small and extra steps buy nothing"
+            ),
         ),
-        Field("heads", "heads", "int", 1, check="whole above zero", shape=True),
+        Field(
+            "heads",
+            "heads",
+            "int",
+            1,
+            check="whole above zero",
+            shape=True,
+            about=(
+                "how many slices attention is split into; at a small dimension"
+                " each head gets narrow, so fewer is often better"
+            ),
+        ),
         Field(
             "max_time",
             "context length",
             "int",
-            64,
+            _tuned(chip, "max_time", 64),
             check="whole above zero",
             shape=True,
+            about="how many previous tokens attention can read at once",
         ),
-        Field("patience", "patience", "int", 200, check="whole zero or more"),
-        Field("shrink", "shrink", "float", 0.5, check="between zero and one"),
+        Field(
+            "patience",
+            "patience",
+            "int",
+            200,
+            check="whole zero or more",
+            about="how many steps without improvement before the learning rate shrinks",
+        ),
+        Field(
+            "shrink",
+            "shrink",
+            "float",
+            0.5,
+            check="between zero and one",
+            about="how much the learning rate shrinks each time patience runs out",
+        ),
         _holdout_field(),
         _seed_field(seed),
         _device_field("auto"),
         _merges_field(),
         _start_field(store),
     )
+
+
+def _tuned(chip, name, fixed):
+    return suggested_defaults(chip).get(name, fixed)
 
 
 def _training_command(name, description, run, directory, seed, store, clock, fields):
@@ -423,8 +603,10 @@ def chat_commands(
     neural_steps=2000,
     mlp_steps=10000,
     gpt_steps=2000,
+    chip=None,
     clock=time.time,
 ):
+    chip = chip_profile() if chip is None else chip
     commands = []
     if store is not None:
         for name in store.names():
@@ -455,7 +637,7 @@ def chat_commands(
                 seed,
                 store,
                 clock,
-                _neural_fields(directory, seed, store, neural_steps),
+                _neural_fields(directory, seed, store, neural_steps, chip),
             ),
             _training_command(
                 "retrain windowed mlp",
@@ -465,7 +647,7 @@ def chat_commands(
                 seed,
                 store,
                 clock,
-                _mlp_fields(directory, seed, store, mlp_steps),
+                _mlp_fields(directory, seed, store, mlp_steps, chip),
             ),
             _training_command(
                 "retrain gpt",
@@ -475,7 +657,7 @@ def chat_commands(
                 seed,
                 store,
                 clock,
-                _gpt_fields(directory, seed, store, gpt_steps),
+                _gpt_fields(directory, seed, store, gpt_steps, chip),
             ),
         ],
     )

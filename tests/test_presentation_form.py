@@ -4,6 +4,7 @@ from murrai.presentation.chat.form import (
     Field,
     TrainingForm,
     choice_fragments,
+    hint_fragments,
     label_fragments,
 )
 from murrai.presentation.chat.lanes import ChatLog
@@ -334,3 +335,76 @@ def test_a_number_check_rejects_a_value_that_is_not_finite():
 
     assert values is None
     assert form.visible
+
+
+def _hinted_fields():
+    return (
+        Field(
+            "steps",
+            "steps",
+            "int",
+            2000,
+            check="whole above zero",
+            about="how many batches to train on",
+        ),
+        Field(
+            "batch",
+            "batch",
+            "int",
+            64,
+            check="whole above zero",
+            about="how many sequences train at once",
+        ),
+        Field("seed", "seed", "int", 0, check="whole number"),
+    )
+
+
+def test_the_hint_explains_the_selected_field():
+    form = _form(_hinted_fields())
+
+    assert hint_fragments(form) == [("class:hint", "how many batches to train on")]
+
+
+def test_the_hint_follows_the_selection():
+    form = _form(_hinted_fields())
+
+    form.move(1)
+
+    assert hint_fragments(form) == [("class:hint", "how many sequences train at once")]
+
+
+def test_a_field_without_an_explanation_shows_no_hint():
+    form = _form((Field("seed", "seed", "int", 0, check="whole number"),))
+
+    assert hint_fragments(form) == []
+
+
+def test_a_hint_without_a_field_shows_nothing():
+    form = _form(_hinted_fields())
+    form.visible = False
+    form.current = None
+
+    assert hint_fragments(form) == []
+
+
+def test_a_hint_wraps_between_words():
+    form = _form(_hinted_fields())
+    form.move(1)
+
+    text = "".join(t for _, t in hint_fragments(form, width=10))
+
+    assert text == "how many\nsequences\ntrain at\nonce"
+
+
+def test_an_empty_hint_about_clears_the_line():
+    field = Field(
+        "steps",
+        "steps",
+        "int",
+        2000,
+        check="whole above zero",
+        about="",
+    )
+    form = _form((field,))
+
+    assert hint_fragments(form) == []

@@ -11,6 +11,7 @@ from murrai.application.ports import TrainingEvent
 from murrai.application.runs import training_device
 from murrai.composition.chat import chat_commands
 from murrai.domain.transformer import TransformerLM
+from murrai.presentation.chat.panel import FormCommand
 
 
 @pytest.fixture
@@ -96,6 +97,58 @@ def test_no_store_means_no_load_commands(corpus):
     assert not any(command.name.startswith("load ") for command in commands)
 
 
+def test_every_field_of_every_training_form_carries_an_explanation(corpus):
+    commands = chat_commands(
+        corpus,
+        seed=0,
+        neural_steps=20,
+        mlp_steps=20,
+        gpt_steps=20,
+    )
+    for command in commands:
+        if not isinstance(command, FormCommand):
+            continue
+        for field in command.fields:
+            assert field.about, f"{command.name} · {field.name} has no explanation"
+
+
+def test_the_gpt_defaults_follow_the_chip(corpus):
+    gpt = _command(corpus, "retrain gpt", seed=0, gpt_steps=20, chip="mps")
+    defaults = {field.name: field.default for field in gpt.fields}
+
+    assert defaults["batch"] == 128
+    assert defaults["dimension"] == 128
+    assert defaults["depth"] == 6
+    assert defaults["max_time"] == 128
+    assert defaults["heads"] == 1
+
+
+def test_the_mlp_defaults_follow_the_chip(corpus):
+    mlp = _command(corpus, "retrain windowed mlp", seed=0, mlp_steps=20, chip="cpu")
+    defaults = {field.name: field.default for field in mlp.fields}
+
+    assert defaults["batch"] == 64
+    assert defaults["dimension"] == 64
+    assert defaults["hidden"] == 128
+    assert defaults["window"] == 8
+
+
+def test_the_chip_never_touches_the_steps_or_the_seed(corpus):
+    gpt = _command(corpus, "retrain gpt", seed=7, gpt_steps=99, chip="mps")
+    defaults = {field.name: field.default for field in gpt.fields}
+
+    assert defaults["steps"] == 99
+    assert defaults["seed"] == 7
+
+
+def test_a_chip_left_unpicked_reports_this_machine(corpus, monkeypatch):
+    _available(monkeypatch, cuda=False, mps=True)
+    gpt = _command(corpus, "retrain gpt", seed=0, gpt_steps=20)
+    defaults = {field.name: field.default for field in gpt.fields}
+
+    assert defaults["dimension"] == 128
+
+
 def test_training_commands_save_a_checkpoint(corpus):
     store = InMemoryCheckpointStore()
     chat_commands(
@@ -138,6 +191,7 @@ def test_the_neural_checkpoint_records_its_info(corpus):
         neural_steps=20,
         store=store,
         clock=_clock_at_2027,
+        chip="cpu",
     ).build()
 
     record = store.record("neural-bigram-corpus")
@@ -176,12 +230,13 @@ def test_the_mlp_checkpoint_records_its_info(corpus):
         mlp_steps=20,
         store=store,
         clock=_clock_at_2027,
+        chip="cpu",
     ).build()
 
     record = store.record("windowed-mlp-corpus")
     assert record.gradient.learning_rate == 0.5
     assert record.gradient.steps == 20
-    assert record.gradient.batch == 256
+    assert record.gradient.batch == 64
     assert isinstance(record.held_out_perplexity, float)
 
 
@@ -482,7 +537,13 @@ def test_the_counted_command_offers_its_knobs(corpus):
 
 
 def test_the_neural_command_offers_its_knobs(corpus):
-    fields = _command(corpus, "retrain neural bigram", seed=0, neural_steps=20).fields
+    fields = _command(
+        corpus,
+        "retrain neural bigram",
+        seed=0,
+        neural_steps=20,
+        chip="cpu",
+    ).fields
 
     assert [(f.name, f.label, f.kind, f.default) for f in fields] == [
         ("text", "text", "choice", corpus.name),
@@ -519,17 +580,23 @@ def test_the_start_from_choice_lists_the_saved_models(corpus):
 
 
 def test_the_mlp_command_offers_its_knobs(corpus):
-    fields = _command(corpus, "retrain windowed mlp", seed=0, mlp_steps=20).fields
+    fields = _command(
+        corpus,
+        "retrain windowed mlp",
+        seed=0,
+        mlp_steps=20,
+        chip="cpu",
+    ).fields
 
     assert [(f.name, f.label, f.default) for f in fields] == [
         ("text", "text", corpus.name),
         ("size", "size", "all"),
         ("steps", "steps", 20),
-        ("batch", "batch", 256),
+        ("batch", "batch", 64),
         ("learning_rate", "learning rate", 0.5),
         ("window", "window", 8),
-        ("dimension", "dimension", 32),
-        ("hidden", "hidden", 256),
+        ("dimension", "dimension", 64),
+        ("hidden", "hidden", 128),
         ("patience", "patience", 1000),
         ("shrink", "shrink", 0.5),
         ("holdout", "holdout", 0.1),
@@ -549,13 +616,19 @@ def test_the_mlp_command_offers_its_knobs(corpus):
 
 
 def test_the_gpt_command_offers_its_knobs(corpus):
-    fields = _command(corpus, "retrain gpt", seed=0, gpt_steps=20).fields
+    fields = _command(
+        corpus,
+        "retrain gpt",
+        seed=0,
+        gpt_steps=20,
+        chip="cpu",
+    ).fields
 
     assert [(f.name, f.label, f.default) for f in fields] == [
         ("text", "text", corpus.name),
         ("size", "size", "all"),
         ("steps", "steps", 20),
-        ("batch", "batch", 256),
+        ("batch", "batch", 64),
         ("learning_rate", "learning rate", 0.001),
         ("depth", "depth", 4),
         ("dimension", "dimension", 64),
