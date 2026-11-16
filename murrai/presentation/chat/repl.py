@@ -531,13 +531,15 @@ def run_chat(
     def _(event):
         event.app.exit()
 
-    menu_targets = {"m": 0, "s": 1, "a": 2}
-
-    for key, index in menu_targets.items():
-
-        @global_keys.add("escape", key, filter=Condition(lambda: not menubar.active))
-        def _(event, index=index):
-            menubar.open(index)
+    @global_keys.add("f9")
+    def _(event):
+        if overlay.visible:
+            return
+        if menubar.active:
+            menubar.close()
+            event.app.layout.focus(buffer)
+        else:
+            menubar.open(0)
             event.app.layout.focus(menu_bar)
 
     story = Window(

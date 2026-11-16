@@ -662,48 +662,71 @@ def _wait_for_row(output, text, seconds=10):
     raise AssertionError(f"no row {text!r} showed up on the screen")
 
 
-def _wait_for_screen(output, text, seconds=10):
-    deadline = time.monotonic() + seconds
-    while time.monotonic() < deadline:
-        large = [s for s in output.snapshots if len(s) > 1000]
-        if large and text in large[-1]:
-            return large[-1]
-        time.sleep(0.05)
-    raise AssertionError(f"{text!r} never showed up on the screen")
-
-
-def test_alt_keys_drive_the_menu_bar_and_the_about_dialog():
+def test_f9_opens_the_menu_bar_arrows_walk_and_about_picks():
     session = _session()
     output = _ScreenOutput()
-    with create_pipe_input() as pipe:
-        failures = []
 
-        def chat():
-            try:
-                run_chat(session, commands=[], input=pipe, output=output)
-            except BaseException as error:
-                failures.append(error)
-
-        thread = threading.Thread(target=chat)
-        thread.start()
-        pipe.send_text("\x1bm")
+    def feeder(pipe):
+        pipe.send_text("\x1b[20~")
         time.sleep(0.3)
-        pipe.send_text("\x1b")
-        time.sleep(0.3)
-        pipe.send_text("\x1ba")
+        pipe.send_text("\x1b[C\x1b[C")
         time.sleep(0.3)
         pipe.send_text("\r")
-        _wait_for_screen(output, "built from scratch")
+        time.sleep(0.3)
         pipe.send_text("\x1b")
         time.sleep(0.3)
         pipe.send_text("xy\r")
         time.sleep(0.3)
         pipe.send_text("\x03")
-        thread.join(timeout=10)
-    if failures:
-        raise failures[0]
 
+    with create_pipe_input() as pipe:
+        thread = threading.Thread(target=feeder, args=(pipe,))
+        thread.start()
+        run_chat(session, commands=[], input=pipe, output=output)
+        thread.join()
+
+    assert any("built from scratch" in snapshot for snapshot in output.snapshots)
     assert session.text == "xy"
+
+
+def test_f9_keeps_typing_out_of_the_editor_while_the_bar_is_open():
+    session = _session()
+
+    def feeder(pipe):
+        pipe.send_text("\x1b[20~")
+        time.sleep(0.3)
+        pipe.send_text("\t")
+        time.sleep(0.3)
+        pipe.send_text("\x03")
+
+    with create_pipe_input() as pipe:
+        thread = threading.Thread(target=feeder, args=(pipe,))
+        thread.start()
+        run_chat(session, commands=[], input=pipe, output=DummyOutput())
+        thread.join()
+
+    assert session.text == ""
+
+
+def test_a_second_f9_closes_the_bar_and_returns_to_the_editor():
+    session = _session()
+
+    def feeder(pipe):
+        pipe.send_text("\x1b[20~")
+        time.sleep(0.3)
+        pipe.send_text("\x1b[20~")
+        time.sleep(0.3)
+        pipe.send_text("\t")
+        time.sleep(0.3)
+        pipe.send_text("\x03")
+
+    with create_pipe_input() as pipe:
+        thread = threading.Thread(target=feeder, args=(pipe,))
+        thread.start()
+        run_chat(session, commands=[], input=pipe, output=DummyOutput())
+        thread.join()
+
+    assert len(session.text) > len("abab")
 
 
 def test_the_story_fills_the_box_with_one_row_per_line():
