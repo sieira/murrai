@@ -3,23 +3,20 @@ import time
 
 from prompt_toolkit.data_structures import Size
 from prompt_toolkit.input.defaults import create_pipe_input
-from prompt_toolkit.key_binding import KeyBindings
-from prompt_toolkit.layout import Window
+from prompt_toolkit.layout import Layout, Window
 from prompt_toolkit.layout.containers import FloatContainer
 from prompt_toolkit.output import DummyOutput
-from prompt_toolkit.widgets import Dialog
+from prompt_toolkit.widgets import Dialog, MenuContainer
 
 from murrai.domain.bigram import Bigram
 from murrai.domain.tokenizer import TokenizerEncoderDecoder
 from murrai.presentation.chat import ChatSession, run_chat
 from murrai.presentation.chat.form import Field, FormOverlay, TrainingForm
-from murrai.presentation.chat.menu import Menu, MenuBar
 from murrai.presentation.chat.panel import Command, CommandPanel, FormCommand
 from murrai.presentation.chat.repl import (
     AboutDialog,
     GhostChat,
-    chat_layout,
-    menu_screen,
+    chat_body,
 )
 from murrai.presentation.chat.status import TrainingStatus
 
@@ -70,22 +67,22 @@ def _layout_parts(command):
         on_cancel=lambda: None,
         focus=focused.append,
     )
-    menubar = MenuBar((Menu("models"), Menu("sessions"), Menu("about")))
-    menu_bar, dropdowns = menu_screen(menubar, KeyBindings())
     about = AboutDialog(on_close=lambda: None, focus=focused.append)
-    layout = chat_layout(
+    body = chat_body(
         story=Window(),
         editor=Window(),
         die=Window(),
         panel_list=Window(),
         panel=panel,
-        overlay=overlay,
         status=TrainingStatus(),
         chat=GhostChat(None),
-        menubar=menubar,
-        menu_bar=menu_bar,
-        dropdowns=dropdowns,
-        about=about,
+    )
+    layout = Layout(
+        MenuContainer(
+            body=body,
+            menu_items=[],
+            floats=[overlay.float, about.float],
+        ).container,
     )
     return layout, overlay, focused
 
@@ -95,14 +92,16 @@ def test_the_form_is_a_float_over_the_chat_and_not_a_column():
 
     root = layout.container
     assert isinstance(root, FloatContainer)
-    assert root.floats[0] is overlay.float
+    assert overlay.float in root.floats
 
     rows = root.content.get_children()
-    assert len(rows) == 3
-    columns = rows[1].get_children()
+    assert len(rows) == 2
+    body_rows = rows[1].get_children()
+    assert len(body_rows) == 2
+    columns = body_rows[0].get_children()
     assert len(columns) == 2
 
-    float_content = root.floats[0].content
+    float_content = next(f.content for f in root.floats if f is overlay.float)
     assert float_content is overlay.container
     assert not float_content.filter()
 
@@ -110,10 +109,10 @@ def test_the_form_is_a_float_over_the_chat_and_not_a_column():
     assert isinstance(overlay.body, Dialog)
     assert float_content.filter()
     assert focused
-    assert root.floats[0].top == 2
-    assert root.floats[0].width is None
-    assert root.floats[0].height is None
-    assert root.floats[0].left is None
+    assert overlay.float.top == 2
+    assert overlay.float.width is None
+    assert overlay.float.height is None
+    assert overlay.float.left is None
     assert root.floats[0].right is None
 
     overlay.close()

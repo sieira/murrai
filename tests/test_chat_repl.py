@@ -669,7 +669,7 @@ def test_f9_opens_the_menu_bar_arrows_walk_and_about_picks():
     def feeder(pipe):
         pipe.send_text("\x1b[20~")
         time.sleep(0.3)
-        pipe.send_text("\x1b[C\x1b[C")
+        pipe.send_text("\x1b[C\x1b[C\x1b[B")
         time.sleep(0.3)
         pipe.send_text("\r")
         time.sleep(0.3)

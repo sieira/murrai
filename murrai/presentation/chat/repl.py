@@ -1,5 +1,4 @@
 import contextlib
-from string import ascii_lowercase
 
 from prompt_toolkit.application import Application
 from prompt_toolkit.auto_suggest import AutoSuggest, Suggestion
@@ -10,29 +9,20 @@ from prompt_toolkit.layout import Dimension, HSplit, Layout, VSplit, Window
 from prompt_toolkit.layout.containers import (
     ConditionalContainer,
     Float,
-    FloatContainer,
+    WindowAlign,
 )
-from prompt_toolkit.layout.controls import FormattedTextControl
+from prompt_toolkit.layout.controls import (
+    FormattedTextControl,
+)
+from prompt_toolkit.mouse_events import MouseEventType
 from prompt_toolkit.styles import Style
-from prompt_toolkit.widgets import Dialog, Frame, TextArea
+from prompt_toolkit.widgets import Dialog, Frame, MenuContainer, MenuItem, TextArea
 
 from murrai.presentation.chat.form import FormOverlay, TrainingForm
 from murrai.presentation.chat.lanes import (
     SILENT,
     CommandPicked,
     SessionSwapped,
-)
-from murrai.presentation.chat.menu import (
-    Menu,
-    MenuBar,
-    MenuItem,
-    bar_fragments,
-    dropdown_left,
-    menu_columns,
-    menu_fragments,
-)
-from murrai.presentation.chat.menu import (
-    description_fragments as menu_description,
 )
 from murrai.presentation.chat.panel import (
     CommandPanel,
@@ -72,8 +62,9 @@ STYLE = Style.from_dict(
         "dialog.body": "bg:default fg:default",
         "dialog.body text-area": "bg:default fg:default",
         "dialog.body text-area last-line": "nounderline",
+        "menu-bar": "bg:ansiblue fg:ansiwhite",
+        "menu-bar.selected-item": "bg:ansiwhite fg:ansiblue",
         "menu": "bg:ansiblue fg:ansiwhite",
-        "menu-selected": "bg:ansiwhite fg:ansiblue bold",
     },
 )
 
@@ -194,13 +185,10 @@ def _story_tail(window):
     return max(info.window_height, 1)
 
 
-def status_line(status, model_kind=None, menubar=None):
-    description = menu_description(menubar) if menubar is not None else []
+def status_line(status, model_kind=None):
     runs = status_fragments(status)
-    fragments = list(description)
+    fragments = []
     if model_kind is not None:
-        if fragments:
-            fragments.append(("class:hint", " │ "))
         fragments.append(("class:selected", model_kind))
     if runs:
         if fragments:
@@ -209,19 +197,14 @@ def status_line(status, model_kind=None, menubar=None):
     return fragments or [("class:hint", "ctrl-p commands")]
 
 
-def chat_layout(
+def chat_body(
     story,
     editor,
     die,
     panel_list,
     panel,
-    overlay,
     status,
     chat,
-    menubar,
-    menu_bar,
-    dropdowns,
-    about,
 ):
     panel_column = HSplit(
         [
@@ -238,85 +221,47 @@ def chat_layout(
         ],
         width=PANEL_WIDTH,
     )
-    return Layout(
-        FloatContainer(
-            HSplit(
+    body = HSplit(
+        [
+            VSplit(
                 [
-                    menu_bar,
-                    VSplit(
+                    HSplit(
                         [
-                            HSplit(
-                                [
-                                    Frame(
-                                        story,
-                                        title="murrAI",
-                                        height=Dimension(weight=TOP_WEIGHT),
-                                    ),
-                                    Frame(
-                                        HSplit([editor, die]),
-                                        title="write",
-                                        height=Dimension(weight=BOTTOM_WEIGHT),
-                                    ),
-                                ],
+                            Frame(
+                                story,
+                                title="murrAI",
+                                height=Dimension(weight=TOP_WEIGHT),
                             ),
-                            ConditionalContainer(
-                                panel_column,
-                                Condition(lambda: panel.visible),
+                            Frame(
+                                HSplit([editor, die]),
+                                title="write",
+                                height=Dimension(weight=BOTTOM_WEIGHT),
                             ),
                         ],
                     ),
-                    Window(
-                        FormattedTextControl(
-                            lambda: status_line(
-                                status,
-                                chat.session.kind if chat.session else None,
-                                menubar=menubar,
-                            ),
-                        ),
-                        height=1,
-                        dont_extend_height=True,
+                    ConditionalContainer(
+                        panel_column,
+                        Condition(lambda: panel.visible),
                     ),
                 ],
             ),
-            floats=[overlay.float, about.float, *dropdowns],
-        ),
+            Window(
+                FormattedTextControl(
+                    lambda: status_line(
+                        status,
+                        chat.session.kind if chat.session else None,
+                    ),
+                ),
+                height=1,
+                dont_extend_height=True,
+            ),
+        ],
     )
+    return body
 
 
 ABOUT_TEXT = "murrAI - a conversational language model built from scratch, one machine"
 ABOUT_WIDTH = 78
-
-
-def menu_screen(menubar, menu_keys):
-    menu_bar = Window(
-        FormattedTextControl(
-            lambda: bar_fragments(menubar),
-            focusable=True,
-            key_bindings=menu_keys,
-            show_cursor=False,
-        ),
-        height=1,
-        style="class:menu",
-    )
-    dropdown_window = Window(
-        FormattedTextControl(
-            lambda: menu_fragments(menubar),
-            show_cursor=False,
-        ),
-        style="class:menu",
-    )
-    dropdowns = [
-        Float(
-            content=ConditionalContainer(
-                dropdown_window,
-                Condition(lambda index=index: menubar.open_index == index),
-            ),
-            left=dropdown_left(menubar, index),
-            top=1,
-        )
-        for index, column in enumerate(menu_columns(menubar))
-    ]
-    return menu_bar, dropdowns
 
 
 class AboutDialog:
@@ -339,6 +284,7 @@ class AboutDialog:
                 show_cursor=False,
             ),
             height=1,
+            align=WindowAlign.RIGHT,
         )
         self.text = Window(
             FormattedTextControl(
@@ -357,10 +303,11 @@ class AboutDialog:
         self.float = Float(content=self.container)
 
     def cross_fragments(self):
-        return [
-            ("class:failed", " ×", lambda event: self.close()),  # noqa: RUF001
-            ("", "  "),
-        ]
+        def close(event):
+            if event.event_type == MouseEventType.MOUSE_UP:
+                self.close()
+
+        return [("class:failed", " ×", close)]  # noqa: RUF001
 
     def open(self):
         self.visible = True
@@ -432,51 +379,6 @@ def run_chat(
         )
 
     about = AboutDialog(on_close=lambda: focus(buffer), focus=focus)
-    menubar = MenuBar(
-        (
-            Menu("Models"),
-            Menu("Sessions"),
-            Menu("About", items=(MenuItem("about", "what murrAI is", about.open),)),
-        ),
-    )
-
-    menu_keys = KeyBindings()
-
-    @menu_keys.add("left")
-    def _(event):
-        menubar.move_menu(-1)
-
-    @menu_keys.add("right")
-    def _(event):
-        menubar.move_menu(1)
-
-    @menu_keys.add("up")
-    def _(event):
-        menubar.move_item(-1)
-
-    @menu_keys.add("down")
-    def _(event):
-        menubar.move_item(1)
-
-    @menu_keys.add("enter")
-    @menu_keys.add("space")
-    def _(event):
-        picked = menubar.pick()
-        if picked is not None:
-            picked.action()
-
-    @menu_keys.add("escape")
-    def _(event):
-        menubar.close()
-        event.app.layout.focus(buffer)
-
-    for letter in ascii_lowercase:
-
-        @menu_keys.add(letter)
-        def _(event, letter=letter):
-            picked = menubar.jump(letter)
-            if picked is not None:
-                picked.action()
 
     editor_keys = KeyBindings()
 
@@ -553,16 +455,21 @@ def run_chat(
     def _(event):
         event.app.exit()
 
+    def menu_focused():
+        return app.layout.current_window == menu_container.window
+
     @global_keys.add("f9")
     def _(event):
         if overlay.visible:
             return
-        if menubar.active:
-            menubar.close()
+        if menu_focused():
             event.app.layout.focus(buffer)
         else:
-            menubar.open(0)
-            event.app.layout.focus(menu_bar)
+            event.app.layout.focus(menu_container.window)
+
+    @global_keys.add("escape", filter=Condition(lambda: menu_focused()))
+    def _(event):
+        event.app.layout.focus(buffer)
 
     story = Window(
         FormattedTextControl(
@@ -585,21 +492,29 @@ def run_chat(
             key_bindings=panel_keys,
         ),
     )
-    menu_bar, dropdowns = menu_screen(menubar, menu_keys)
-    layout = chat_layout(
-        story=story,
-        editor=editor,
-        die=die,
-        panel_list=panel_list,
-        panel=panel,
-        overlay=overlay,
-        status=status,
-        chat=chat,
-        menubar=menubar,
-        menu_bar=menu_bar,
-        dropdowns=dropdowns,
-        about=about,
+    menu_container = MenuContainer(
+        body=chat_body(
+            story=story,
+            editor=editor,
+            die=die,
+            panel_list=panel_list,
+            panel=panel,
+            status=status,
+            chat=chat,
+        ),
+        menu_items=[
+            MenuItem("Models"),
+            MenuItem("Sessions"),
+            MenuItem("About", children=[MenuItem("about", handler=about.open)]),
+        ],
+        floats=[overlay.float, about.float],
     )
+
+    @menu_container.control.key_bindings.add("c-c", eager=True)
+    def _(event):
+        event.app.exit()
+
+    layout = Layout(menu_container.container)
     editor.control.key_bindings = editor_keys
     app = Application(
         layout=layout,
