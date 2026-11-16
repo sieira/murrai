@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from prompt_toolkit.mouse_events import MouseEventType
 
 GAP = 2
+DROPDOWN_PAD = 2
 
 
 def _clicked(event):
@@ -94,6 +95,10 @@ def menu_columns(menubar):
     return columns
 
 
+def dropdown_left(menubar, index):
+    return max(0, menu_columns(menubar)[index] - DROPDOWN_PAD)
+
+
 def _toggle(menubar, index):
     def handler(event):
         if not _clicked(event):
@@ -136,11 +141,14 @@ def menu_fragments(menubar):
     if menu is None:
         return []
     handler = _picker(menubar)
-    fragments = []
+    pad = " " * DROPDOWN_PAD
+    fragments = [("", "\n")]
     for index, item in enumerate(menu.items):
         style = "class:menu-selected" if index == menubar.item_index else "class:menu"
+        fragments.append((style, pad, handler))
         fragments.append((style, item.name, handler))
-        fragments.append(("", "\n"))
+        fragments.append((style, pad + "\n", handler))
+    fragments.append(("", "\n"))
     return fragments
 
 

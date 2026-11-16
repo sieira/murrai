@@ -8,6 +8,7 @@ from murrai.presentation.chat.menu import (
     MenuItem,
     bar_fragments,
     description_fragments,
+    dropdown_left,
     menu_columns,
     menu_fragments,
 )
@@ -241,9 +242,53 @@ def test_the_dropdown_lists_the_open_menu_with_the_selected_item_marked():
 
     fragments = menu_fragments(menubar)
 
-    assert ("class:menu-selected", "one", fragments[0][2]) in fragments
-    assert ("class:menu", "two", fragments[2][2]) in fragments
-    assert "".join(t for _, t, *rest in fragments) == "one\ntwo\n"
+    one = next(f for f in fragments if f[1] == "one")
+    two = next(f for f in fragments if f[1] == "two")
+    assert one[0] == "class:menu-selected"
+    assert two[0] == "class:menu"
+    assert "".join(t for _, t, *_rest in fragments) == "\n  one  \n  two  \n\n"
+
+
+def test_the_dropdown_margins_are_blank_lines_without_handlers():
+    first = MenuItem("one", "first", lambda: None)
+    second = MenuItem("two", "second", lambda: None)
+    menubar = MenuBar((Menu("letters", items=(first, second)),))
+    menubar.open(0)
+
+    fragments = menu_fragments(menubar)
+
+    assert fragments[0] == ("", "\n")
+    assert fragments[-1] == ("", "\n")
+    assert len(fragments[0]) == 2
+    assert len(fragments[-1]) == 2
+    assert fragments[4][0] == "class:menu"
+    assert fragments[4][1] == "  "
+    assert fragments[6][0] == "class:menu"
+    assert fragments[6][1] == "  \n"
+
+
+def test_the_selected_item_highlights_its_whole_row():
+    first = MenuItem("one", "first", lambda: None)
+    menubar = MenuBar((Menu("letters", items=(first,)),))
+    menubar.open(0)
+
+    fragments = menu_fragments(menubar)
+
+    row = fragments[1:4]
+    assert all(f[0] == "class:menu-selected" for f in row)
+
+
+def test_the_dropdown_rows_carry_their_handler_from_edge_to_edge():
+    picked = []
+    item = MenuItem("one", "first", lambda: picked.append(1))
+    menubar = MenuBar((Menu("letters", items=(item,)),))
+    menubar.open(0)
+
+    fragments = menu_fragments(menubar)
+
+    assert all(len(f) == 3 for f in fragments[1:4])
+    fragments[1][2](EVENT)
+    assert picked == [1]
 
 
 def test_the_dropdown_click_handler_picks_and_runs_the_action():
@@ -252,7 +297,7 @@ def test_the_dropdown_click_handler_picks_and_runs_the_action():
     menubar = MenuBar((Menu("about", items=(item,)),))
     menubar.open(0)
 
-    menu_fragments(menubar)[0][2](EVENT)
+    menu_fragments(menubar)[2][2](EVENT)
 
     assert picked == [1]
     assert not menubar.active
@@ -280,7 +325,7 @@ def test_an_item_ignores_hover_scroll_and_press_and_picks_on_release():
     item = MenuItem("about", "d", lambda: picked.append(1))
     menubar = MenuBar((Menu("about", items=(item,)),))
     menubar.open(0)
-    picker = menu_fragments(menubar)[0][2]
+    picker = next(f for f in menu_fragments(menubar) if f[1] == "about")[2]
 
     for kind in (
         MouseEventType.MOUSE_MOVE,
@@ -318,6 +363,49 @@ def test_the_dropdown_columns_follow_the_bar_titles():
     menubar = bar()
 
     assert menu_columns(menubar) == [0, 8, 18]
+
+
+def test_the_dropdown_shifts_left_so_items_align_under_their_title():
+    assert dropdown_left(bar(), 1) == 6
+    assert dropdown_left(bar(), 2) == 16
+    assert dropdown_left(bar(), 0) == 0
+
+
+def test_the_menu_surfaces_hide_the_cursor():
+    from prompt_toolkit.key_binding import KeyBindings
+
+    from murrai.presentation.chat.repl import AboutDialog, menu_screen
+
+    menu_bar_window, dropdowns = menu_screen(bar(), KeyBindings())
+    assert menu_bar_window.content.show_cursor is False
+    assert dropdowns[0].content.content.content.show_cursor is False
+
+    about = AboutDialog(on_close=lambda: None, focus=lambda control: None)
+    assert about.cross.content.show_cursor is False
+    assert about.text.content.show_cursor is False
+
+
+def test_the_about_popover_centers_itself_without_a_position():
+    from murrai.presentation.chat.repl import AboutDialog
+
+    about = AboutDialog(on_close=lambda: None, focus=lambda control: None)
+
+    assert about.float.left is None
+    assert about.float.top is None
+
+
+def test_the_about_cross_closes_the_popover():
+    from murrai.presentation.chat.repl import AboutDialog
+
+    closed = []
+    about = AboutDialog(on_close=lambda: closed.append(1), focus=lambda c: None)
+    about.open()
+
+    cross = next(f for f in about.cross_fragments() if f[1].strip() == "×")  # noqa: RUF001
+    cross[2](EVENT)
+
+    assert not about.visible
+    assert closed == [1]
 
 
 def test_the_bar_paints_its_whole_line_not_just_the_words():

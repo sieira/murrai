@@ -16,7 +16,7 @@ from prompt_toolkit.layout.controls import FormattedTextControl
 from prompt_toolkit.styles import Style
 from prompt_toolkit.widgets import Dialog, Frame, TextArea
 
-from murrai.presentation.chat.form import FORM_TOP, FormOverlay, TrainingForm
+from murrai.presentation.chat.form import FormOverlay, TrainingForm
 from murrai.presentation.chat.lanes import (
     SILENT,
     CommandPicked,
@@ -27,6 +27,7 @@ from murrai.presentation.chat.menu import (
     MenuBar,
     MenuItem,
     bar_fragments,
+    dropdown_left,
     menu_columns,
     menu_fragments,
 )
@@ -292,12 +293,16 @@ def menu_screen(menubar, menu_keys):
             lambda: bar_fragments(menubar),
             focusable=True,
             key_bindings=menu_keys,
+            show_cursor=False,
         ),
         height=1,
         style="class:menu",
     )
     dropdown_window = Window(
-        FormattedTextControl(lambda: menu_fragments(menubar)),
+        FormattedTextControl(
+            lambda: menu_fragments(menubar),
+            show_cursor=False,
+        ),
         style="class:menu",
     )
     dropdowns = [
@@ -306,7 +311,7 @@ def menu_screen(menubar, menu_keys):
                 dropdown_window,
                 Condition(lambda index=index: menubar.open_index == index),
             ),
-            left=column,
+            left=dropdown_left(menubar, index),
             top=1,
         )
         for index, column in enumerate(menu_columns(menubar))
@@ -326,23 +331,40 @@ class AboutDialog:
         def _(event):
             self.close()
 
-        self.body = Window(
+        self.cross = Window(
             FormattedTextControl(
-                lambda: [("", ABOUT_TEXT)],
+                lambda: self.cross_fragments(),
                 focusable=True,
                 key_bindings=keys,
+                show_cursor=False,
             ),
-            wrap_lines=True,
+            height=1,
+        )
+        self.text = Window(
+            FormattedTextControl(
+                lambda: [("", ABOUT_TEXT)],
+                show_cursor=False,
+            ),
         )
         self.container = ConditionalContainer(
-            Dialog(body=self.body, title="about", width=ABOUT_WIDTH),
+            Dialog(
+                body=HSplit([self.cross, self.text]),
+                title="about",
+                width=ABOUT_WIDTH,
+            ),
             Condition(lambda: self.visible),
         )
-        self.float = Float(content=self.container, top=FORM_TOP)
+        self.float = Float(content=self.container)
+
+    def cross_fragments(self):
+        return [
+            ("class:failed", " ×", lambda event: self.close()),  # noqa: RUF001
+            ("", "  "),
+        ]
 
     def open(self):
         self.visible = True
-        self._focus(self.body)
+        self._focus(self.cross)
 
     def close(self):
         self.visible = False
