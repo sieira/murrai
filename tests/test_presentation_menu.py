@@ -1,3 +1,6 @@
+from prompt_toolkit.data_structures import Point
+from prompt_toolkit.mouse_events import MouseButton, MouseEvent, MouseEventType
+
 from murrai.presentation.chat.menu import (
     GAP,
     Menu,
@@ -10,7 +13,21 @@ from murrai.presentation.chat.menu import (
 )
 
 ABOUT_ITEM = MenuItem("about", "what murrAI is", lambda: None)
-EVENT = object()
+EVENT = MouseEvent(
+    Point(x=0, y=0),
+    MouseEventType.MOUSE_UP,
+    MouseButton.LEFT,
+    frozenset(),
+)
+
+
+def click(kind):
+    return MouseEvent(
+        Point(x=0, y=0),
+        kind,
+        MouseButton.LEFT,
+        frozenset(),
+    )
 
 
 def bar():
@@ -239,6 +256,44 @@ def test_the_dropdown_click_handler_picks_and_runs_the_action():
 
     assert picked == [1]
     assert not menubar.active
+
+
+def test_a_title_ignores_hover_scroll_and_press_and_clicks_on_release():
+    menubar = bar()
+    toggle = bar_fragments(menubar)[0][2]
+
+    for kind in (
+        MouseEventType.MOUSE_MOVE,
+        MouseEventType.SCROLL_UP,
+        MouseEventType.SCROLL_DOWN,
+        MouseEventType.MOUSE_DOWN,
+    ):
+        toggle(click(kind))
+        assert menubar.open_index is None, kind
+
+    toggle(click(MouseEventType.MOUSE_UP))
+    assert menubar.open_index == 0
+
+
+def test_an_item_ignores_hover_scroll_and_press_and_picks_on_release():
+    picked = []
+    item = MenuItem("about", "d", lambda: picked.append(1))
+    menubar = MenuBar((Menu("about", items=(item,)),))
+    menubar.open(0)
+    picker = menu_fragments(menubar)[0][2]
+
+    for kind in (
+        MouseEventType.MOUSE_MOVE,
+        MouseEventType.SCROLL_UP,
+        MouseEventType.SCROLL_DOWN,
+        MouseEventType.MOUSE_DOWN,
+    ):
+        picker(click(kind))
+        assert menubar.active, kind
+        assert picked == []
+
+    picker(click(MouseEventType.MOUSE_UP))
+    assert picked == [1]
 
 
 def test_the_dropdown_is_empty_without_an_open_menu():

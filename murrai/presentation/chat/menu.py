@@ -1,7 +1,13 @@
 from collections.abc import Callable
 from dataclasses import dataclass
 
+from prompt_toolkit.mouse_events import MouseEventType
+
 GAP = 2
+
+
+def _clicked(event):
+    return event.event_type == MouseEventType.MOUSE_UP
 
 
 @dataclass
@@ -90,6 +96,8 @@ def menu_columns(menubar):
 
 def _toggle(menubar, index):
     def handler(event):
+        if not _clicked(event):
+            return None
         if menubar.open_index == index:
             menubar.close()
         else:
@@ -114,6 +122,8 @@ def bar_fragments(menubar):
 
 def _picker(menubar):
     def handler(event):
+        if not _clicked(event):
+            return None
         item = menubar.pick()
         if item is not None:
             item.action()
