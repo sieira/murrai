@@ -30,20 +30,9 @@ together.
   lands. A chat with no trained model opens with the panel open.
 - A command is one selectable action. Composition builds the list of
   commands; presentation only shows them.
-- A menu bar sits on the top line: `models`, `sessions`, and `about`,
-  each a menu whose items open a dropdown under the bar. The bar is
-  always on screen. Opening a menu selects its first item; the arrow
-  keys move between menus and within the open menu, wrapping; enter or
-  space picks the selected item; escape closes the menu and returns to
-  the editor; a letter picks the first item starting with it, or opens
-  the first menu whose title starts with it. Mouse clicks work: a click
-  on a title opens or closes that menu, a click on an item picks it.
-  While a menu is open, the selected item's description shows on the
-  bottom status line before the run info. Alt-m, alt-s, and alt-a open
-  the three menus. The models and sessions menus are empty for now and
-  fill in later issues. The about item opens a plain message dialog
-  with one line about the project; its version and license content is
-  a later issue.
+- A menu bar sits on the top line, its dropdowns floating over the
+  story like the form. The menu tree is data built in composition;
+  presentation only shows it.
 
 ## Consequences
 
