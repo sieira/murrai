@@ -104,7 +104,11 @@ def bar_fragments(menubar):
         if index:
             fragments.append(("", " " * GAP))
         style = "class:menu-selected" if index == menubar.open_index else "class:menu"
-        fragments.append((style, menu.title, _toggle(menubar, index)))
+        fragments.append(
+            (style + " underline", menu.title[:1], _toggle(menubar, index)),
+        )
+        if menu.title[1:]:
+            fragments.append((style, menu.title[1:], _toggle(menubar, index)))
     return fragments
 
 

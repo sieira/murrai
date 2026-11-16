@@ -294,8 +294,12 @@ def menu_screen(menubar, menu_keys):
             key_bindings=menu_keys,
         ),
         height=1,
+        style="class:menu",
     )
-    dropdown_window = Window(FormattedTextControl(lambda: menu_fragments(menubar)))
+    dropdown_window = Window(
+        FormattedTextControl(lambda: menu_fragments(menubar)),
+        style="class:menu",
+    )
     dropdowns = [
         Float(
             content=ConditionalContainer(
@@ -408,9 +412,9 @@ def run_chat(
     about = AboutDialog(on_close=lambda: focus(buffer), focus=focus)
     menubar = MenuBar(
         (
-            Menu("models"),
-            Menu("sessions"),
-            Menu("about", items=(MenuItem("about", "what murrAI is", about.open),)),
+            Menu("Models"),
+            Menu("Sessions"),
+            Menu("About", items=(MenuItem("about", "what murrAI is", about.open),)),
         ),
     )
 
