@@ -108,6 +108,8 @@ def train_neural_bigram(
     merges: int = 300,
     checkpoint: Snapshot | None = None,
 ):
+    if steps < 1:
+        raise ValueError("steps counts the steps of the run; pass one or more")
     tokenizer, train_ids = _checkpoint_tokenizer(train, merges, checkpoint, bus)
     (checkpoint.shape if checkpoint else Shape()).reject_contradictory()
     if checkpoint is None:
@@ -122,7 +124,7 @@ def train_neural_bigram(
     loss_curve = []
     for step in range(steps):
         rate = learning_rate + (final_learning_rate - learning_rate) * step / (
-            steps - 1
+            max(1, steps - 1)
         )
         sample = [pairs[rng.randrange(len(pairs))] for _ in range(batch)]
         prevs = [prev for prev, _ in sample]

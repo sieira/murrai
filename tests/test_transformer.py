@@ -624,3 +624,8 @@ def test_the_token_array_is_released_once_its_stream_reaches_the_device(monkeypa
     )
     gc.collect()
     assert all(ref() is None for ref in created)
+
+
+def test_zero_steps_is_rejected_with_a_message():
+    with pytest.raises(ValueError, match="pass one or more"):
+        train_transformer_lm("ab" * 200, steps=0, batch=16, seed=0)

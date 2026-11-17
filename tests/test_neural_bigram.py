@@ -125,3 +125,14 @@ def test_the_checkpoint_s_tokenizer_travels_unchanged():
         checkpoint=snapshot_of(first.model),
     )
     assert second.model.tokenizer.merges == first.model.tokenizer.merges
+
+
+def test_one_step_is_a_legal_step_count():
+    result = train_neural_bigram("ab" * 200, steps=1, batch=16, seed=0)
+
+    assert len(result.loss_curve) == 1
+
+
+def test_zero_steps_is_rejected_with_a_message():
+    with pytest.raises(ValueError, match="pass one or more"):
+        train_neural_bigram("ab" * 200, steps=0, batch=16, seed=0)
