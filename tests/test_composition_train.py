@@ -1,6 +1,7 @@
 import pytest
 
 import murrai.application.runs as runs
+import murrai.composition.train as composition_train
 from murrai.adapters.checkpoint import FileCheckpointStore
 from murrai.adapters.corpus import TextCorpus
 from murrai.composition.train import train_transformer_from_corpus
@@ -119,3 +120,16 @@ def test_the_train_checkpoint_record_carries_the_run(tmp_path):
     assert record.gradient.batch == 8
     assert record.gradient.learning_rate == pytest.approx(1e-3)
     assert record.gradient.final_loss == pytest.approx(result.loss_curve[-1])
+
+
+def test_the_validation_cadence_defaults_to_500_steps(monkeypatch):
+    seen = {}
+    real = composition_train.train_transformer_lm
+
+    def spy(*args, **kwargs):
+        seen["validate_every"] = kwargs.get("validate_every")
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(composition_train, "train_transformer_lm", spy)
+    train_transformer_from_corpus(TextCorpus("ab" * 400), steps=1, batch=8, seed=0)
+    assert seen["validate_every"] == 500

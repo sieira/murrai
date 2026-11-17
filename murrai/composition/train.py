@@ -17,7 +17,7 @@ def train_transformer_from_corpus(
     batch=256,
     seed=0,
     learning_rate=1e-3,
-    validate_every=200,
+    validate_every=500,
     checkpoint_every=500,
     store=None,
     checkpoint_name="tinystories",
