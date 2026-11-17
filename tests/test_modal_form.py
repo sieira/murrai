@@ -12,12 +12,9 @@ from murrai.domain.bigram import Bigram
 from murrai.domain.tokenizer import TokenizerEncoderDecoder
 from murrai.presentation.chat import ChatSession, run_chat
 from murrai.presentation.chat.form import Field, FormOverlay, TrainingForm
+from murrai.presentation.chat.menu import AboutPopover
 from murrai.presentation.chat.panel import Command, CommandPanel, FormCommand
-from murrai.presentation.chat.repl import (
-    AboutDialog,
-    GhostChat,
-    chat_body,
-)
+from murrai.presentation.chat.repl import GhostChat, chat_body
 from murrai.presentation.chat.status import TrainingStatus
 
 
@@ -67,7 +64,7 @@ def _layout_parts(command):
         on_cancel=lambda: None,
         focus=focused.append,
     )
-    about = AboutDialog(on_close=lambda: None, focus=focused.append)
+    about = AboutPopover(on_close=lambda: None, focus=focused.append)
     body = chat_body(
         story=Window(),
         editor=Window(),

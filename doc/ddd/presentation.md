@@ -13,7 +13,8 @@ line each.
 - menu: one word in the menu bar; opening it shows its dropdown.
 - dropdown: the box a menu opens, floating over the story, listing its
   items; the highlighted item runs on Enter, Space, or a click.
-- menu item: one selectable line in a dropdown; it runs an action that
-  composition supplied.
+- menu item: one selectable line in a dropdown; it runs a command.
 - about popover: the centered box with a × in its corner that the About
-  menu opens, naming murrAI's purpose and this screen's keys.
+  menu opens, showing one line about murrAI.
+- shadow: the navy strip two cells wide on the right and one row deep
+  below a dropdown or the popover; it makes the box look raised.

@@ -4,7 +4,7 @@ from prompt_toolkit.layout.mouse_handlers import MouseHandlers
 from prompt_toolkit.layout.screen import Screen, WritePosition
 from prompt_toolkit.mouse_events import MouseButton, MouseEvent, MouseEventType
 
-from murrai.presentation.chat.repl import ABOUT_TEXT, AboutDialog, WideShadow
+from murrai.presentation.chat.menu import ABOUT_TEXT, AboutPopover, WideShadow
 
 
 def mouse(kind):
@@ -12,7 +12,7 @@ def mouse(kind):
 
 
 def about(closed):
-    return AboutDialog(
+    return AboutPopover(
         on_close=lambda: closed.append(1),
         focus=lambda control: None,
     )

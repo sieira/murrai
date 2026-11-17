@@ -3,7 +3,8 @@ from prompt_toolkit.layout import Window
 from prompt_toolkit.mouse_events import MouseButton, MouseEvent, MouseEventType
 from prompt_toolkit.widgets import MenuItem
 
-from murrai.presentation.chat.repl import STYLE, ChatMenu, WideShadow
+from murrai.presentation.chat.menu import ClickableFormattedText, MenuBar, WideShadow
+from murrai.presentation.chat.repl import STYLE
 
 
 def mouse(kind, x=0, y=0):
@@ -11,7 +12,7 @@ def mouse(kind, x=0, y=0):
 
 
 def container():
-    return ChatMenu(
+    return MenuBar(
         body=Window(),
         menu_items=[
             MenuItem(
@@ -77,7 +78,7 @@ def test_the_selected_row_is_marked_and_the_mark_is_invisible():
 
 def test_hovering_moves_the_selection_and_clicks_wait_for_release():
     picked = []
-    menubar = ChatMenu(
+    menubar = MenuBar(
         body=Window(),
         menu_items=[
             MenuItem(
@@ -103,8 +104,6 @@ def test_hovering_moves_the_selection_and_clicks_wait_for_release():
 
 
 def test_the_click_fallback_yields_to_handled_clicks():
-    from murrai.presentation.chat.repl import ClickableFormattedText
-
     handled = []
     fallback = []
     control = ClickableFormattedText(
