@@ -56,11 +56,17 @@ def main():
             **common,
         )
         bus.flush()
-        gap = max(abs(a - b) for a, b in zip(resumed.loss_curve, whole.loss_curve[part:]))
+        gap = max(
+            abs(a - b)
+            for a, b in zip(resumed.loss_curve, whole.loss_curve[part:], strict=True)
+        )
         assert gap < 0.05, f"resume diverged (max step gap {gap:.4f})"
         params = sum(p.numel() for p in whole.model.parameters())
         print(f"model: {params:,} parameters")
-        print(f"whole:    loss {whole.loss_curve[-1]:.3f}  tokens/s {whole.tokens_per_second:.0f}")
+        print(
+            f"whole:    loss {whole.loss_curve[-1]:.3f}"
+            f"  tokens/s {whole.tokens_per_second:.0f}",
+        )
         print(f"whole validation: {whole.validation_curve}")
         print(f"stopped:  loss {stopped.loss_curve[-1]:.3f}  steps {stopped.steps}")
         print(f"resumed:  loss {resumed.loss_curve[-1]:.3f}  steps {resumed.steps}")
