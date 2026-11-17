@@ -119,9 +119,9 @@ def test_the_size_field_offers_the_caps(tmp_path):
     corpus = _corpus_root(tmp_path, {})
     commands = (
         ("counted bigram", {}),
-        ("retrain neural bigram", {"neural_steps": 20}),
-        ("retrain windowed mlp", {"mlp_steps": 20}),
-        ("retrain gpt", {"gpt_steps": 20}),
+        ("neural bigram", {"neural_steps": 20}),
+        ("windowed mlp", {"mlp_steps": 20}),
+        ("gpt", {"gpt_steps": 20}),
     )
 
     for name, kwargs in commands:
@@ -212,9 +212,9 @@ def test_all_four_runners_train_on_the_sliced_text(tmp_path, monkeypatch):
 
     for name in (
         "counted bigram",
-        "retrain neural bigram",
-        "retrain windowed mlp",
-        "retrain gpt",
+        "neural bigram",
+        "windowed mlp",
+        "gpt",
     ):
         captured.clear()
         command = _command(
@@ -247,7 +247,7 @@ def test_a_capped_neural_run_records_the_char_count_it_trained_on(tmp_path):
     store = InMemoryCheckpointStore()
     neural = _command(
         corpus,
-        "retrain neural bigram",
+        "neural bigram",
         seed=0,
         neural_steps=20,
         store=store,

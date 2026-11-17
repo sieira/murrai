@@ -60,6 +60,8 @@ def _chosen_directory(directory, values):
 
 SIZES = {"all": None, "100k": 100000, "500k": 500000}
 
+RETRAINABLE = frozenset({"neural-bigram", "windowed-mlp", "gpt"})
+
 
 def _sliced_text(directory, values):
     text = DirTextCorpus(directory).text()
@@ -410,12 +412,22 @@ def _training_command(
     clock,
     fields,
     continues=False,
+    pin=None,
 ):
     def bake(values):
+        merged = {**values, **pin} if pin else values
         return Command(
             name,
             description,
-            partial(_trained_chat_session, run, directory, seed, store, clock, values),
+            partial(
+                _trained_chat_session,
+                run,
+                directory,
+                seed,
+                store,
+                clock,
+                merged,
+            ),
             trains=True,
         )
 
@@ -428,6 +440,7 @@ def _training_command(
         bake=bake,
         trains=True,
         continues=continues,
+        pin=pin,
     )
 
 
@@ -457,76 +470,44 @@ def chat_menu(
         clock,
         _counted_fields(directory),
     )
-    fresh = (
-        _training_command(
-            "neural bigram",
+    retrain_kinds = {
+        "neural-bigram": (
             "same memory, trained by gradient descent",
             _run_neural,
-            directory,
-            seed,
-            store,
-            clock,
-            _neural_fields(directory, seed, neural_steps),
+            lambda: _neural_fields(directory, seed, neural_steps),
+            neural_steps,
         ),
-        _training_command(
-            "windowed mlp",
+        "windowed-mlp": (
             "eight tokens of memory through a hidden layer",
             _run_mlp,
-            directory,
-            seed,
-            store,
-            clock,
-            _mlp_fields(directory, seed, mlp_steps),
+            lambda: _mlp_fields(directory, seed, mlp_steps),
+            mlp_steps,
         ),
-        _training_command(
-            "gpt",
+        "gpt": (
             "attention over the last sixty-four tokens",
             _run_gpt,
-            directory,
-            seed,
-            store,
-            clock,
-            _gpt_fields(directory, seed, gpt_steps),
+            lambda: _gpt_fields(directory, seed, gpt_steps),
+            gpt_steps,
         ),
-    )
-    retraining = (
+    }
+
+    fresh = tuple(
         _training_command(
-            "retrain neural bigram",
-            "same memory, trained by gradient descent",
-            _run_neural,
+            kind.replace("-", " "),
+            description,
+            run,
             directory,
             seed,
             store,
             clock,
-            (*_neural_fields(directory, seed, neural_steps), _start_field(store)),
-            continues=True,
-        ),
-        _training_command(
-            "retrain windowed mlp",
-            "eight tokens of memory through a hidden layer",
-            _run_mlp,
-            directory,
-            seed,
-            store,
-            clock,
-            (*_mlp_fields(directory, seed, mlp_steps), _start_field(store)),
-            continues=True,
-        ),
-        _training_command(
-            "retrain gpt",
-            "attention over the last sixty-four tokens",
-            _run_gpt,
-            directory,
-            seed,
-            store,
-            clock,
-            (*_gpt_fields(directory, seed, gpt_steps), _start_field(store)),
-            continues=True,
-        ),
+            fields(),
+        )
+        for kind, (description, run, fields, steps) in retrain_kinds.items()
     )
 
     def menu():
         loads = ()
+        retraining = ()
         if store is not None:
             loads = tuple(
                 Command(
@@ -536,6 +517,28 @@ def chat_menu(
                 )
                 for name in store.names()
             )
+            retraining = tuple(
+                _training_command(
+                    f"retrain {name}",
+                    description,
+                    run,
+                    directory,
+                    seed,
+                    store,
+                    clock,
+                    fields(),
+                    continues=True,
+                    pin={START_FROM: name},
+                )
+                for name, kind in _retrainable(store)
+                for run, fields, description in (
+                    (
+                        retrain_kinds[kind][1],
+                        retrain_kinds[kind][2],
+                        retrain_kinds[kind][0],
+                    ),
+                )
+            )
         return {
             "new": (counted, *fresh),
             "load": loads,
@@ -543,6 +546,14 @@ def chat_menu(
         }
 
     return menu
+
+
+def _retrainable(store):
+    return tuple(
+        (name, store.load(name).kind)
+        for name in store.names()
+        if store.load(name).kind in RETRAINABLE
+    )
 
 
 def chat_commands(
@@ -563,5 +574,4 @@ def chat_commands(
         gpt_steps,
         clock,
     )()
-    counted = tree["new"][0]
-    return [*tree["load"], counted, *tree["retrain"]]
+    return [*tree["load"], *tree["new"], *tree["retrain"]]
