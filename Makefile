@@ -37,4 +37,4 @@ bench-train:
 	uv run python scripts/train_bench.py
 
 train:
-	uv run python scripts/train.py $(STEPS)
+	uv run python scripts/train.py $(STEPS) $(TRAIN_DIR) $(VALID_DIR)

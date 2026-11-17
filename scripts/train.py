@@ -12,6 +12,8 @@ VALID_DIR = Path("data/corpus/tinystories-valid")
 
 
 def report(event):
+    if event.phase != "training":
+        return
     if event.step % 100 == 0 or event.step == event.total_steps:
         print(f"step {event.step} / {event.total_steps}", flush=True)
 
@@ -19,6 +21,7 @@ def report(event):
 def main():
     steps = int(sys.argv[1]) if len(sys.argv) > 1 else 20000
     train_dir = Path(sys.argv[2]) if len(sys.argv) > 2 else TRAIN_DIR
+    valid_dir = Path(sys.argv[3]) if len(sys.argv) > 3 else VALID_DIR
     if not any(train_dir.glob("*.txt")):
         print(
             f"no corpus in {train_dir}; run: make corpus-tinystories",
@@ -31,7 +34,7 @@ def main():
     result = train_transformer_from_corpus(
         DirTextCorpus(train_dir),
         steps=steps,
-        held_out=DirTextCorpus(VALID_DIR),
+        held_out=DirTextCorpus(valid_dir),
         store=FileCheckpointStore("checkpoints"),
         device=training_device(),
         bus=bus,
