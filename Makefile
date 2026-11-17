@@ -1,4 +1,4 @@
-.PHONY: setup check test test-one lint boundaries bench bench-train corpus corpus-theme chat
+.PHONY: setup check test test-one lint boundaries bench bench-train corpus corpus-theme corpus-tinystories chat
 
 setup:
 	uv sync
@@ -8,6 +8,9 @@ chat:
 
 corpus:
 	uv run python scripts/fetch_gutenberg.py
+
+corpus-tinystories:
+	uv run python scripts/fetch_tinystories.py
 
 corpus-theme:
 	uv run python scripts/fetch_gutenberg.py $(THEME)
