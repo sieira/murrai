@@ -13,8 +13,12 @@ want each command to carry those facts instead of one generic line.
 
 ## Decision
 
-A checkpoint holds four things: the model kind, the tokenizer's merge
-list, the weights, and a record of its run. The record is a frozen
+A checkpoint holds five things: the model kind, the tokenizer's merge
+list, the weights, the run's state, and a record of its run. The run
+state is what a gradient trainer needs to continue exactly where it
+stopped: the step count, the learning rate, the plateau's best step so
+far, the optimizer's moments, and the loss, rate, and validation
+curves. It rides inside the weights file. The record is a frozen
 dataclass, `CheckpointRecord`. The store keeps it as a small JSON file
 beside the weights file, so reading the record never opens the
 weights. A checkpoint's name carries its kind and the text it trained
@@ -30,16 +34,19 @@ reports no perplexity. A part the run did not produce is absent.
 Composition assembles the record because it holds the settings and the
 run result. A trainer hands its keeper the finished model, as before;
 the builder wraps that keeper to add the settings it knows, and the
-session writes the record again once the result exists, so the run
+composition writes the record again once the result exists, so the run
 numbers join it. Both writes happen inside the training process,
 before anything crosses the pipe to the chat (ADR-0005).
 
 A checkpoint is also a starting point. A gradient trainer may take one
 as its starting point, rebuild the weights, and keep training. The
 tokenizer travels unchanged, and the new run fits no merge list. The
-learning rate and the plateau schedule come from the new run. The
-trainer rejects a call whose shape settings contradict the checkpoint;
-shape settings left out leave the shape to the checkpoint. The counted
+steps a run asks for count the steps it adds to the ones the
+checkpoint carries. A resumed run continues the checkpoint's learning
+rate and plateau schedule — that is what resume means; the new run's
+rate settings shape a fresh run only. The trainer rejects a call whose
+shape settings contradict the checkpoint; shape settings left out
+leave the shape to the checkpoint. The counted
 bigram has no gradient steps, so it always counts from scratch.
 
 ## Consequences
