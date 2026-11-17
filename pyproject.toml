@@ -48,3 +48,9 @@ layers = [
     "murrai.application",
     "murrai.domain",
 ]
+
+[[tool.importlinter.contracts]]
+name = "Presentation never imports adapters (doc/ddd/layers.md)"
+type = "forbidden"
+source_modules = ["murrai.presentation"]
+forbidden_modules = ["murrai.adapters"]
