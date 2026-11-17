@@ -14,19 +14,13 @@ def _fields():
     return (
         Field("steps", "steps", "int", 2000, check="whole above zero"),
         Field("batch", "batch", "int", 64, check="whole above zero"),
-        Field(
-            "start_from",
-            "start from",
-            "choice",
-            "fresh",
-            choices=("fresh", "char-gpt"),
-        ),
+        Field("size", "size", "choice", "all", choices=("all", "100k")),
         Field("depth", "depth", "int", 4, check="whole above zero", shape=True),
         Field("seed", "seed", "int", 0, check="whole number"),
     )
 
 
-def _form(fields=None, remembered=None, observer=None):
+def _form(fields=None, remembered=None, observer=None, pinned=None):
     command = FormCommand(
         "retrain x",
         "same memory",
@@ -34,7 +28,12 @@ def _form(fields=None, remembered=None, observer=None):
         fields=tuple(_fields() if fields is None else fields),
         bake=lambda values: Command("retrain x", "same memory", lambda: None),
     )
-    return TrainingForm(command, remembered=remembered, observer=observer)
+    return TrainingForm(
+        command,
+        remembered=remembered,
+        observer=observer,
+        pinned=pinned,
+    )
 
 
 def test_the_form_opens_on_the_baked_defaults():
@@ -44,7 +43,7 @@ def test_the_form_opens_on_the_baked_defaults():
     assert form.visible
     assert form.text("steps") == "2000"
     assert form.text("batch") == "64"
-    assert form.chosen("start_from") == "fresh"
+    assert form.chosen("size") == "all"
     assert form.text("depth") == "4"
     assert form.text("seed") == "0"
 
@@ -58,7 +57,7 @@ def test_tab_walks_the_fields_in_order_and_wraps():
     form.move(1)
     assert form.current.name == "batch"
     form.move(1)
-    assert form.current.name == "start_from"
+    assert form.current.name == "size"
     form.move(1)
     assert form.current.name == "depth"
     form.move(1)
@@ -75,29 +74,30 @@ def test_shift_tab_walks_backwards():
     assert form.current.name == "depth"
 
 
-def test_picking_a_checkpoint_locks_the_shape_fields():
-    form = _form()
-    form.move_choice("start_from", 1)
+def test_a_pinned_checkpoint_locks_the_shape_fields():
+    form = _form(pinned={"start_from": "char-gpt"})
 
     assert form.locked("depth")
     assert not form.locked("steps")
-    assert not form.locked("start_from")
     assert not form.locked("seed")
 
 
-def test_choosing_fresh_unlocks_the_shape_fields():
+def test_pinning_fresh_unlocks_the_shape_fields():
+    form = _form(pinned={"start_from": "fresh"})
+
+    assert not form.locked("depth")
+
+
+def test_without_a_pin_nothing_is_locked():
     form = _form()
-    form.move_choice("start_from", 1)
-    form.move_choice("start_from", -1)
 
     assert not form.locked("depth")
 
 
 def test_tab_skips_the_locked_fields():
-    form = _form()
+    form = _form(pinned={"start_from": "char-gpt"})
     form.move(1)
     form.move(1)
-    form.move_choice("start_from", 1)
 
     form.move(1)
     assert form.current.name == "seed"
@@ -107,11 +107,17 @@ def test_tab_skips_the_locked_fields():
     assert form.current.name == "seed"
 
 
-def test_the_chosen_checkpoint_is_what_the_form_reports():
+def test_the_chosen_choice_is_what_the_form_reports():
     form = _form()
-    form.move_choice("start_from", 1)
+    form.move_choice("size", 1)
 
-    assert form.chosen("start_from") == "char-gpt"
+    assert form.chosen("size") == "100k"
+
+
+def test_the_pinned_values_reach_the_accepted_ones():
+    form = _form(pinned={"start_from": "char-gpt"})
+
+    assert form.accept()["start_from"] == "char-gpt"
 
 
 def test_accept_returns_the_chosen_values():
@@ -121,7 +127,7 @@ def test_accept_returns_the_chosen_values():
     assert form.accept() == {
         "steps": 500,
         "batch": 64,
-        "start_from": "fresh",
+        "size": "all",
         "depth": 4,
         "seed": 0,
     }
@@ -129,9 +135,9 @@ def test_accept_returns_the_chosen_values():
 
 def test_accept_turns_a_choice_into_its_value():
     form = _form()
-    form.move_choice("start_from", 1)
+    form.move_choice("size", 1)
 
-    assert form.accept()["start_from"] == "char-gpt"
+    assert form.accept()["size"] == "100k"
 
 
 def test_accept_names_the_field_and_the_problem():
@@ -225,8 +231,7 @@ def test_accept_rejects_a_learning_rate_of_zero():
 
 
 def test_a_locked_field_is_left_out_of_the_values_and_not_checked():
-    form = _form()
-    form.move_choice("start_from", 1)
+    form = _form(pinned={"start_from": "char-gpt"})
     form.set_text("depth", "not a number")
 
     values = form.accept()
@@ -248,20 +253,20 @@ def test_the_message_clears_when_the_form_accepts():
 def test_the_form_prefills_the_last_accepted_values():
     form = _form()
     form.set_text("steps", "500")
-    form.move_choice("start_from", 1)
+    form.move_choice("size", 1)
     values = form.accept()
 
     again = _form(remembered=values)
 
     assert again.text("steps") == "500"
-    assert again.chosen("start_from") == "char-gpt"
+    assert again.chosen("size") == "100k"
     assert again.text("batch") == "64"
 
 
 def test_a_remembered_choice_that_no_longer_exists_falls_back_to_the_default():
-    again = _form(remembered={"start_from": "gone"})
+    again = _form(remembered={"size": "gone"})
 
-    assert again.chosen("start_from") == "fresh"
+    assert again.chosen("size") == "all"
 
 
 def test_opening_and_cancelling_publish_the_form_lanes():
@@ -298,8 +303,7 @@ def test_an_unfocused_label_carries_no_style():
 
 
 def test_a_locked_label_carries_the_checkpoint_marker():
-    form = _form()
-    form.move_choice("start_from", 1)
+    form = _form(pinned={"start_from": "char-gpt"})
 
     assert label_fragments(form, form.fields[3]) == [
         ("class:hint", "   depth: (from checkpoint)"),
@@ -311,10 +315,10 @@ def test_the_selected_choice_highlights_from_the_bracket_only():
     form.move(2)
 
     assert choice_fragments(form, form.fields[2]) == [
-        ("class:selected", " » start from:"),
+        ("class:selected", " » size:"),
         ("", " "),
-        ("class:selected", "[fresh]"),
-        ("", " char-gpt"),
+        ("class:selected", "[all]"),
+        ("", " 100k"),
     ]
 
 

@@ -21,6 +21,7 @@ class FormCommand:
     fields: tuple
     bake: Callable
     trains: bool = False
+    continues: bool = False
 
 
 class CommandPanel:

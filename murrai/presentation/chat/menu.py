@@ -10,7 +10,7 @@ from prompt_toolkit.layout.containers import (
 )
 from prompt_toolkit.layout.controls import FormattedTextControl
 from prompt_toolkit.mouse_events import MouseEventType
-from prompt_toolkit.widgets import Frame, MenuContainer
+from prompt_toolkit.widgets import Frame, MenuContainer, MenuItem
 from prompt_toolkit.widgets.base import Border
 
 
@@ -193,3 +193,47 @@ class AboutPopover:
     def close(self):
         self.visible = False
         self._on_close()
+
+
+def menu_tree(content, pick, about, retrain_ready):
+    if content is None:
+        return [
+            MenuItem("Sessions"),
+            MenuItem("About", children=[MenuItem("about", handler=about)]),
+        ]
+
+    def leaf(item):
+        return lambda: pick(item)
+
+    retrain_items = [
+        MenuItem(
+            item.name,
+            handler=leaf(item) if retrain_ready else None,
+            disabled=not retrain_ready,
+        )
+        for item in content["retrain"]
+    ]
+    models = MenuItem(
+        "Models",
+        children=[
+            MenuItem(
+                "new",
+                children=[
+                    MenuItem(item.name, handler=leaf(item)) for item in content["new"]
+                ],
+            ),
+            MenuItem(
+                "load",
+                children=[
+                    MenuItem(f"{item.name} · {item.description}", handler=leaf(item))
+                    for item in content["load"]
+                ],
+            ),
+            MenuItem("retrain", children=retrain_items),
+        ],
+    )
+    return [
+        models,
+        MenuItem("Sessions"),
+        MenuItem("About", children=[MenuItem("about", handler=about)]),
+    ]

@@ -9,7 +9,7 @@ from murrai.adapters.checkpoint import FileCheckpointStore, InMemoryCheckpointSt
 from murrai.application.checkpoints import CheckpointRecord, RunSettings, Snapshot
 from murrai.application.ports import TrainingEvent
 from murrai.application.runs import training_device
-from murrai.composition.chat import chat_commands
+from murrai.composition.chat import chat_commands, chat_menu
 from murrai.domain.transformer import TransformerLM
 
 
@@ -40,6 +40,54 @@ def test_chat_commands_list_the_models(corpus):
     assert neural.trains
     assert mlp.trains
     assert gpt.trains
+
+
+def test_the_menu_offers_new_load_and_retrain(corpus):
+    store = InMemoryCheckpointStore()
+    store.save("gpt-corpus", Snapshot(kind="gpt", merges=(), state={}))
+
+    tree = chat_menu(
+        corpus,
+        seed=0,
+        neural_steps=20,
+        mlp_steps=20,
+        gpt_steps=20,
+        store=store,
+    )()
+
+    assert [c.name for c in tree["new"]] == [
+        "counted bigram",
+        "neural bigram",
+        "windowed mlp",
+        "gpt",
+    ]
+    assert [c.name for c in tree["load"]] == ["load gpt-corpus"]
+    assert [c.name for c in tree["retrain"]] == [
+        "retrain neural bigram",
+        "retrain windowed mlp",
+        "retrain gpt",
+    ]
+    assert all(c.continues for c in tree["retrain"])
+    assert not any(c.continues for c in tree["new"])
+    assert tree["new"][1].fields == tree["retrain"][0].fields
+
+
+def test_the_menu_reloads_the_checkpoints_each_time(corpus):
+    store = InMemoryCheckpointStore()
+    menu = chat_menu(corpus, seed=0, store=store)
+
+    assert menu()["load"] == ()
+    store.save("gpt-corpus", Snapshot(kind="gpt", merges=(), state={}))
+    assert [c.name for c in menu()["load"]] == ["load gpt-corpus"]
+
+
+def test_a_new_gradient_command_trains_fresh(corpus, monkeypatch):
+    captured = _capturing(monkeypatch, "train_neural_bigram")
+    tree = chat_menu(corpus, seed=0, neural_steps=20)()
+
+    tree["new"][1].bake(_defaults(tree["new"][1])).build()
+
+    assert captured["kwargs"]["checkpoint"] is None
 
 
 def _command(corpus, name, **kwargs):
@@ -493,29 +541,7 @@ def test_the_neural_command_offers_its_knobs(corpus):
         ("final_learning_rate", "final learning rate", "float", 0.1),
         ("seed", "seed", "int", 0),
         ("merges", "merges", "int", 300),
-        ("start_from", "start from", "choice", "fresh"),
     ]
-    assert fields[-1].choices == ("fresh",)
-
-
-def test_the_start_from_choice_lists_the_saved_models(corpus):
-    store = InMemoryCheckpointStore()
-    store.save("gpt-corpus", Snapshot(kind="gpt", merges=(), state={}))
-    store.save(
-        "neural-bigram-corpus",
-        Snapshot(kind="neural-bigram", merges=(), state={}),
-    )
-
-    field = _field(
-        corpus,
-        "retrain neural bigram",
-        "start_from",
-        seed=0,
-        neural_steps=20,
-        store=store,
-    )
-
-    assert field.choices == ("fresh", "gpt-corpus", "neural-bigram-corpus")
 
 
 def test_the_mlp_command_offers_its_knobs(corpus):
@@ -536,7 +562,6 @@ def test_the_mlp_command_offers_its_knobs(corpus):
         ("seed", "seed", 0),
         ("device", "device", "auto"),
         ("merges", "merges", 300),
-        ("start_from", "start from", "fresh"),
     ]
     assert [f.name for f in fields if f.shape] == [
         "window",
@@ -544,8 +569,7 @@ def test_the_mlp_command_offers_its_knobs(corpus):
         "hidden",
         "merges",
     ]
-    assert fields[-3].choices == ("auto", "prefer gpu", "cpu")
-    assert fields[-1].choices == ("fresh",)
+    assert fields[-2].choices == ("auto", "prefer gpu", "cpu")
 
 
 def test_the_gpt_command_offers_its_knobs(corpus):
@@ -567,7 +591,6 @@ def test_the_gpt_command_offers_its_knobs(corpus):
         ("seed", "seed", 0),
         ("device", "device", "auto"),
         ("merges", "merges", 300),
-        ("start_from", "start from", "fresh"),
     ]
     assert [f.name for f in fields if f.shape] == [
         "depth",
@@ -576,8 +599,7 @@ def test_the_gpt_command_offers_its_knobs(corpus):
         "max_time",
         "merges",
     ]
-    assert fields[-3].choices == ("auto", "prefer gpu", "cpu")
-    assert fields[-1].choices == ("fresh",)
+    assert fields[-2].choices == ("auto", "prefer gpu", "cpu")
 
 
 def test_the_baked_command_trains_with_the_given_values(corpus, monkeypatch):

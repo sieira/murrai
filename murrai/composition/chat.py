@@ -261,11 +261,6 @@ def _seed_field(seed):
     return Field("seed", "seed", "int", seed, check="whole number")
 
 
-def _start_field(store):
-    names = store.names() if store is not None else ()
-    return Field(START_FROM, "start from", "choice", FRESH, choices=(FRESH, *names))
-
-
 def _device_field(default):
     return Field(
         "device",
@@ -289,7 +284,7 @@ def _counted_fields(directory):
     )
 
 
-def _neural_fields(directory, seed, store, steps):
+def _neural_fields(directory, seed, steps):
     return (
         _text_field(directory),
         _size_field(),
@@ -311,11 +306,10 @@ def _neural_fields(directory, seed, store, steps):
         ),
         _seed_field(seed),
         _merges_field(),
-        _start_field(store),
     )
 
 
-def _mlp_fields(directory, seed, store, steps):
+def _mlp_fields(directory, seed, steps):
     return (
         _text_field(directory),
         _size_field(),
@@ -344,11 +338,10 @@ def _mlp_fields(directory, seed, store, steps):
         _seed_field(seed),
         _device_field("auto"),
         _merges_field(),
-        _start_field(store),
     )
 
 
-def _gpt_fields(directory, seed, store, steps):
+def _gpt_fields(directory, seed, steps):
     return (
         _text_field(directory),
         _size_field(),
@@ -385,11 +378,20 @@ def _gpt_fields(directory, seed, store, steps):
         _seed_field(seed),
         _device_field("auto"),
         _merges_field(),
-        _start_field(store),
     )
 
 
-def _training_command(name, description, run, directory, seed, store, clock, fields):
+def _training_command(
+    name,
+    description,
+    run,
+    directory,
+    seed,
+    store,
+    clock,
+    fields,
+    continues=False,
+):
     def bake(values):
         return Command(
             name,
@@ -406,6 +408,7 @@ def _training_command(name, description, run, directory, seed, store, clock, fie
         fields=fields,
         bake=bake,
         trains=True,
+        continues=continues,
     )
 
 
@@ -414,6 +417,113 @@ def load_checkpoint_session(store, seed=0, name=None):
         name = store.names()[-1]
     model = restore(store.load(name))
     return ChatSession(model, seed, checkpoint=name)
+
+
+def chat_menu(
+    directory,
+    seed=0,
+    store=None,
+    neural_steps=2000,
+    mlp_steps=10000,
+    gpt_steps=2000,
+    clock=time.time,
+):
+    counted = _training_command(
+        "counted bigram",
+        "next-char odds tallied straight from the corpus",
+        _run_counted,
+        directory,
+        seed,
+        store,
+        clock,
+        _counted_fields(directory),
+    )
+    fresh = (
+        _training_command(
+            "neural bigram",
+            "same memory, trained by gradient descent",
+            _run_neural,
+            directory,
+            seed,
+            store,
+            clock,
+            _neural_fields(directory, seed, neural_steps),
+        ),
+        _training_command(
+            "windowed mlp",
+            "eight tokens of memory through a hidden layer",
+            _run_mlp,
+            directory,
+            seed,
+            store,
+            clock,
+            _mlp_fields(directory, seed, mlp_steps),
+        ),
+        _training_command(
+            "gpt",
+            "attention over the last sixty-four tokens",
+            _run_gpt,
+            directory,
+            seed,
+            store,
+            clock,
+            _gpt_fields(directory, seed, gpt_steps),
+        ),
+    )
+    retraining = (
+        _training_command(
+            "retrain neural bigram",
+            "same memory, trained by gradient descent",
+            _run_neural,
+            directory,
+            seed,
+            store,
+            clock,
+            _neural_fields(directory, seed, neural_steps),
+            continues=True,
+        ),
+        _training_command(
+            "retrain windowed mlp",
+            "eight tokens of memory through a hidden layer",
+            _run_mlp,
+            directory,
+            seed,
+            store,
+            clock,
+            _mlp_fields(directory, seed, mlp_steps),
+            continues=True,
+        ),
+        _training_command(
+            "retrain gpt",
+            "attention over the last sixty-four tokens",
+            _run_gpt,
+            directory,
+            seed,
+            store,
+            clock,
+            _gpt_fields(directory, seed, gpt_steps),
+            continues=True,
+        ),
+    )
+
+    def menu():
+        loads = ()
+        if store is not None:
+            loads = tuple(
+                Command(
+                    f"load {name}",
+                    _load_description(store.record(name)),
+                    partial(load_checkpoint_session, store, seed, name),
+                )
+                for name in store.names()
+            )
+        return {
+            "new": (counted, *fresh),
+            "load": loads,
+            "retrain": retraining,
+        }
+
+    return menu
 
 
 def chat_commands(
@@ -425,58 +535,14 @@ def chat_commands(
     gpt_steps=2000,
     clock=time.time,
 ):
-    commands = []
-    if store is not None:
-        for name in store.names():
-            commands.append(
-                Command(
-                    f"load {name}",
-                    _load_description(store.record(name)),
-                    lambda name=name: load_checkpoint_session(store, seed, name),
-                ),
-            )
-    commands.extend(
-        [
-            _training_command(
-                "counted bigram",
-                "next-char odds tallied straight from the corpus",
-                _run_counted,
-                directory,
-                seed,
-                store,
-                clock,
-                _counted_fields(directory),
-            ),
-            _training_command(
-                "retrain neural bigram",
-                "same memory, trained by gradient descent",
-                _run_neural,
-                directory,
-                seed,
-                store,
-                clock,
-                _neural_fields(directory, seed, store, neural_steps),
-            ),
-            _training_command(
-                "retrain windowed mlp",
-                "eight tokens of memory through a hidden layer",
-                _run_mlp,
-                directory,
-                seed,
-                store,
-                clock,
-                _mlp_fields(directory, seed, store, mlp_steps),
-            ),
-            _training_command(
-                "retrain gpt",
-                "attention over the last sixty-four tokens",
-                _run_gpt,
-                directory,
-                seed,
-                store,
-                clock,
-                _gpt_fields(directory, seed, store, gpt_steps),
-            ),
-        ],
-    )
-    return commands
+    tree = chat_menu(
+        directory,
+        seed,
+        store,
+        neural_steps,
+        mlp_steps,
+        gpt_steps,
+        clock,
+    )()
+    counted = tree["new"][0]
+    return [*tree["load"], counted, *tree["retrain"]]

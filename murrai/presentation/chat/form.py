@@ -94,11 +94,12 @@ def _rejection(field):
 
 
 class TrainingForm:
-    def __init__(self, command, remembered=None, observer=SILENT):
+    def __init__(self, command, remembered=None, observer=SILENT, pinned=None):
         self.command = command
         self.fields = tuple(command.fields)
         self._observer = observer or SILENT
         self._remembered = remembered or {}
+        self._pinned = pinned or {}
         self._texts = {}
         self._positions = {}
         for field in self.fields:
@@ -125,9 +126,7 @@ class TrainingForm:
         return self.fields[0]
 
     def _continuing(self):
-        if not any(field.name == START_FROM for field in self.fields):
-            return False
-        return self.chosen(START_FROM) != FRESH
+        return self._pinned.get(START_FROM, FRESH) != FRESH
 
     def open(self):
         self.visible = True
@@ -178,6 +177,7 @@ class TrainingForm:
                 self.current = field
                 return None
             values[field.name] = value
+        values.update(self._pinned)
         self.message = None
         self.visible = False
         return values
