@@ -66,7 +66,13 @@ def test_training_lowers_loss_on_a_toy_corpus():
 
 
 def test_training_reports_held_out_perplexity():
-    result = train_mlp_lm("ab" * 200, steps=5, batch=16, seed=0, holdout=0.2)
+    result = train_mlp_lm(
+        "ab" * 200,
+        steps=5,
+        batch=16,
+        seed=0,
+        held_out_text="ab" * 40,
+    )
     assert math.isfinite(result.held_out_perplexity)
     assert result.held_out_perplexity >= 1.0
 
@@ -134,7 +140,6 @@ def test_continuing_from_an_untrained_snapshot_repeats_the_fresh_run():
         window=2,
         dimension=8,
         hidden=16,
-        holdout=0,
         checkpoint=snapshot_of(fresh_model),
     )
     plain = train_mlp_lm(
@@ -145,7 +150,6 @@ def test_continuing_from_an_untrained_snapshot_repeats_the_fresh_run():
         window=2,
         dimension=8,
         hidden=16,
-        holdout=0,
     )
     assert fresh.loss_curve == plain.loss_curve
 

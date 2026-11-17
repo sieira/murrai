@@ -10,6 +10,7 @@ from murrai.adapters.checkpoint import FileCheckpointStore
 from murrai.adapters.corpus import DirTextCorpus
 from murrai.application.checkpoints import snapshot_of
 from murrai.application.runs import train_mlp_lm, train_transformer_lm
+from murrai.composition.train import train_and_held_out
 
 CORPUS = Path("data/corpus")
 
@@ -48,18 +49,19 @@ def time_run(run, steps, warmup_steps):
 
 def bench_gpt(device, text):
     text = text[:TIMING_CHARS]
+    train_text, held_text = train_and_held_out(text, 0.0005)
 
     def run(steps):
         started = time.perf_counter()
         result = train_transformer_lm(
-            text,
+            train_text,
             steps=steps,
             batch=256,
             seed=0,
             depth=4,
             dimension=64,
             max_time=64,
-            holdout=0.0005,
+            held_out_text=held_text or None,
             device=device,
         )
         return time.perf_counter() - started, result
@@ -74,11 +76,12 @@ def bench_gpt(device, text):
 
 def bench_mlp(device, text):
     text = text[:TIMING_CHARS]
+    train_text, held_text = train_and_held_out(text, 0.0005)
 
     def run(steps):
         started = time.perf_counter()
         result = train_mlp_lm(
-            text,
+            train_text,
             steps=steps,
             batch=256,
             seed=0,
@@ -87,7 +90,7 @@ def bench_mlp(device, text):
             hidden=256,
             learning_rate=0.5,
             patience=1000,
-            holdout=0.0005,
+            held_out_text=held_text or None,
             device=device,
         )
         return time.perf_counter() - started, result

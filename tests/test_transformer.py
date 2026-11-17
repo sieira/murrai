@@ -134,7 +134,7 @@ def test_training_reports_held_out_perplexity():
         depth=1,
         dimension=8,
         max_time=8,
-        holdout=0.2,
+        held_out_text="ab" * 80,
     )
     assert math.isfinite(result.held_out_perplexity)
     assert result.held_out_perplexity >= 1.0
@@ -271,7 +271,6 @@ def test_continuing_from_an_untrained_snapshot_repeats_the_fresh_run():
         depth=1,
         dimension=8,
         max_time=8,
-        holdout=0,
         checkpoint=snapshot_of(fresh_model),
     )
     plain = train_transformer_lm(
@@ -282,7 +281,6 @@ def test_continuing_from_an_untrained_snapshot_repeats_the_fresh_run():
         depth=1,
         dimension=8,
         max_time=8,
-        holdout=0,
     )
     assert fresh.loss_curve == plain.loss_curve
 
@@ -339,7 +337,6 @@ def test_the_run_validates_on_a_separate_held_out_stream():
         depth=1,
         dimension=8,
         max_time=8,
-        holdout=0,
         held_out_text="ab" * 80,
         validate_every=2,
     )
@@ -358,7 +355,6 @@ def test_the_validation_stream_is_never_trained_on():
         "depth": 1,
         "dimension": 8,
         "max_time": 8,
-        "holdout": 0,
         "merges": 0,
     }
     familiar = train_transformer_lm("ab" * 400, held_out_text="ab" * 200, **common)
@@ -366,24 +362,6 @@ def test_the_validation_stream_is_never_trained_on():
 
     assert familiar.validation_curve[-1][1] < familiar.validation_curve[0][1] - 3.0
     assert foreign.validation_curve[-1][1] > familiar.validation_curve[-1][1] + 3.0
-
-
-def test_the_validation_curve_appears_for_a_holdout_fraction():
-    result = train_transformer_lm(
-        "ab" * 400,
-        steps=6,
-        batch=8,
-        seed=0,
-        depth=1,
-        dimension=8,
-        max_time=8,
-        holdout=0.2,
-        validate_every=2,
-    )
-    assert [step for step, _ in result.validation_curve] == [0, 2, 4, 6]
-    assert result.held_out_perplexity == pytest.approx(
-        math.exp(result.validation_curve[-1][1]),
-    )
 
 
 def test_a_run_without_a_held_out_stream_reports_no_validation():
@@ -395,7 +373,6 @@ def test_a_run_without_a_held_out_stream_reports_no_validation():
         depth=1,
         dimension=8,
         max_time=8,
-        holdout=0,
     )
     assert result.validation_curve == []
     assert result.held_out_perplexity is None
@@ -410,7 +387,6 @@ def test_the_run_reports_its_steps_and_token_throughput():
         depth=1,
         dimension=8,
         max_time=8,
-        holdout=0,
     )
     assert result.steps == 10
     assert result.tokens_per_second > 0
@@ -426,7 +402,6 @@ def test_a_run_resumes_from_a_periodic_snapshot_and_continues_its_curve(tmp_path
         "depth": 1,
         "dimension": 8,
         "max_time": 8,
-        "holdout": 0,
         "held_out_text": "ab" * 80,
         "validate_every": 2,
     }
@@ -468,7 +443,6 @@ def test_training_continues_a_finished_run_by_more_steps():
         depth=1,
         dimension=8,
         max_time=8,
-        holdout=0,
         checkpoint_every=8,
         snapshots=kept.append,
     )
@@ -480,7 +454,6 @@ def test_training_continues_a_finished_run_by_more_steps():
         depth=1,
         dimension=8,
         max_time=8,
-        holdout=0,
         checkpoint=kept[-1],
     )
     assert later.steps == 11
@@ -511,7 +484,6 @@ def test_the_run_snapshots_once_after_its_last_step():
         depth=1,
         dimension=8,
         max_time=8,
-        holdout=0,
         checkpoint_every=5,
         snapshots=kept.append,
     )
@@ -528,7 +500,6 @@ def test_the_final_snapshot_does_not_duplicate_the_cadence():
         depth=1,
         dimension=8,
         max_time=8,
-        holdout=0,
         checkpoint_every=2,
         snapshots=kept.append,
     )
@@ -554,7 +525,6 @@ def test_the_run_snapshots_before_its_final_metrics(monkeypatch):
             depth=1,
             dimension=8,
             max_time=8,
-            holdout=0,
             held_out_text="ab" * 40,
             validate_every=2,
             checkpoint_every=5,
@@ -580,7 +550,6 @@ def test_a_fresh_run_never_reencodes_its_train_text(monkeypatch):
         depth=1,
         dimension=8,
         max_time=8,
-        holdout=0,
     )
     assert calls == []
 
@@ -602,7 +571,6 @@ def test_a_resumed_run_encodes_its_train_text_once(monkeypatch):
         depth=1,
         dimension=8,
         max_time=8,
-        holdout=0,
     )
     calls.clear()
     train_transformer_lm(
@@ -613,7 +581,6 @@ def test_a_resumed_run_encodes_its_train_text_once(monkeypatch):
         depth=1,
         dimension=8,
         max_time=8,
-        holdout=0,
         checkpoint=snapshot_of(first.model),
     )
     assert calls == ["ab" * 200]
@@ -651,7 +618,6 @@ def test_the_token_array_is_released_once_its_stream_reaches_the_device(monkeypa
         depth=1,
         dimension=8,
         max_time=8,
-        holdout=0,
         device="mps",
     )
     gc.collect()

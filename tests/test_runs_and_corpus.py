@@ -1,3 +1,5 @@
+import pytest
+
 from murrai.adapters.corpus import DirTextCorpus
 from murrai.adapters.events import ListenerBus
 from murrai.application.ports import Corpus, TrainingEvent
@@ -9,32 +11,46 @@ from murrai.application.runs import (
 from murrai.domain.bigram import Bigram
 
 
-def test_run_trains_and_evaluates():
-    class FakeCorpus:
-        def text(self):
-            return "aabbaabbaabbaabb"
+class FakeCorpus:
+    def text(self):
+        return "aabbaabbaabbaabb"
 
+
+def test_the_trainers_take_held_out_text_and_nothing_else():
+    with pytest.raises(TypeError):
+        train_bigram(FakeCorpus(), holdout=0.2)
+    with pytest.raises(TypeError):
+        train_mlp_lm("ab" * 40, steps=1, batch=4, seed=0, holdout=0.2)
+    with pytest.raises(TypeError):
+        train_transformer_lm(
+            "ab" * 40,
+            steps=1,
+            batch=4,
+            seed=0,
+            depth=1,
+            dimension=8,
+            max_time=8,
+            holdout=0.2,
+        )
+
+
+def test_run_trains_and_evaluates():
     corpus: Corpus = FakeCorpus()
-    result = train_bigram(corpus, holdout=0.2)
+    result = train_bigram(corpus, held_out_text="aabb")
     assert isinstance(result.model, Bigram)
-    assert result.held_out_chars > 0
-    assert result.train_chars > 0
+    assert result.train_chars == 16
+    assert result.held_out_chars == 4
     assert 0.0 < result.held_out_perplexity < float("inf")
 
 
-def test_no_holdout_means_no_perplexity():
-    class FakeCorpus:
-        def text(self):
-            return "aabbaabbaabbaabb"
-
-    assert train_bigram(FakeCorpus(), holdout=0).held_out_perplexity is None
+def test_no_held_out_text_means_no_perplexity():
+    assert train_bigram(FakeCorpus()).held_out_perplexity is None
     assert (
         train_mlp_lm(
             "aabbaabbaabbaabb",
             steps=2,
             batch=4,
             seed=0,
-            holdout=0,
         ).held_out_perplexity
         is None
     )
@@ -47,17 +63,12 @@ def test_no_holdout_means_no_perplexity():
             depth=1,
             dimension=8,
             max_time=8,
-            holdout=0,
         ).held_out_perplexity
         is None
     )
 
 
-def test_run_held_out_is_last_slice():
-    class FakeCorpus:
-        def text(self):
-            return "aabbaabbaabbaabb"
-
+def test_the_trainer_trains_on_the_whole_corpus_and_evaluates_on_the_held_out_text():
     class TracingSource:
         def __init__(self, seen):
             self.seen = seen
@@ -65,21 +76,17 @@ def test_run_held_out_is_last_slice():
         def text(self):
             return "abcd"
 
-    result = train_bigram(TracingSource(True), holdout=0.25)
-    assert result.train_chars == 3
+    result = train_bigram(TracingSource(True), held_out_text="d")
+    assert result.train_chars == 4
     assert result.held_out_chars == 1
 
 
 def test_run_perplexity_matches_domain_math():
-    class FakeCorpus:
-        def text(self):
-            return "aabbaabbaabbaabb"
-
-    result = train_bigram(FakeCorpus(), holdout=0.2)
+    result = train_bigram(FakeCorpus(), held_out_text="aabb")
     expected = Bigram.fit(
-        "aabbaabbaabbaabb"[: int(len("aabbaabbaabbaabb") * 0.8)],
+        "aabbaabbaabbaabb",
         result.model.tokenizer,
-    ).perplexity("aabbaabbaabbaabb"[int(len("aabbaabbaabbaabb") * 0.8) :])
+    ).perplexity("aabb")
     assert result.held_out_perplexity == expected
 
 
@@ -109,7 +116,7 @@ def test_run_reports_counting_progress_to_a_bus():
     seen = []
     bus.subscribe(seen.append)
 
-    result = train_bigram(FakeCorpus(), holdout=0.2, bus=bus)
+    result = train_bigram(FakeCorpus(), bus=bus)
     bus.flush()
 
     assert seen
@@ -182,6 +189,7 @@ def test_the_encoding_stage_reports_its_own_progress():
         steps=2,
         batch=2,
         seed=0,
+        held_out_text="ab" * 40,
         bus=bus,
     )
 

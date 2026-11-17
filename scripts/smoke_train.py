@@ -5,6 +5,7 @@ from pathlib import Path
 from murrai.adapters.checkpoint import FileCheckpointStore
 from murrai.adapters.events import ListenerBus
 from murrai.application.runs import train_transformer_lm, training_device
+from murrai.composition.train import train_and_held_out
 
 SMOKE = Path("data/corpus/tinystories.txt")
 
@@ -19,6 +20,7 @@ def report(event):
 def main():
     steps = int(sys.argv[1]) if len(sys.argv) > 1 else 180
     text = SMOKE.read_text()
+    train_text, held_text = train_and_held_out(text, 0.05)
     device = training_device()
     print(f"smoke corpus: {len(text):,} chars on {device}")
 
@@ -31,18 +33,18 @@ def main():
         "dimension": 64,
         "max_time": 64,
         "heads": 2,
-        "holdout": 0.05,
+        "held_out_text": held_text or None,
         "validate_every": 60,
         "device": device,
         "bus": bus,
     }
-    whole = train_transformer_lm(text, steps=steps, **common)
+    whole = train_transformer_lm(train_text, steps=steps, **common)
     bus.flush()
     part = steps // 3
     with tempfile.TemporaryDirectory() as folder:
         store = FileCheckpointStore(Path(folder) / "checkpoints")
         stopped = train_transformer_lm(
-            text,
+            train_text,
             steps=part,
             checkpoint_every=part,
             snapshots=lambda snapshot: store.save("midrun", snapshot),
@@ -50,7 +52,7 @@ def main():
         )
         bus.flush()
         resumed = train_transformer_lm(
-            text,
+            train_text,
             steps=steps - part,
             checkpoint=store.load("midrun"),
             **common,

@@ -55,14 +55,13 @@ def _stage_bus(bus, phase):
 
 def train_bigram(
     corpus: Corpus,
-    holdout: float,
+    held_out_text: str | None = None,
     bus: EventBus | None = None,
     keeper=None,
     merges: int = 300,
 ) -> TrainingResult:
-    text = corpus.text()
-    cut = int(len(text) * (1 - holdout))
-    train, held_out = text[:cut], text[cut:]
+    train = corpus.text()
+    held_out = held_out_text or ""
 
     tokenizer = TokenizerEncoderDecoder().fit(
         train,
@@ -191,7 +190,7 @@ def train_mlp_lm(
     learning_rate=1.0,
     patience=200,
     shrink=0.5,
-    holdout=0.1,
+    held_out_text: str | None = None,
     device=None,
     bus: EventBus | None = None,
     keeper=None,
@@ -199,8 +198,8 @@ def train_mlp_lm(
     checkpoint: Snapshot | None = None,
 ):
     device = torch.device(device) if device is not None else torch.device("cpu")
-    cut = int(len(text) * (1 - holdout))
-    train, held_out = text[:cut], text[cut:]
+    train = text
+    held_out = held_out_text or ""
 
     torch.manual_seed(seed)
     _reject_contradictory_shape(
@@ -356,7 +355,6 @@ def train_transformer_lm(
     learning_rate=1e-3,
     patience=200,
     shrink=0.5,
-    holdout=0.1,
     held_out_text=None,
     validate_every=None,
     checkpoint_every=None,
@@ -378,11 +376,8 @@ def train_transformer_lm(
         max_time=max_time,
         heads=heads,
     )
-    cut = int(len(text) * (1 - holdout))
-    train_text, held_text = text[:cut], text[cut:]
-    if held_out_text is not None:
-        held_text = held_out_text
-    tokenizer, train_ids = _checkpoint_tokenizer(train_text, merges, checkpoint, bus)
+    held_text = held_out_text
+    tokenizer, train_ids = _checkpoint_tokenizer(text, merges, checkpoint, bus)
     if checkpoint is None:
         max_time = max_time or 64
         model = TransformerLM(

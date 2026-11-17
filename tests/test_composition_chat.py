@@ -733,7 +733,7 @@ def test_the_counted_bake_takes_the_holdout(corpus, monkeypatch):
 
     counted.bake({**_defaults(counted), "holdout": 0.5}).build()
 
-    assert captured["kwargs"]["holdout"] == 0.5
+    assert captured["kwargs"]["held_out_text"] == "aabbaabb" * 10
 
 
 def test_the_load_line_shows_the_capped_size(corpus):

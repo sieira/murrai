@@ -6,6 +6,7 @@ from murrai.application.runs import (
     train_mlp_lm,
     train_transformer_lm,
 )
+from murrai.composition.train import train_and_held_out
 
 
 def sample(model):
@@ -23,10 +24,11 @@ class TextSlice:
 
 def main():
     text = DirTextCorpus(sys.argv[1]).text()[:300_000]
+    train_text, held_text = train_and_held_out(text, 0.1)
 
-    bigram = train_bigram(TextSlice(text), holdout=0.1)
+    bigram = train_bigram(TextSlice(train_text), held_out_text=held_text)
     mlp = train_mlp_lm(
-        text,
+        train_text,
         steps=10000,
         batch=256,
         seed=0,
@@ -35,15 +37,17 @@ def main():
         window=8,
         dimension=32,
         hidden=256,
+        held_out_text=held_text,
     )
     gpt = train_transformer_lm(
-        text,
+        train_text,
         steps=2000,
         batch=256,
         seed=0,
         depth=4,
         dimension=64,
         max_time=64,
+        held_out_text=held_text,
     )
 
     print("| model | held-out perplexity | train loss |")

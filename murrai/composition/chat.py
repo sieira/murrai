@@ -20,6 +20,7 @@ from murrai.application.runs import (
     train_transformer_lm,
     training_device,
 )
+from murrai.composition.train import train_and_held_out
 from murrai.presentation.chat.form import FRESH, START_FROM, Field
 from murrai.presentation.chat.panel import Command, FormCommand
 from murrai.presentation.chat.session import ChatSession
@@ -157,9 +158,10 @@ def _trainer_kwargs(values, seed, checkpoint, settings, extra, shape):
 
 
 def _run_counted(text, seed, store, values, bus=None, keeper=None):
+    train_text, held_text = train_and_held_out(text, values["holdout"])
     return train_bigram(
-        TextCorpus(text),
-        holdout=values["holdout"],
+        TextCorpus(train_text),
+        held_out_text=held_text or None,
         merges=values["merges"],
         bus=bus,
         keeper=_keeping(keeper, {}),
@@ -185,8 +187,9 @@ def _run_neural(text, seed, store, values, bus=None, keeper=None):
 
 def _run_mlp(text, seed, store, values, bus=None, keeper=None):
     checkpoint = _checkpoint_snapshot(store, values)
+    train_text, held_text = train_and_held_out(text, values["holdout"])
     return train_mlp_lm(
-        text,
+        train_text,
         bus=bus,
         keeper=_keeping(keeper, _settings(values)),
         **_trainer_kwargs(
@@ -197,7 +200,7 @@ def _run_mlp(text, seed, store, values, bus=None, keeper=None):
             {
                 "patience": values["patience"],
                 "shrink": values["shrink"],
-                "holdout": values["holdout"],
+                "held_out_text": held_text or None,
                 "device": _device(values, prefer_mps=False),
             },
             ("window", "dimension", "hidden"),
@@ -207,8 +210,9 @@ def _run_mlp(text, seed, store, values, bus=None, keeper=None):
 
 def _run_gpt(text, seed, store, values, bus=None, keeper=None):
     checkpoint = _checkpoint_snapshot(store, values)
+    train_text, held_text = train_and_held_out(text, values["holdout"])
     return train_transformer_lm(
-        text,
+        train_text,
         bus=bus,
         keeper=_keeping(keeper, _settings(values)),
         **_trainer_kwargs(
@@ -219,7 +223,7 @@ def _run_gpt(text, seed, store, values, bus=None, keeper=None):
             {
                 "patience": values["patience"],
                 "shrink": values["shrink"],
-                "holdout": values["holdout"],
+                "held_out_text": held_text or None,
                 "device": _device(values, prefer_mps=True),
             },
             ("depth", "dimension", "heads", "max_time"),
