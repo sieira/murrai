@@ -411,6 +411,7 @@ def train_transformer_lm(
     ids.extend(train_ids)
     del train_ids
     stream = torch.frombuffer(memoryview(ids), dtype=torch.int32).to(device)
+    del ids
     if len(stream) < 2:
         raise ValueError("corpus encodes to fewer than two tokens")
     held = None
@@ -420,6 +421,7 @@ def train_transformer_lm(
             tokenizer.encode(held_text, bus=_stage_bus(bus, "encoding")),
         )
         held = torch.frombuffer(memoryview(held_ids), dtype=torch.int32).to(device)
+        del held_ids
     window = min(max_time, len(stream) - 1)
 
     if held is not None and start == 0:

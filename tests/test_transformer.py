@@ -617,3 +617,42 @@ def test_a_resumed_run_encodes_its_train_text_once(monkeypatch):
         checkpoint=snapshot_of(first.model),
     )
     assert calls == ["ab" * 200]
+
+
+@pytest.mark.skipif(
+    not torch.backends.mps.is_available(),
+    reason="only a device copy abandons the shared buffer",
+)
+def test_the_token_array_is_released_once_its_stream_reaches_the_device(monkeypatch):
+    import gc
+    import weakref
+
+    created = []
+    real_array = runs.array
+
+    def spy_array(*args, **kwargs):
+        ids = real_array(*args, **kwargs)
+        created.append(weakref.ref(ids))
+        return ids
+
+    monkeypatch.setattr(runs, "array", spy_array)
+    draw_batch = runs._draw_batch
+
+    def spy_draw_batch(*args, **kwargs):
+        assert all(ref() is None for ref in created), "the token array is still alive"
+        return draw_batch(*args, **kwargs)
+
+    monkeypatch.setattr(runs, "_draw_batch", spy_draw_batch)
+    train_transformer_lm(
+        "ab" * 200,
+        steps=1,
+        batch=8,
+        seed=0,
+        depth=1,
+        dimension=8,
+        max_time=8,
+        holdout=0,
+        device="mps",
+    )
+    gc.collect()
+    assert all(ref() is None for ref in created)
