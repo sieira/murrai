@@ -323,6 +323,9 @@ def run_chat(
                 observer=observer,
             ),
         )
+        probe = getattr(command, "probe", None)
+        if probe is not None:
+            probe()
 
     about = AboutPopover(on_close=lambda: focus(buffer), focus=focus)
 

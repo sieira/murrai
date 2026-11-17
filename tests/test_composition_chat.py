@@ -1,4 +1,5 @@
 import pickle
+import time
 from types import SimpleNamespace
 
 import pytest
@@ -6,7 +7,12 @@ import torch
 
 import murrai.composition.chat as murrai_composition_chat
 from murrai.adapters.checkpoint import FileCheckpointStore, InMemoryCheckpointStore
-from murrai.application.checkpoints import CheckpointRecord, RunSettings, Snapshot
+from murrai.application.checkpoints import (
+    CheckpointRecord,
+    GradientRun,
+    RunSettings,
+    Snapshot,
+)
 from murrai.application.ports import TrainingEvent
 from murrai.application.runs import training_device
 from murrai.composition.chat import chat_commands
@@ -147,6 +153,97 @@ def test_a_chip_left_unpicked_reports_this_machine(corpus, monkeypatch):
     defaults = {field.name: field.default for field in gpt.fields}
 
     assert defaults["dimension"] == 128
+
+
+def test_a_fresh_run_records_its_shape_model_and_duration(corpus):
+    store = InMemoryCheckpointStore()
+    stamps = iter([1_800_000_000, 1_800_000_000, 1_800_006_000])
+    _command(
+        corpus,
+        "retrain gpt",
+        seed=0,
+        gpt_steps=20,
+        store=store,
+        clock=lambda: next(stamps),
+        chip="cpu",
+    ).build()
+
+    record = store.record("gpt-corpus")
+    assert record.settings.model == "gpt"
+    assert record.gradient.shape == {
+        "depth": 4,
+        "dimension": 64,
+        "heads": 1,
+        "max_time": 64,
+        "merges": 300,
+    }
+    assert record.gradient.seconds == pytest.approx(6000)
+
+
+def test_a_continue_run_records_an_empty_shape(corpus):
+    store = InMemoryCheckpointStore()
+    gpt = _command(corpus, "retrain gpt", seed=0, gpt_steps=20, store=store, chip="cpu")
+    gpt.build()
+    gpt.bake({**_defaults(gpt), "start_from": "gpt-corpus"}).build()
+
+    assert store.record("gpt-corpus").gradient.shape == {}
+
+
+def test_the_gpt_form_estimates_from_history(corpus):
+    store = InMemoryCheckpointStore()
+    store.save("gpt-corpus", Snapshot(kind="gpt", merges=(), state={}))
+    store.save_record(
+        "gpt-corpus",
+        CheckpointRecord(
+            settings=RunSettings(
+                saved_at="2026-11-16T10:16:59+00:00",
+                corpus=str(corpus),
+                seed=0,
+                model="gpt",
+            ),
+            gradient=GradientRun(
+                steps=20,
+                batch=64,
+                learning_rate=0.001,
+                seconds=600.0,
+                shape={
+                    "depth": 4,
+                    "dimension": 64,
+                    "heads": 1,
+                    "max_time": 64,
+                    "merges": 300,
+                },
+            ),
+            held_out_perplexity=11.7,
+        ),
+    )
+    gpt = _command(corpus, "retrain gpt", seed=0, gpt_steps=20, store=store, chip="cpu")
+
+    lines = gpt.estimates(_defaults(gpt))
+
+    assert any("about 10 min (from 1 past run)" in line for line in lines)
+    assert any("ppl 11.7" in line for line in lines)
+
+
+def test_the_gpt_form_falls_back_to_the_uniform_floor(corpus):
+    gpt = _command(corpus, "retrain gpt", seed=0, gpt_steps=20, chip="cpu")
+
+    assert gpt.estimates(_defaults(gpt)) == [
+        "a uniform guess over the 556 pieces lands at ppl 556",
+    ]
+
+
+def test_the_gpt_form_probes_the_chip_with_a_rehearsal(corpus, monkeypatch):
+    captured = _capturing(monkeypatch, "train_transformer_lm")
+    gpt = _command(corpus, "retrain gpt", seed=0, gpt_steps=20, chip="cpu")
+
+    gpt.probe()
+    for _ in range(200):
+        if "kwargs" in captured:
+            break
+        time.sleep(0.01)
+
+    assert captured["kwargs"]["steps"] == 10
 
 
 def test_training_commands_save_a_checkpoint(corpus):

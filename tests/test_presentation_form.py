@@ -4,6 +4,7 @@ from murrai.presentation.chat.form import (
     Field,
     TrainingForm,
     choice_fragments,
+    estimate_fragments,
     hint_fragments,
     label_fragments,
 )
@@ -408,3 +409,52 @@ def test_an_empty_hint_about_clears_the_line():
     form = _form((field,))
 
     assert hint_fragments(form) == []
+
+
+def test_the_form_reports_its_current_values():
+    form = _form()
+
+    values = form.snapshot_values()
+
+    assert values["steps"] == 2000
+    assert values["batch"] == 64
+    assert values["seed"] == 0
+    assert values["start_from"] == "fresh"
+
+
+def test_the_form_hides_invalid_values_from_the_estimates():
+    form = _form()
+    form.set_text("steps", "not a number")
+
+    assert "steps" not in form.snapshot_values()
+
+
+def test_locked_fields_stay_out_of_the_estimates_values():
+    form = _form()
+    form.move_choice("start_from", 1)
+
+    assert "depth" not in form.snapshot_values()
+
+
+def test_the_dialog_lists_the_estimate_lines():
+    command = FormCommand(
+        "retrain x",
+        "same memory",
+        lambda: None,
+        fields=_fields(),
+        bake=lambda values: Command("retrain x", "same memory", lambda: None),
+        estimates=lambda values: ("about 5 min", "landed at ppl 11.7"),
+    )
+    form = TrainingForm(command)
+
+    assert estimate_fragments(form) == [
+        ("class:hint", "about 5 min"),
+        ("", "\n"),
+        ("class:hint", "landed at ppl 11.7"),
+    ]
+
+
+def test_a_command_without_estimates_shows_no_lines():
+    form = _form()
+
+    assert estimate_fragments(form) == []

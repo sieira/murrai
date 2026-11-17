@@ -21,6 +21,8 @@ class FormCommand:
     fields: tuple
     bake: Callable
     trains: bool = False
+    estimates: Callable | None = None
+    probe: Callable | None = None
 
 
 class CommandPanel:

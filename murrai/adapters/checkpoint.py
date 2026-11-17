@@ -78,6 +78,8 @@ class FileCheckpointStore:
             )
             if record.settings.corpus_chars is not None:
                 data["corpus_chars"] = record.settings.corpus_chars
+            if record.settings.model:
+                data["model"] = record.settings.model
         if record.gradient:
             data.update(
                 steps=record.gradient.steps,
@@ -86,6 +88,10 @@ class FileCheckpointStore:
             )
             if record.gradient.final_loss is not None:
                 data["final_loss"] = record.gradient.final_loss
+            if record.gradient.shape:
+                data["shape"] = record.gradient.shape
+            if record.gradient.seconds is not None:
+                data["seconds"] = record.gradient.seconds
         if record.held_out_perplexity is not None:
             data["held_out_perplexity"] = record.held_out_perplexity
         _written_atomically(
@@ -113,6 +119,7 @@ class FileCheckpointStore:
                     corpus=data["corpus"],
                     seed=data["seed"],
                     corpus_chars=data.get("corpus_chars"),
+                    model=data.get("model", ""),
                 )
                 if "saved_at" in data
                 else None
@@ -123,6 +130,8 @@ class FileCheckpointStore:
                     batch=data["batch"],
                     learning_rate=data["learning_rate"],
                     final_loss=data.get("final_loss"),
+                    shape=data.get("shape", {}),
+                    seconds=data.get("seconds"),
                 )
                 if "steps" in data
                 else None

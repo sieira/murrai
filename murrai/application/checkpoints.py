@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from murrai.domain.bigram import Bigram
 from murrai.domain.mlp import MlpLM
@@ -20,6 +20,7 @@ class RunSettings:
     corpus: str
     seed: int
     corpus_chars: int | None = None
+    model: str = ""
 
 
 @dataclass(frozen=True)
@@ -28,6 +29,8 @@ class GradientRun:
     batch: int
     learning_rate: float
     final_loss: float | None = None
+    shape: dict = field(default_factory=dict)
+    seconds: float | None = None
 
 
 @dataclass(frozen=True)

@@ -13,6 +13,17 @@ from murrai.application.checkpoints import (
     restore,
     snapshot_of,
 )
+from murrai.application.estimates import (
+    Calibrator,
+    StepClock,
+    estimate_perplexity,
+    estimate_seconds,
+    format_seconds,
+    gpt_cost,
+    mlp_cost,
+    neural_cost,
+    uniform_perplexity,
+)
 from murrai.application.runs import (
     chip_profile,
     suggested_defaults,
@@ -91,22 +102,32 @@ def _trained_chat_session(run, directory, seed, store, clock, values, on_event=N
                 corpus=str(directory),
                 seed=seed,
                 corpus_chars=len(text) if cap is not None else None,
+                model=model.kind,
             ),
             gradient=GradientRun(**settings) if settings else None,
         )
         store.save_record(name, kept)
 
+    started = clock()
     try:
         result = run(text, seed, store, values, bus=bus, keeper=keep)
         bus.flush()
     finally:
         if on_event is not None:
             bus.unsubscribe(on_event)
+    seconds = clock() - started
 
     if kept is not None:
         final_loss, perplexity = _result_info(result)
         if kept.gradient is not None and final_loss is not None:
-            kept = replace(kept, gradient=replace(kept.gradient, final_loss=final_loss))
+            kept = replace(
+                kept,
+                gradient=replace(
+                    kept.gradient,
+                    final_loss=final_loss,
+                    seconds=seconds,
+                ),
+            )
         if perplexity is not None:
             kept = replace(kept, held_out_perplexity=perplexity)
         store.save_record(name, kept)
@@ -145,6 +166,15 @@ def _settings(values):
     }
 
 
+def _record_settings(values, shape_names):
+    settings = _settings(values)
+    fresh = values.get(START_FROM, FRESH) == FRESH
+    settings["shape"] = (
+        {name: values[name] for name in shape_names if name in values} if fresh else {}
+    )
+    return settings
+
+
 def _trainer_kwargs(values, seed, checkpoint, settings, extra, shape):
     kwargs = {
         **settings,
@@ -173,7 +203,7 @@ def _run_neural(text, seed, store, values, bus=None, keeper=None):
     return train_neural_bigram(
         text,
         bus=bus,
-        keeper=_keeping(keeper, _settings(values)),
+        keeper=_keeping(keeper, _record_settings(values, ("merges",))),
         **_trainer_kwargs(
             values,
             seed,
@@ -190,7 +220,10 @@ def _run_mlp(text, seed, store, values, bus=None, keeper=None):
     return train_mlp_lm(
         text,
         bus=bus,
-        keeper=_keeping(keeper, _settings(values)),
+        keeper=_keeping(
+            keeper,
+            _record_settings(values, ("window", "dimension", "hidden", "merges")),
+        ),
         **_trainer_kwargs(
             values,
             seed,
@@ -212,7 +245,13 @@ def _run_gpt(text, seed, store, values, bus=None, keeper=None):
     return train_transformer_lm(
         text,
         bus=bus,
-        keeper=_keeping(keeper, _settings(values)),
+        keeper=_keeping(
+            keeper,
+            _record_settings(
+                values,
+                ("depth", "dimension", "heads", "max_time", "merges"),
+            ),
+        ),
         **_trainer_kwargs(
             values,
             seed,
@@ -569,7 +608,110 @@ def _tuned(chip, name, fixed):
     return suggested_defaults(chip).get(name, fixed)
 
 
-def _training_command(name, description, run, directory, seed, store, clock, fields):
+def _records(store):
+    if store is None:
+        return []
+    return [store.record(name) for name in store.names()]
+
+
+def _cost_config(store, values, shape_names):
+    config = {name: values[name] for name in shape_names if name in values}
+    config.update(
+        batch=values["batch"],
+        merges=values["merges"],
+        steps=values["steps"],
+    )
+    name = values.get(START_FROM, FRESH)
+    if name != FRESH and store is not None:
+        snapshot = store.load(name)
+        config.update(
+            {
+                key: snapshot.state[key]
+                for key in shape_names
+                if key != "merges" and key in snapshot.state
+            },
+        )
+        config["merges"] = len(snapshot.merges)
+    return config
+
+
+def _measure(run, directory, seed, fields, shape_names):
+    defaults = {field.name: field.default for field in fields}
+
+    def measure():
+        burst = {**defaults, "steps": 10, "size": "100k"}
+        clock = StepClock()
+        run(_sliced_text(directory, burst), seed, None, burst, bus=clock)
+        config = {name: defaults[name] for name in shape_names}
+        config.update(batch=defaults["batch"], merges=defaults["merges"])
+        return clock.per_step(), config
+
+    return measure
+
+
+def _estimates(kind, store, directory, calibrator, cost, shape_names):
+    def estimates(values):
+        if not {"steps", "batch", "merges"} <= values.keys():
+            return []
+        lines = []
+        projected = calibrator.project(_cost_config(store, values, shape_names))
+        if projected is not None:
+            lines.append(
+                f"this run should take about {format_seconds(projected)}",
+            )
+        elif calibrator.pending:
+            lines.append("measuring this chip…")
+        else:
+            history = estimate_seconds(
+                _records(store),
+                values,
+                kind,
+                cost,
+            )
+            if history is not None:
+                plural = "" if history.runs == 1 else "s"
+                lines.append(
+                    f"{history.text} (from {history.runs} past run{plural})",
+                )
+        evidence = estimate_perplexity(
+            _records(store),
+            kind,
+            str(_chosen_directory(directory, values)),
+        )
+        if evidence is not None:
+            lines.append(evidence.text)
+        else:
+            floor = uniform_perplexity(values["merges"])
+            lines.append(
+                f"a uniform guess over the {floor} pieces lands at ppl {floor}",
+            )
+        return lines
+
+    return estimates
+
+
+def _training_command(
+    name,
+    description,
+    run,
+    directory,
+    seed,
+    store,
+    clock,
+    fields,
+    kind=None,
+    cost=None,
+):
+    shape_names = tuple(field.name for field in fields if field.shape)
+    estimates = probe = None
+    if cost is not None:
+        calibrator = Calibrator(
+            _measure(run, directory, seed, fields, shape_names),
+            cost,
+        )
+        estimates = _estimates(kind, store, directory, calibrator, cost, shape_names)
+        probe = calibrator.kick
+
     def bake(values):
         return Command(
             name,
@@ -586,6 +728,8 @@ def _training_command(name, description, run, directory, seed, store, clock, fie
         fields=fields,
         bake=bake,
         trains=True,
+        estimates=estimates,
+        probe=probe,
     )
 
 
@@ -638,6 +782,8 @@ def chat_commands(
                 store,
                 clock,
                 _neural_fields(directory, seed, store, neural_steps, chip),
+                kind="neural-bigram",
+                cost=neural_cost,
             ),
             _training_command(
                 "retrain windowed mlp",
@@ -648,6 +794,8 @@ def chat_commands(
                 store,
                 clock,
                 _mlp_fields(directory, seed, store, mlp_steps, chip),
+                kind="windowed-mlp",
+                cost=mlp_cost,
             ),
             _training_command(
                 "retrain gpt",
@@ -658,6 +806,8 @@ def chat_commands(
                 store,
                 clock,
                 _gpt_fields(directory, seed, store, gpt_steps, chip),
+                kind="gpt",
+                cost=gpt_cost,
             ),
         ],
     )

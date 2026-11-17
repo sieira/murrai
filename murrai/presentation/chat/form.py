@@ -192,6 +192,19 @@ class TrainingForm:
             return None
         return parsed if rule.allows(parsed) else None
 
+    def snapshot_values(self):
+        values = {}
+        for field in self.fields:
+            if self.locked(field.name):
+                continue
+            if field.kind == "choice":
+                values[field.name] = self.chosen(field.name)
+                continue
+            value = self._value(field)
+            if value is not None:
+                values[field.name] = value
+        return values
+
 
 def label_fragments(form, field):
     if form.locked(field.name):
@@ -224,6 +237,18 @@ def hint_fragments(form, width=None):
         return []
     text = textwrap.fill(field.about, width) if width else field.about
     return [("class:hint", text)]
+
+
+def estimate_fragments(form):
+    if form.command.estimates is None:
+        return []
+    lines = form.command.estimates(form.snapshot_values())
+    fragments = []
+    for line in lines:
+        if fragments:
+            fragments.append(("", "\n"))
+        fragments.append(("class:hint", line))
+    return fragments
 
 
 class FormOverlay:
@@ -266,6 +291,12 @@ class FormOverlay:
                 rows.append(self._choice_row(field))
             else:
                 rows.extend(self._text_rows(field))
+        rows.append(
+            Window(
+                FormattedTextControl(lambda: estimate_fragments(self.form)),
+                wrap_lines=True,
+            ),
+        )
         rows.append(
             Window(
                 FormattedTextControl(lambda: hint_fragments(self.form, FORM_WIDTH - 2)),

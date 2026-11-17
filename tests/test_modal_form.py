@@ -27,7 +27,7 @@ def _story_session(text="hello"):
     return session
 
 
-def _form_command(fields=None):
+def _form_command(fields=None, estimates=None):
     def bake(values):
         return Command(
             "retrain x",
@@ -53,6 +53,7 @@ def _form_command(fields=None):
         ),
         bake=bake,
         trains=True,
+        estimates=estimates,
     )
 
 
@@ -226,6 +227,19 @@ def test_the_dialog_shows_the_hint_of_the_selected_field():
     last = max(i for i, screen in enumerate(screens) if "step size ends" in screen)
     assert "how many batches" not in screens[last]
     assert "step size ends" not in screens[first]
+
+
+def test_the_dialog_shows_the_time_estimate():
+    command = _form_command(
+        estimates=lambda values: ("this run should take about 1 min",),
+    )
+    output = _chat_screen(
+        [("\x10", 0.3), ("\r", 0.3)],
+        command=command,
+    )
+
+    screens = _screens(output)
+    assert any("this run should take about 1 min" in _text(rows) for rows in screens)
 
 
 def test_closing_the_form_leaves_no_box_behind():
