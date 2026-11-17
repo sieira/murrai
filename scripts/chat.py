@@ -2,7 +2,7 @@ import sys
 from pathlib import Path
 
 from murrai.adapters.checkpoint import FileCheckpointStore
-from murrai.composition.chat import chat_commands, load_checkpoint_session
+from murrai.composition.chat import chat_commands, chat_menu, load_checkpoint_session
 from murrai.presentation.chat import run_chat
 from murrai.presentation.chat.lanes import ChatLog
 
@@ -28,6 +28,7 @@ def main():
             store=store,
             calibrators=calibrators,
         ),
+        menu=chat_menu(corpus, seed=seed, store=store, calibrators=calibrators),
         observer=ChatLog("chat.log"),
         load=lambda name: load_checkpoint_session(store, seed, name),
     )

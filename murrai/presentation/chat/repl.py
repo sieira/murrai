@@ -9,7 +9,7 @@ from prompt_toolkit.layout import Dimension, HSplit, Layout, VSplit, Window
 from prompt_toolkit.layout.containers import ConditionalContainer
 from prompt_toolkit.layout.controls import FormattedTextControl
 from prompt_toolkit.styles import Style
-from prompt_toolkit.widgets import Frame, MenuItem, TextArea
+from prompt_toolkit.widgets import Frame, TextArea
 
 from murrai.presentation.chat.form import FormOverlay, TrainingForm
 from murrai.presentation.chat.lanes import (
@@ -21,6 +21,7 @@ from murrai.presentation.chat.menu import (
     AboutPopover,
     ClickableFormattedText,
     MenuBar,
+    menu_tree,
 )
 from murrai.presentation.chat.panel import (
     CommandPanel,
@@ -268,6 +269,7 @@ def chat_body(
 def run_chat(
     session=None,
     commands=(),
+    menu=None,
     input=None,
     output=None,
     spawn=spawn_training,
@@ -292,6 +294,7 @@ def run_chat(
 
     def swap(next_session):
         observer.on_event(SessionSwapped())
+        menu_bar.menu_items = menu_items()
         chat.use(next_session)
         suggestions.forget()
         buffer.text = next_session.text
@@ -322,10 +325,32 @@ def run_chat(
                 command,
                 remembered=remembered.get(command.name),
                 observer=observer,
+                pinned=command.pin,
             ),
         )
 
+    def picked(command):
+        observer.on_event(CommandPicked(command.name))
+        if command.trains:
+            if load is None:
+                status.fail(command.name, "no load function")
+                return False
+            if isinstance(command, FormCommand):
+                open_form(command)
+                return True
+            spawn(command, status, schedule_swap)
+        else:
+            swap(command.build())
+        return False
+
+    def pick_menu(command):
+        if not picked(command):
+            app.layout.focus(buffer)
+
     about = AboutPopover(on_close=lambda: focus(buffer), focus=focus)
+
+    def menu_items():
+        return menu_tree(menu() if menu is not None else None, pick_menu, about.open)
 
     editor_keys = KeyBindings()
 
@@ -368,17 +393,8 @@ def run_chat(
         if command is None:
             return
         panel.close()
-        observer.on_event(CommandPicked(command.name))
-        event.app.layout.focus(buffer)
-        if command.trains:
-            if load is None:
-                status.fail(command.name, "no load function")
-            elif isinstance(command, FormCommand):
-                open_form(command)
-            else:
-                spawn(command, status, schedule_swap)
-        else:
-            swap(command.build())
+        if not picked(command):
+            event.app.layout.focus(buffer)
 
     global_keys = KeyBindings()
 
@@ -407,7 +423,7 @@ def run_chat(
 
     @global_keys.add("f9")
     def _(event):
-        if overlay.visible or about.visible:
+        if overlay.visible or about.visible or (menu is not None and panel.visible):
             return
         if menu_focused():
             event.app.layout.focus(buffer)
@@ -455,11 +471,7 @@ def run_chat(
             chat=chat,
             status_click=lambda event: focus(buffer),
         ),
-        menu_items=[
-            MenuItem("Models"),
-            MenuItem("Sessions"),
-            MenuItem("About", children=[MenuItem("about", handler=about.open)]),
-        ],
+        menu_items=menu_items(),
         floats=[overlay.float, about.float],
     )
 
@@ -484,8 +496,7 @@ def run_chat(
     status.redraw = app.invalidate
     app.layout.focus(buffer)
     if session is None:
-        panel.open()
-        app.layout.focus(panel_list)
+        app.layout.focus(menu_bar.window)
     app.output.write_raw(CURSOR_GREEN)
     app.output.flush()
     try:

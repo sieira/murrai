@@ -10,7 +10,7 @@ from prompt_toolkit.layout.containers import (
 )
 from prompt_toolkit.layout.controls import FormattedTextControl
 from prompt_toolkit.mouse_events import MouseEventType
-from prompt_toolkit.widgets import Frame, MenuContainer
+from prompt_toolkit.widgets import Frame, MenuContainer, MenuItem
 from prompt_toolkit.widgets.base import Border
 
 
@@ -39,6 +39,17 @@ class MenuBar(MenuContainer):
             level.content.content = WideShadow(
                 level.content.content.content,
             ).container
+        bar = self.window
+
+        @Condition
+        def has_focus():
+            return get_app().layout.current_window == bar
+
+        for level, float_ in enumerate(self.container.floats[:3]):
+            if level:
+                float_.content.filter = has_focus & Condition(
+                    lambda level=level: len(self.selected_menu) > level + 1,
+                )
 
         @self.control.key_bindings.add("space")
         def _(event):
@@ -50,13 +61,15 @@ class MenuBar(MenuContainer):
     def _submenu(self, level=0):
         def get_text_fragments():
             result = []
-            if level < len(self.selected_menu):
+            entered = level == 0 or level + 1 < len(self.selected_menu)
+            if level < len(self.selected_menu) and entered:
                 menu = self._get_menu(level)
                 if menu.children:
                     width = menu.width + 3
                     result.append(("class:menu-border", Border.TOP_LEFT))
                     result.append(("class:menu-border", Border.HORIZONTAL * width))
                     result.append(("class:menu-border", Border.TOP_RIGHT))
+                    result.append(("class:menu", " "))
                     result.append(("", "\n"))
                     selected_item = (
                         self.selected_menu[level + 1]
@@ -80,9 +93,14 @@ class MenuBar(MenuContainer):
                             ):
                                 get_app().layout.focus_last()
                                 item.handler()
+                            elif mouse_event.event_type == MouseEventType.MOUSE_UP:
+                                self.selected_menu = [
+                                    *self.selected_menu[: level + 1],
+                                    i,
+                                    0,
+                                ]
 
                         if i == selected_item:
-                            yield ("[SetCursorPosition]", "")
                             style = "class:menu-item.selected"
                         else:
                             style = "class:menu-item"
@@ -94,6 +112,9 @@ class MenuBar(MenuContainer):
                             mouse_handler,
                         )
                         yield ("class:menu-border", Border.VERTICAL)
+                        if i == selected_item:
+                            yield ("[SetMenuPosition]", "")
+                            yield ("class:menu", " ")
                         yield ("", "\n")
 
                     for i, item in enumerate(menu.children):
@@ -101,6 +122,7 @@ class MenuBar(MenuContainer):
                     result.append(("class:menu-border", Border.BOTTOM_LEFT))
                     result.append(("class:menu-border", Border.HORIZONTAL * width))
                     result.append(("class:menu-border", Border.BOTTOM_RIGHT))
+                    result.append(("class:menu", " "))
             return result
 
         return Window(
@@ -193,3 +215,43 @@ class AboutPopover:
     def close(self):
         self.visible = False
         self._on_close()
+
+
+def menu_tree(content, pick, about):
+    if content is None:
+        return [
+            MenuItem("Models"),
+            MenuItem("Sessions"),
+            MenuItem("About", children=[MenuItem("about", handler=about)]),
+        ]
+
+    def leaf(item):
+        return lambda: pick(item)
+
+    retrain_items = [
+        MenuItem(item.name, handler=leaf(item)) for item in content["retrain"]
+    ]
+    models = MenuItem(
+        "Models",
+        children=[
+            MenuItem(
+                "new",
+                children=[
+                    MenuItem(item.name, handler=leaf(item)) for item in content["new"]
+                ],
+            ),
+            MenuItem(
+                "load",
+                children=[
+                    MenuItem(f"{item.name} · {item.description}", handler=leaf(item))
+                    for item in content["load"]
+                ],
+            ),
+            MenuItem("retrain", children=retrain_items),
+        ],
+    )
+    return [
+        models,
+        MenuItem("Sessions"),
+        MenuItem("About", children=[MenuItem("about", handler=about)]),
+    ]

@@ -72,6 +72,11 @@ RULES = {
         _number,
         lambda value: value > 0,
     ),
+    "at least one character": Rule(
+        "at least one character",
+        str,
+        lambda value: value.strip() != "",
+    ),
 }
 
 
@@ -96,16 +101,20 @@ def _rejection(field):
 
 
 class TrainingForm:
-    def __init__(self, command, remembered=None, observer=SILENT):
+    def __init__(self, command, remembered=None, observer=SILENT, pinned=None):
         self.command = command
         self.fields = tuple(command.fields)
         self._observer = observer or SILENT
         self._remembered = remembered or {}
+        self._pinned = pinned or {}
         self._texts = {}
         self._positions = {}
         for field in self.fields:
             if field.kind == "choice":
-                wanted = self._remembered.get(field.name, field.default)
+                wanted = self._pinned.get(
+                    field.name,
+                    self._remembered.get(field.name, field.default),
+                )
                 if wanted not in field.choices:
                     wanted = field.default
                 self._positions[field.name] = field.choices.index(wanted)
@@ -127,9 +136,9 @@ class TrainingForm:
         return self.fields[0]
 
     def _continuing(self):
-        if not any(field.name == START_FROM for field in self.fields):
-            return False
-        return self.chosen(START_FROM) != FRESH
+        if any(field.name == START_FROM for field in self.fields):
+            return self.chosen(START_FROM) != FRESH
+        return self._pinned.get(START_FROM, FRESH) != FRESH
 
     def open(self):
         self.visible = True
@@ -180,6 +189,9 @@ class TrainingForm:
                 self.current = field
                 return None
             values[field.name] = value
+        for name, value in self._pinned.items():
+            if name not in values:
+                values[name] = value
         self.message = None
         self.visible = False
         return values

@@ -22,6 +22,8 @@ class FormCommand:
     bake: Callable
     trains: bool = False
     estimates: Callable | None = None
+    continues: bool = False
+    pin: dict | None = None
 
 
 class CommandPanel:
