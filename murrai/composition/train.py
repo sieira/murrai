@@ -33,28 +33,28 @@ def train_transformer_from_corpus(
     )
     checkpoint = None
     snapshots = None
+    keeper = None
     if store is not None:
         if checkpoint_name in store.names():
             checkpoint = store.load(checkpoint_name)
 
         def snapshots(snapshot):
             store.save(checkpoint_name, snapshot)
-            run = snapshot.state["run"]
-            curve = run["loss_curve"]
+
+        def keeper(model):
             store.save_record(
                 checkpoint_name,
                 CheckpointRecord(
                     settings=settings,
                     gradient=GradientRun(
-                        steps=run["step"],
+                        steps=steps,
                         batch=batch,
                         learning_rate=learning_rate,
-                        final_loss=curve[-1] if curve else None,
                     ),
                 ),
             )
 
-    return train_transformer_lm(
+    result = train_transformer_lm(
         corpus.text(),
         steps=steps,
         batch=batch,
@@ -68,6 +68,22 @@ def train_transformer_from_corpus(
         merges=merges,
         device=device,
         bus=bus,
+        keeper=keeper,
         checkpoint=checkpoint,
         **MODEL,
     )
+    if store is not None:
+        store.save_record(
+            checkpoint_name,
+            CheckpointRecord(
+                settings=settings,
+                gradient=GradientRun(
+                    steps=result.steps,
+                    batch=batch,
+                    learning_rate=learning_rate,
+                    final_loss=result.loss_curve[-1],
+                ),
+                held_out_perplexity=result.held_out_perplexity,
+            ),
+        )
+    return result

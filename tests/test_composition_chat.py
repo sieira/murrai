@@ -7,10 +7,12 @@ import torch
 import murrai.application.runs as runs
 import murrai.composition.chat as murrai_composition_chat
 from murrai.adapters.checkpoint import FileCheckpointStore, InMemoryCheckpointStore
+from murrai.adapters.corpus import DirTextCorpus
 from murrai.application.checkpoints import CheckpointRecord, RunSettings, Snapshot
 from murrai.application.ports import TrainingEvent
 from murrai.application.runs import training_device
 from murrai.composition.chat import chat_commands
+from murrai.composition.train import train_transformer_from_corpus
 
 
 @pytest.fixture
@@ -411,6 +413,38 @@ def test_training_commands_survive_a_trip_to_another_process(corpus):
         pickle.dumps(trains[0].bake({f.name: f.default for f in trains[0].fields})),
     )
     assert revived.build().rollout("a", 5)
+
+
+def test_retraining_gpt_continues_a_train_run_by_the_requested_steps(
+    corpus,
+    tmp_path,
+    monkeypatch,
+):
+    store = FileCheckpointStore(tmp_path / "checkpoints")
+    train_transformer_from_corpus(
+        DirTextCorpus(corpus),
+        steps=8,
+        batch=8,
+        seed=0,
+        store=store,
+        checkpoint_name="gpt-corpus",
+        corpus_name="corpus",
+    )
+    real = murrai_composition_chat.train_transformer_lm
+    captured = {}
+
+    def recorder(text, **kwargs):
+        result = real(text, **kwargs)
+        captured["steps"] = result.steps
+        return result
+
+    monkeypatch.setattr(murrai_composition_chat, "train_transformer_lm", recorder)
+    command = _command(corpus, "retrain gpt", seed=0, gpt_steps=3, store=store)
+    values = {field.name: field.default for field in command.fields}
+    values["start_from"] = "gpt-corpus"
+    values["device"] = "cpu"
+    command.bake(values).build()
+    assert captured["steps"] == 11
 
 
 def test_the_gpt_command_trains_on_the_policy_device(corpus, monkeypatch):

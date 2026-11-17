@@ -3,6 +3,7 @@ import math
 import pytest
 import torch
 
+import murrai.application.runs as runs
 from murrai.adapters.checkpoint import FileCheckpointStore
 from murrai.application.checkpoints import snapshot_of
 from murrai.application.runs import _draw_batch, train_transformer_lm
@@ -441,12 +442,13 @@ def test_a_run_resumes_from_a_periodic_snapshot_and_continues_its_curve(tmp_path
         snapshots=snapshots,
         **common,
     )
-    assert kept == [3, 6]
+    assert kept == [3, 6, 8]
 
+    later = {**common, "steps": 5}
     resumed = train_transformer_lm(
         "ab" * 400,
         checkpoint=store.load("midrun-3"),
-        **common,
+        **later,
     )
 
     assert resumed.loss_curve == first.loss_curve[3:]
@@ -454,3 +456,108 @@ def test_a_run_resumes_from_a_periodic_snapshot_and_continues_its_curve(tmp_path
     assert resumed.validation_curve == first.validation_curve[2:]
     assert resumed.steps == 8
     assert resumed.tokens_per_second > 0
+
+
+def test_training_continues_a_finished_run_by_more_steps():
+    kept = []
+    first = train_transformer_lm(
+        "ab" * 200,
+        steps=8,
+        batch=8,
+        seed=0,
+        depth=1,
+        dimension=8,
+        max_time=8,
+        holdout=0,
+        checkpoint_every=8,
+        snapshots=kept.append,
+    )
+    later = train_transformer_lm(
+        "ab" * 200,
+        steps=3,
+        batch=8,
+        seed=0,
+        depth=1,
+        dimension=8,
+        max_time=8,
+        holdout=0,
+        checkpoint=kept[-1],
+    )
+    assert later.steps == 11
+    assert len(later.loss_curve) == 3
+    assert later.loss_curve[-1] < first.loss_curve[-1]
+
+
+def test_a_run_rejects_a_nonpositive_step_count():
+    with pytest.raises(ValueError):
+        train_transformer_lm(
+            "ab" * 200,
+            steps=0,
+            batch=8,
+            seed=0,
+            depth=1,
+            dimension=8,
+            max_time=8,
+        )
+
+
+def test_the_run_snapshots_once_after_its_last_step():
+    kept = []
+    train_transformer_lm(
+        "ab" * 200,
+        steps=2,
+        batch=8,
+        seed=0,
+        depth=1,
+        dimension=8,
+        max_time=8,
+        holdout=0,
+        checkpoint_every=5,
+        snapshots=kept.append,
+    )
+    assert [snapshot.state["run"]["step"] for snapshot in kept] == [2]
+
+
+def test_the_final_snapshot_does_not_duplicate_the_cadence():
+    kept = []
+    train_transformer_lm(
+        "ab" * 200,
+        steps=4,
+        batch=8,
+        seed=0,
+        depth=1,
+        dimension=8,
+        max_time=8,
+        holdout=0,
+        checkpoint_every=2,
+        snapshots=kept.append,
+    )
+    assert [snapshot.state["run"]["step"] for snapshot in kept] == [2, 4]
+
+
+def test_the_run_snapshots_before_its_final_metrics(monkeypatch):
+    seen = []
+
+    def broken_metrics(model, stream):
+        seen.append(stream)
+        if len(seen) > 2:
+            raise RuntimeError("metrics blew up")
+
+    monkeypatch.setattr(runs, "_stream_nll", broken_metrics)
+    kept = []
+    with pytest.raises(RuntimeError):
+        train_transformer_lm(
+            "ab" * 200,
+            steps=3,
+            batch=8,
+            seed=0,
+            depth=1,
+            dimension=8,
+            max_time=8,
+            holdout=0,
+            held_out_text="ab" * 40,
+            validate_every=2,
+            checkpoint_every=5,
+            snapshots=kept.append,
+        )
+    assert [snapshot.state["run"]["step"] for snapshot in kept] == [3]

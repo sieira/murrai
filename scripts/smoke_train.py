@@ -51,7 +51,7 @@ def main():
         bus.flush()
         resumed = train_transformer_lm(
             text,
-            steps=steps,
+            steps=steps - part,
             checkpoint=store.load("midrun"),
             **common,
         )

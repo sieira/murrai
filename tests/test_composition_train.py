@@ -1,5 +1,6 @@
 import pytest
 
+import murrai.application.runs as runs
 from murrai.adapters.checkpoint import FileCheckpointStore
 from murrai.adapters.corpus import TextCorpus
 from murrai.composition.train import train_transformer_from_corpus
@@ -34,11 +35,67 @@ def test_a_train_run_resumes_from_its_latest_checkpoint(tmp_path):
 
     whole = train_transformer_from_corpus(steps=6, store=whole_store, **common)
     train_transformer_from_corpus(steps=4, store=part_store, **common)
-    resumed = train_transformer_from_corpus(steps=6, store=part_store, **common)
+    resumed = train_transformer_from_corpus(steps=2, store=part_store, **common)
 
     assert resumed.steps == 6
     assert resumed.loss_curve == whole.loss_curve[4:]
     assert resumed.validation_curve == whole.validation_curve[3:]
+
+
+def test_the_train_record_carries_the_whole_run_after_a_resume(tmp_path):
+    store = FileCheckpointStore(tmp_path / "checkpoints")
+    common = {
+        "corpus": TextCorpus("ab" * 400),
+        "held_out": TextCorpus("ab" * 80),
+        "batch": 8,
+        "seed": 0,
+        "checkpoint_every": 2,
+        "checkpoint_name": "run",
+        "corpus_name": "smoke-train",
+        "validate_every": 2,
+    }
+
+    whole = train_transformer_from_corpus(steps=6, **common)
+    train_transformer_from_corpus(steps=4, store=store, **common)
+    resumed = train_transformer_from_corpus(steps=2, store=store, **common)
+
+    record = store.record("run")
+    assert record.gradient.steps == 6
+    assert record.gradient.final_loss == pytest.approx(whole.loss_curve[-1])
+    assert record.gradient.final_loss == pytest.approx(resumed.loss_curve[-1])
+    assert record.held_out_perplexity == pytest.approx(resumed.held_out_perplexity)
+
+
+def test_the_train_run_saves_its_record_before_the_final_metrics(
+    tmp_path,
+    monkeypatch,
+):
+    seen = []
+
+    def broken_metrics(model, stream):
+        seen.append(stream)
+        if len(seen) > 2:
+            raise RuntimeError("metrics blew up")
+
+    monkeypatch.setattr(runs, "_stream_nll", broken_metrics)
+    store = FileCheckpointStore(tmp_path / "checkpoints")
+    with pytest.raises(RuntimeError):
+        train_transformer_from_corpus(
+            TextCorpus("ab" * 400),
+            held_out=TextCorpus("ab" * 80),
+            steps=3,
+            batch=8,
+            seed=0,
+            store=store,
+            checkpoint_name="run",
+            corpus_name="smoke-train",
+            validate_every=2,
+        )
+    assert store.names() == ["run"]
+    record = store.record("run")
+    assert record.settings.corpus == "smoke-train"
+    assert record.gradient.steps == 3
+    assert record.gradient.final_loss is None
 
 
 def test_the_train_checkpoint_record_carries_the_run(tmp_path):

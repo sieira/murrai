@@ -369,6 +369,8 @@ def train_transformer_lm(
     merges: int = 300,
     checkpoint: Snapshot | None = None,
 ):
+    if steps < 1:
+        raise ValueError("steps counts the steps this run adds; pass one or more")
     device = torch.device(device) if device is not None else torch.device("cpu")
     torch.manual_seed(seed)
     _reject_contradictory_shape(
@@ -425,7 +427,9 @@ def train_transformer_lm(
         _record_validation(model, held, run)
 
     generator = torch.Generator().manual_seed(seed)
-    for step in range(run["step"], steps):
+    end = start + steps
+    saved_step = None
+    for step in range(start, end):
         generator.manual_seed(seed + step)
         mark = time.perf_counter()
         rows, targets = _draw_batch(stream, window, batch, generator)
@@ -452,7 +456,7 @@ def train_transformer_lm(
         run["rate_curve"].append(run["rate"])
         run["step"] = step + 1
         if bus is not None:
-            bus.emit(TrainingEvent(step=step + 1, total_steps=steps))
+            bus.emit(TrainingEvent(step=step + 1, total_steps=end))
         if validate_every and held is not None and run["step"] % validate_every == 0:
             _record_validation(model, held, run)
         if (
@@ -461,8 +465,12 @@ def train_transformer_lm(
             and run["step"] % checkpoint_every == 0
         ):
             run["optimizer"] = optimizer.state_dict()
+            saved_step = run["step"]
             snapshots(run_snapshot(model, run))
 
+    if snapshots is not None and saved_step != run["step"]:
+        run["optimizer"] = optimizer.state_dict()
+        snapshots(run_snapshot(model, run))
     if keeper is not None:
         keeper(model)
     if held is not None and (
