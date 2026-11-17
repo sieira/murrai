@@ -1,5 +1,6 @@
+import threading
 import time
-from dataclasses import replace
+from dataclasses import asdict, replace
 from datetime import UTC, datetime
 from functools import partial
 from pathlib import Path
@@ -8,12 +9,26 @@ from murrai.adapters.corpus import DirTextCorpus, TextCorpus
 from murrai.adapters.events import ListenerBus
 from murrai.application.checkpoints import (
     CheckpointRecord,
+    GptShape,
     GradientRun,
+    MlpShape,
     RunSettings,
+    Shape,
     restore,
     snapshot_of,
 )
+from murrai.application.estimates import (
+    GPT_COST,
+    MLP_COST,
+    NEURAL_COST,
+    Calibrator,
+    StepClock,
+    estimate_seconds,
+    format_seconds,
+)
 from murrai.application.runs import (
+    chip_profile,
+    suggested_defaults,
     train_bigram,
     train_mlp_lm,
     train_neural_bigram,
@@ -91,22 +106,32 @@ def _trained_chat_session(run, directory, seed, store, clock, values, on_event=N
                 corpus=str(directory),
                 seed=seed,
                 corpus_chars=len(text) if cap is not None else None,
+                model=model.kind,
             ),
             gradient=GradientRun(**settings) if settings else None,
         )
         store.save_record(name, kept)
 
+    started = clock()
     try:
         result = run(text, seed, store, values, bus=bus, keeper=keep)
         bus.flush()
     finally:
         if on_event is not None:
             bus.unsubscribe(on_event)
+    seconds = clock() - started
 
     if kept is not None:
         final_loss, perplexity = _result_info(result)
         if kept.gradient is not None and final_loss is not None:
-            kept = replace(kept, gradient=replace(kept.gradient, final_loss=final_loss))
+            kept = replace(
+                kept,
+                gradient=replace(
+                    kept.gradient,
+                    final_loss=final_loss,
+                    seconds=seconds,
+                ),
+            )
         if perplexity is not None:
             kept = replace(kept, held_out_perplexity=perplexity)
         store.save_record(name, kept)
@@ -137,12 +162,20 @@ def _device(values, prefer_mps):
     )
 
 
+# where a kind is willing to train: mps pays only for the gpt (#49)
+PREFER_MPS = {"windowed-mlp": False, "gpt": True}
+
+
 def _settings(values):
     return {
         "steps": values["steps"],
         "batch": values["batch"],
         "learning_rate": values["learning_rate"],
     }
+
+
+def _record_settings(values, shape):
+    return {**_settings(values), "shape": shape}
 
 
 def _trainer_kwargs(values, seed, checkpoint, settings, extra, shape):
@@ -153,9 +186,31 @@ def _trainer_kwargs(values, seed, checkpoint, settings, extra, shape):
         **extra,
     }
     if checkpoint is None:
-        kwargs.update(merges=values["merges"])
-        kwargs.update((name, values[name]) for name in shape)
+        kwargs.update(asdict(shape))
     return kwargs
+
+
+def _neural_shape(values):
+    return Shape(merges=values["merges"])
+
+
+def _mlp_shape(values):
+    return MlpShape(
+        merges=values["merges"],
+        window=values["window"],
+        dimension=values["dimension"],
+        hidden=values["hidden"],
+    )
+
+
+def _gpt_shape(values):
+    return GptShape(
+        merges=values["merges"],
+        depth=values["depth"],
+        dimension=values["dimension"],
+        heads=values["heads"],
+        max_time=values["max_time"],
+    )
 
 
 def _run_counted(text, seed, store, values, bus=None, keeper=None):
@@ -170,27 +225,29 @@ def _run_counted(text, seed, store, values, bus=None, keeper=None):
 
 def _run_neural(text, seed, store, values, bus=None, keeper=None):
     checkpoint = _checkpoint_snapshot(store, values)
+    shape = _neural_shape(values) if checkpoint is None else None
     return train_neural_bigram(
         text,
         bus=bus,
-        keeper=_keeping(keeper, _settings(values)),
+        keeper=_keeping(keeper, _record_settings(values, shape)),
         **_trainer_kwargs(
             values,
             seed,
             checkpoint,
             _settings(values),
             {"final_learning_rate": values["final_learning_rate"]},
-            (),
+            shape,
         ),
     )
 
 
 def _run_mlp(text, seed, store, values, bus=None, keeper=None):
     checkpoint = _checkpoint_snapshot(store, values)
+    shape = _mlp_shape(values) if checkpoint is None else None
     return train_mlp_lm(
         text,
         bus=bus,
-        keeper=_keeping(keeper, _settings(values)),
+        keeper=_keeping(keeper, _record_settings(values, shape)),
         **_trainer_kwargs(
             values,
             seed,
@@ -200,19 +257,20 @@ def _run_mlp(text, seed, store, values, bus=None, keeper=None):
                 "patience": values["patience"],
                 "shrink": values["shrink"],
                 "holdout": values["holdout"],
-                "device": _device(values, prefer_mps=False),
+                "device": _device(values, prefer_mps=PREFER_MPS["windowed-mlp"]),
             },
-            ("window", "dimension", "hidden"),
+            shape,
         ),
     )
 
 
 def _run_gpt(text, seed, store, values, bus=None, keeper=None):
     checkpoint = _checkpoint_snapshot(store, values)
+    shape = _gpt_shape(values) if checkpoint is None else None
     return train_transformer_lm(
         text,
         bus=bus,
-        keeper=_keeping(keeper, _settings(values)),
+        keeper=_keeping(keeper, _record_settings(values, shape)),
         **_trainer_kwargs(
             values,
             seed,
@@ -222,9 +280,9 @@ def _run_gpt(text, seed, store, values, bus=None, keeper=None):
                 "patience": values["patience"],
                 "shrink": values["shrink"],
                 "holdout": values["holdout"],
-                "device": _device(values, prefer_mps=True),
+                "device": _device(values, prefer_mps=PREFER_MPS["gpt"]),
             },
-            ("depth", "dimension", "heads", "max_time"),
+            shape,
         ),
     )
 
@@ -236,11 +294,23 @@ def _name_field(prefix, directory):
         "text",
         f"{prefix}-{Path(directory).name}",
         check="at least one character",
+        about=(
+            "what the checkpoint is called; a second run can reuse it or take a new one"
+        ),
     )
 
 
 def _holdout_field():
-    return Field("holdout", "holdout", "float", 0.1, check="from zero below one")
+    return Field(
+        "holdout",
+        "holdout",
+        "float",
+        0.1,
+        check="from zero below one",
+        about=(
+            "a slice of the corpus kept out of training; perplexity is measured there"
+        ),
+    )
 
 
 def _text_field(directory):
@@ -262,20 +332,47 @@ def _text_field(directory):
         "choice",
         Path(directory).name,
         choices=choices or (Path(directory).name,),
+        about="which corpus folder trains the model",
     )
 
 
 def _size_field():
-    return Field("size", "size", "choice", "all", choices=("all", "100k", "500k"))
+    return Field(
+        "size",
+        "size",
+        "choice",
+        "all",
+        choices=("all", "100k", "500k"),
+        about=(
+            "how much of the corpus to train on; the small sizes are for quick checks"
+        ),
+    )
 
 
 def _seed_field(seed):
-    return Field("seed", "seed", "int", seed, check="whole number")
+    return Field(
+        "seed",
+        "seed",
+        "int",
+        seed,
+        check="whole number",
+        about="the random start; same seed, same run",
+    )
 
 
 def _start_field(store):
     names = store.names() if store is not None else ()
-    return Field(START_FROM, "start from", "choice", FRESH, choices=(FRESH, *names))
+    return Field(
+        START_FROM,
+        "start from",
+        "choice",
+        FRESH,
+        choices=(FRESH, *names),
+        about=(
+            "continue from a saved checkpoint instead of fresh;"
+            " the shape fields lock to what it was trained with"
+        ),
+    )
 
 
 def _device_field(default):
@@ -285,11 +382,23 @@ def _device_field(default):
         "choice",
         default,
         choices=("auto", "prefer gpu", "cpu"),
+        about="which chip trains the model; auto picks the gpu when one is present",
     )
 
 
 def _merges_field():
-    return Field("merges", "merges", "int", 300, check="whole above zero", shape=True)
+    return Field(
+        "merges",
+        "merges",
+        "int",
+        300,
+        check="whole above zero",
+        shape=True,
+        about=(
+            "byte pairs the tokenizer learns from the corpus; more merges means"
+            " longer tokens, so the same context length covers more characters"
+        ),
+    )
 
 
 def _counted_fields(directory):
@@ -302,19 +411,53 @@ def _counted_fields(directory):
     )
 
 
-def _neural_fields(directory, seed, steps):
+def _steps_field(steps, about):
+    return Field("steps", "steps", "int", steps, check="whole above zero", about=about)
+
+
+def _batch_field(chip, fixed, about):
+    return Field(
+        "batch",
+        "batch",
+        "int",
+        _tuned(chip, "batch", fixed),
+        check="whole above zero",
+        about=about,
+    )
+
+
+def _learning_rate_field(chip, fixed, about):
+    return Field(
+        "learning_rate",
+        "learning rate",
+        "float",
+        fixed,
+        check="number above zero",
+        about=about,
+    )
+
+
+def _neural_fields(directory, seed, steps, chip):
     return (
         _name_field("neural-bigram", directory),
         _text_field(directory),
         _size_field(),
-        Field("steps", "steps", "int", steps, check="whole above zero"),
-        Field("batch", "batch", "int", 64, check="whole above zero"),
-        Field(
-            "learning_rate",
-            "learning rate",
-            "float",
+        _steps_field(
+            steps,
+            "how many batches to train on; more steps means more passes"
+            " over the corpus, until improvements stop",
+        ),
+        _batch_field(
+            chip,
+            64,
+            "how many sequences train at once; a bigger batch averages"
+            " more text into each step",
+        ),
+        _learning_rate_field(
+            chip,
             3.0,
-            check="number above zero",
+            "the step size for gradient descent; small learns slowly,"
+            " large overshoots and the loss jitters",
         ),
         Field(
             "final_learning_rate",
@@ -322,38 +465,81 @@ def _neural_fields(directory, seed, steps):
             "float",
             0.1,
             check="number above zero",
+            about="where the step size ends; the last steps land gently",
         ),
         _seed_field(seed),
         _merges_field(),
     )
 
 
-def _mlp_fields(directory, seed, steps):
+def _mlp_fields(directory, seed, steps, chip):
     return (
         _name_field("windowed-mlp", directory),
         _text_field(directory),
         _size_field(),
-        Field("steps", "steps", "int", steps, check="whole above zero"),
-        Field("batch", "batch", "int", 256, check="whole above zero"),
-        Field(
-            "learning_rate",
-            "learning rate",
-            "float",
-            0.5,
-            check="number above zero",
+        _steps_field(
+            steps,
+            "how many batches to train on; more steps means more passes"
+            " over the corpus, until improvements stop",
         ),
-        Field("window", "window", "int", 8, check="whole above zero", shape=True),
+        _batch_field(
+            chip,
+            256,
+            "how many sequences train at once; a bigger batch averages"
+            " more text into each step",
+        ),
+        _learning_rate_field(
+            chip,
+            0.5,
+            "the step size for gradient descent; small learns slowly,"
+            " large overshoots and the loss jitters",
+        ),
+        Field(
+            "window",
+            "window",
+            "int",
+            8,
+            check="whole above zero",
+            shape=True,
+            about="how many previous tokens the model sees at once, its context window",
+        ),
         Field(
             "dimension",
             "dimension",
             "int",
-            32,
+            _tuned(chip, "dimension", 32),
             check="whole above zero",
             shape=True,
+            about=(
+                "the width of the model's vectors; the main size knob;"
+                " too small and extra steps buy nothing"
+            ),
         ),
-        Field("hidden", "hidden", "int", 256, check="whole above zero", shape=True),
-        Field("patience", "patience", "int", 1000, check="whole zero or more"),
-        Field("shrink", "shrink", "float", 0.5, check="between zero and one"),
+        Field(
+            "hidden",
+            "hidden",
+            "int",
+            _tuned(chip, "hidden", 256),
+            check="whole above zero",
+            shape=True,
+            about="the size of the hidden layer between the lookups and the prediction",
+        ),
+        Field(
+            "patience",
+            "patience",
+            "int",
+            1000,
+            check="whole zero or more",
+            about="how many steps without improvement before the learning rate shrinks",
+        ),
+        Field(
+            "shrink",
+            "shrink",
+            "float",
+            0.5,
+            check="between zero and one",
+            about="how much the learning rate shrinks each time patience runs out",
+        ),
         _holdout_field(),
         _seed_field(seed),
         _device_field("auto"),
@@ -361,45 +547,171 @@ def _mlp_fields(directory, seed, steps):
     )
 
 
-def _gpt_fields(directory, seed, steps):
+def _gpt_fields(directory, seed, steps, chip):
     return (
         _name_field("gpt", directory),
         _text_field(directory),
         _size_field(),
-        Field("steps", "steps", "int", steps, check="whole above zero"),
-        Field("batch", "batch", "int", 256, check="whole above zero"),
-        Field(
-            "learning_rate",
-            "learning rate",
-            "float",
-            0.001,
-            check="number above zero",
+        _steps_field(
+            steps,
+            "how many batches to train on; more steps means more passes"
+            " over the corpus, until improvements stop",
         ),
-        Field("depth", "depth", "int", 4, check="whole above zero", shape=True),
+        _batch_field(
+            chip,
+            256,
+            "how many sequences train at once; a bigger batch averages"
+            " more text into each step",
+        ),
+        _learning_rate_field(
+            chip,
+            0.001,
+            "the step size for gradient descent; small learns slowly,"
+            " large overshoots and the loss jitters",
+        ),
+        Field(
+            "depth",
+            "depth",
+            "int",
+            _tuned(chip, "depth", 4),
+            check="whole above zero",
+            shape=True,
+            about=(
+                "how many attention blocks are stacked;"
+                " each block re-reads the same window"
+            ),
+        ),
         Field(
             "dimension",
             "dimension",
             "int",
-            64,
+            _tuned(chip, "dimension", 64),
             check="whole above zero",
             shape=True,
+            about=(
+                "the width of the model's vectors; the main size knob;"
+                " too small and extra steps buy nothing"
+            ),
         ),
-        Field("heads", "heads", "int", 1, check="whole above zero", shape=True),
+        Field(
+            "heads",
+            "heads",
+            "int",
+            1,
+            check="whole above zero",
+            shape=True,
+            about=(
+                "how many slices attention is split into; at a small dimension"
+                " each head gets narrow, so fewer is often better"
+            ),
+        ),
         Field(
             "max_time",
             "context length",
             "int",
-            64,
+            _tuned(chip, "max_time", 64),
             check="whole above zero",
             shape=True,
+            about="how many previous tokens attention can read at once",
         ),
-        Field("patience", "patience", "int", 200, check="whole zero or more"),
-        Field("shrink", "shrink", "float", 0.5, check="between zero and one"),
+        Field(
+            "patience",
+            "patience",
+            "int",
+            200,
+            check="whole zero or more",
+            about="how many steps without improvement before the learning rate shrinks",
+        ),
+        Field(
+            "shrink",
+            "shrink",
+            "float",
+            0.5,
+            check="between zero and one",
+            about="how much the learning rate shrinks each time patience runs out",
+        ),
         _holdout_field(),
         _seed_field(seed),
         _device_field("auto"),
         _merges_field(),
     )
+
+
+def _tuned(chip, name, fixed):
+    return suggested_defaults(chip).get(name, fixed)
+
+
+def _records(store):
+    if store is None:
+        return []
+    return [store.record(name) for name in store.names()]
+
+
+def _cost_shape(store, values, build_shape, shapes):
+    name = values.get(START_FROM, FRESH)
+    if name != FRESH and store is not None:
+        if name not in shapes:
+            try:
+                snapshot = store.load(name)
+                shapes[name] = build_shape(
+                    {**snapshot.state, "merges": len(snapshot.merges)},
+                )
+            except Exception:
+                # remember the failure too: the estimate renders on
+                # every keystroke, and a broken checkpoint must not be
+                # re-read each time
+                shapes[name] = None
+        return shapes[name]
+    try:
+        return build_shape(values)
+    except KeyError:
+        return None
+
+
+def _measure(run, directory, seed, fields, build_shape, device):
+    defaults = {field.name: field.default for field in fields}
+
+    def measure():
+        burst = {**defaults, "steps": 10, "size": "100k", "device": device}
+        clock = StepClock()
+        run(_sliced_text(directory, burst), seed, None, burst, bus=clock)
+        return clock.per_step(), build_shape(defaults), defaults["batch"]
+
+    return measure
+
+
+def _estimates(kind, store, calibrator_for, cost, build_shape, pin):
+    shapes = {}
+
+    def estimates(values):
+        if not {"steps", "batch"} <= values.keys():
+            return []
+        if pin:
+            # the menu pins this run's checkpoint; the estimate reads
+            # the same checkpoint so the shape comes from it
+            values = {**values, **pin}
+        shape = _cost_shape(store, values, build_shape, shapes)
+        if shape is None:
+            return []
+        calibrator = calibrator_for(values)
+        projected = calibrator.project(shape, values["batch"], values["steps"])
+        if projected is None and calibrator.pending:
+            return []
+        if projected is None:
+            # the calibration failed: fall back to the closest past
+            # run of this kind
+            projected = estimate_seconds(
+                _records(store),
+                shape,
+                values["batch"],
+                values["steps"],
+                cost,
+            )
+        if projected is None:
+            return []
+        return [f"ETA: about {format_seconds(projected)}"]
+
+    return estimates
 
 
 def _training_command(
@@ -413,8 +725,53 @@ def _training_command(
     fields,
     continues=False,
     pin=None,
+    kind=None,
+    cost=None,
+    calibrators=None,
+    build_shape=None,
 ):
+    estimates = None
+    threads = {}
+    if cost is not None:
+
+        def calibrator_key(values):
+            choice = values.get("device", "auto")
+            device = training_device(
+                prefer_mps=PREFER_MPS.get(kind, False),
+                choice=choice,
+            )
+            return (kind, str(device))
+
+        def calibrator_for(values):
+            key = calibrator_key(values)
+            calibrator = calibrators.get(key)
+            if calibrator is None:
+                calibrator = Calibrator(
+                    _measure(
+                        run,
+                        directory,
+                        seed,
+                        fields,
+                        build_shape,
+                        values.get("device", "auto"),
+                    ),
+                    cost,
+                )
+                calibrators[key] = calibrator
+                calibrator.begin()
+                threads[key] = threading.Thread(target=calibrator.refresh, daemon=True)
+                threads[key].start()
+            return calibrator
+
+        estimates = _estimates(kind, store, calibrator_for, cost, build_shape, pin)
+
     def bake(values):
+        if cost is not None:
+            thread = threads.get(calibrator_key(values))
+            if thread is not None:
+                # the real run needs the chip alone: let the rehearsal
+                # land before it starts
+                thread.join()
         merged = {**values, **pin} if pin else values
         return Command(
             name,
@@ -439,6 +796,7 @@ def _training_command(
         fields=fields,
         bake=bake,
         trains=True,
+        estimates=estimates,
         continues=continues,
         pin=pin,
     )
@@ -458,8 +816,12 @@ def chat_menu(
     neural_steps=2000,
     mlp_steps=10000,
     gpt_steps=2000,
+    chip=None,
+    calibrators=None,
     clock=time.time,
 ):
+    chip = chip_profile() if chip is None else chip
+    calibrators = {} if calibrators is None else calibrators
     counted = _training_command(
         "counted bigram",
         "next-char odds tallied straight from the corpus",
@@ -474,17 +836,23 @@ def chat_menu(
         "neural-bigram": (
             "same memory, trained by gradient descent",
             _run_neural,
-            lambda: _neural_fields(directory, seed, neural_steps),
+            lambda: _neural_fields(directory, seed, neural_steps, chip),
+            NEURAL_COST,
+            _neural_shape,
         ),
         "windowed-mlp": (
             "a short token window through a hidden layer",
             _run_mlp,
-            lambda: _mlp_fields(directory, seed, mlp_steps),
+            lambda: _mlp_fields(directory, seed, mlp_steps, chip),
+            MLP_COST,
+            _mlp_shape,
         ),
         "gpt": (
             "attention over the recent context",
             _run_gpt,
-            lambda: _gpt_fields(directory, seed, gpt_steps),
+            lambda: _gpt_fields(directory, seed, gpt_steps, chip),
+            GPT_COST,
+            _gpt_shape,
         ),
     }
 
@@ -498,8 +866,18 @@ def chat_menu(
             store,
             clock,
             fields(),
+            kind=kind,
+            cost=cost,
+            calibrators=calibrators,
+            build_shape=build_shape,
         )
-        for kind, (description, run, fields) in retrain_kinds.items()
+        for kind, (
+            description,
+            run,
+            fields,
+            cost,
+            build_shape,
+        ) in retrain_kinds.items()
     )
 
     def menu():
@@ -526,13 +904,19 @@ def chat_menu(
                     fields(),
                     continues=True,
                     pin={START_FROM: name},
+                    kind=kind,
+                    cost=cost,
+                    calibrators=calibrators,
+                    build_shape=build_shape,
                 )
                 for name, kind in _retrainable(store)
-                for run, fields, description in (
+                for run, fields, description, cost, build_shape in (
                     (
                         retrain_kinds[kind][1],
                         retrain_kinds[kind][2],
                         retrain_kinds[kind][0],
+                        retrain_kinds[kind][3],
+                        retrain_kinds[kind][4],
                     ),
                 )
             )

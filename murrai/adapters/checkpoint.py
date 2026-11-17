@@ -1,14 +1,18 @@
 import json
 import os
 import tempfile
+from dataclasses import asdict
 from pathlib import Path
 
 import torch
 
 from murrai.application.checkpoints import (
     CheckpointRecord,
+    GptShape,
     GradientRun,
+    MlpShape,
     RunSettings,
+    Shape,
     Snapshot,
 )
 
@@ -37,6 +41,17 @@ def _written_atomically(root, path, write):
     except BaseException:
         os.unlink(temp)
         raise
+
+
+def _shape_from_json(shape, kind):
+    known = {
+        "neural-bigram": Shape,
+        "windowed-mlp": MlpShape,
+        "gpt": GptShape,
+    }
+    if not shape or kind not in known:
+        return None
+    return known[kind](**shape)
 
 
 class FileCheckpointStore:
@@ -78,6 +93,8 @@ class FileCheckpointStore:
             )
             if record.settings.corpus_chars is not None:
                 data["corpus_chars"] = record.settings.corpus_chars
+            if record.settings.model:
+                data["model"] = record.settings.model
         if record.gradient:
             data.update(
                 steps=record.gradient.steps,
@@ -86,6 +103,10 @@ class FileCheckpointStore:
             )
             if record.gradient.final_loss is not None:
                 data["final_loss"] = record.gradient.final_loss
+            if record.gradient.shape is not None:
+                data["shape"] = asdict(record.gradient.shape)
+            if record.gradient.seconds is not None:
+                data["seconds"] = record.gradient.seconds
         if record.held_out_perplexity is not None:
             data["held_out_perplexity"] = record.held_out_perplexity
         _written_atomically(
@@ -105,7 +126,12 @@ class FileCheckpointStore:
         path = self._record_path(name)
         if not path.exists():
             return CheckpointRecord()
-        data = json.loads(path.read_text())
+        try:
+            data = json.loads(path.read_text())
+        except OSError, ValueError:
+            # a truncated or hand-edited record feeds nothing; the
+            # weights beside it stay usable
+            return CheckpointRecord()
         return CheckpointRecord(
             settings=(
                 RunSettings(
@@ -113,6 +139,7 @@ class FileCheckpointStore:
                     corpus=data["corpus"],
                     seed=data["seed"],
                     corpus_chars=data.get("corpus_chars"),
+                    model=data.get("model", ""),
                 )
                 if "saved_at" in data
                 else None
@@ -123,6 +150,8 @@ class FileCheckpointStore:
                     batch=data["batch"],
                     learning_rate=data["learning_rate"],
                     final_loss=data.get("final_loss"),
+                    shape=_shape_from_json(data.get("shape"), data.get("model", "")),
+                    seconds=data.get("seconds"),
                 )
                 if "steps" in data
                 else None

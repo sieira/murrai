@@ -27,7 +27,7 @@ def _story_session(text="hello"):
     return session
 
 
-def _form_command(fields=None):
+def _form_command(fields=None, estimates=None):
     def bake(values):
         return Command(
             "retrain x",
@@ -53,6 +53,7 @@ def _form_command(fields=None):
         ),
         bake=bake,
         trains=True,
+        estimates=estimates,
     )
 
 
@@ -142,7 +143,7 @@ def _text(rows):
     return "\n".join(row.replace("\r", "") for row in rows)
 
 
-def _chat_screen(keys):
+def _chat_screen(keys, command=None):
     output = _ScreenOutput()
     with create_pipe_input() as pipe:
         box = {}
@@ -153,7 +154,7 @@ def _chat_screen(keys):
                 box["session"] = run_chat(
                     _story_session(),
                     menu=lambda: {
-                        "new": (_form_command(),),
+                        "new": (command or _form_command(),),
                         "load": (),
                         "retrain": (),
                     },
@@ -195,6 +196,54 @@ def test_the_open_form_floats_a_titled_box_over_the_story():
     assert title_row.index("retrain x") >= 4
     assert rows.index(title_row) >= 2
     assert rows[1].count("┌") == 1
+
+
+def test_the_dialog_shows_the_hint_of_the_selected_field():
+    command = _form_command(
+        (
+            Field(
+                "steps",
+                "steps",
+                "int",
+                2000,
+                check="whole above zero",
+                about="how many batches to train on",
+            ),
+            Field(
+                "final_learning_rate",
+                "final learning rate",
+                "float",
+                0.1,
+                check="number above zero",
+                about="where the step size ends",
+            ),
+        ),
+    )
+    output = _chat_screen(
+        [("\x10", 0.3), ("\x1b[B", 0.3), ("\x1b[C", 0.3), ("\r", 0.3), ("\t", 0.3)],
+        command=command,
+    )
+
+    screens = [_text(rows) for rows in _screens(output)]
+    first = next(i for i, screen in enumerate(screens) if "How many batches" in screen)
+    last = max(
+        i for i, screen in enumerate(screens) if "Where the step size ends" in screen
+    )
+    assert "How many batches" not in screens[last]
+    assert "Where the step size ends" not in screens[first]
+
+
+def test_the_dialog_shows_the_time_estimate():
+    command = _form_command(
+        estimates=lambda values: ("ETA: about 1 min",),
+    )
+    output = _chat_screen(
+        [("\x10", 0.3), ("\x1b[B", 0.3), ("\x1b[C", 0.3), ("\r", 0.3)],
+        command=command,
+    )
+
+    screens = _screens(output)
+    assert any("ETA: about 1 min" in _text(rows) for rows in screens)
 
 
 def test_closing_the_form_leaves_no_box_behind():

@@ -20,19 +20,29 @@ beside the weights file, so reading the record never opens the
 weights. A checkpoint's name carries its kind and the text it trained
 on (`neural-bigram-philosophy`), so runs on different texts keep their
 own checkpoints. The record carries the run's settings (`saved_at` as
-ISO time in UTC, `corpus`, `seed`, and `corpus_chars`, the characters
-of text the run trained on, written when a size cap was applied), and,
-when the run produced them, a gradient run (`steps`, `batch`,
-`learning_rate`, and `final_loss`, the last loss in the curve, written
-once the curve is known) and `held_out_perplexity`. The counted bigram has no gradient run; the
-neural bigram has no held-out perplexity. A run that holds out no text
-reports no perplexity. A part the run did not produce is absent.
-Composition assembles the record because it holds the settings and the
-run result. A trainer hands its keeper the finished model, as before;
-the builder wraps that keeper to add the settings it knows, and the
-session writes the record again once the result exists, so the run
-numbers join it. Both writes happen inside the training process,
-before anything crosses the pipe to the chat (ADR-0005).
+ISO time in UTC, `corpus`, `seed`, `corpus_chars`, the characters of
+text the run trained on, written when a size cap was applied, and
+`model`, the model kind), and, when the run produced them, a gradient
+run (`steps`, `batch`, `learning_rate`, `final_loss`, the last loss in
+the curve, written once the curve is known, `shape`, a frozen value
+object of its own per model kind (`Shape` for the neural bigram,
+`MlpShape` for the windowed mlp, `GptShape` for the gpt), whose
+fields are the settings that fix the model's architecture, written
+for a fresh run and absent when the run continued from a checkpoint,
+and `seconds`, the wall-clock duration of the run) and
+`held_out_perplexity`. The counted bigram has
+no gradient run; the neural bigram has no held-out perplexity. A run
+that holds out no text reports no perplexity. A part the run did not
+produce is absent. The form's time estimate reads a record's model,
+shape, and duration to predict what the next run will cost; a record
+from before a field existed carries no value for it, so old records
+say nothing to the estimate. Composition assembles the
+record because it holds the settings and the run result. A trainer
+hands its keeper the finished model, as before; the builder wraps that
+keeper to add the settings it knows, and the session writes the record
+again once the result exists, so the run numbers join it. Both writes
+happen inside the training process, before anything crosses the pipe
+to the chat (ADR-0005).
 
 A checkpoint is also a starting point. A gradient trainer may take one
 as its starting point, rebuild the weights, and keep training. The
@@ -49,3 +59,6 @@ bigram has no gradient steps, so it always counts from scratch.
   numbers are known.
 - A run whose metrics fail keeps its checkpoint. The record keeps the
   settings and misses the run numbers.
+- The form's estimates are only as good as the records behind them. A
+  record that misses the shape or the duration feeds the time estimate
+  nothing; the form stays silent instead of guessing.

@@ -160,6 +160,43 @@ def training_device(prefer_mps=True, choice="auto"):
     return torch.device("cpu")
 
 
+def chip_profile():
+    if torch.cuda.is_available():
+        return "cuda"
+    if torch.backends.mps.is_available():
+        return "mps"
+    return "cpu"
+
+
+SUGGESTIONS = {
+    "cpu": {
+        "batch": 64,
+        "dimension": 64,
+        "depth": 4,
+        "max_time": 64,
+        "hidden": 128,
+    },
+    "mps": {
+        "batch": 128,
+        "dimension": 128,
+        "depth": 6,
+        "max_time": 128,
+        "hidden": 256,
+    },
+    "cuda": {
+        "batch": 256,
+        "dimension": 128,
+        "depth": 6,
+        "max_time": 128,
+        "hidden": 256,
+    },
+}
+
+
+def suggested_defaults(chip):
+    return dict(SUGGESTIONS.get(chip, {}))
+
+
 def plateau_rate(since_best, rate, patience, shrink):
     if since_best >= patience:
         return rate * shrink

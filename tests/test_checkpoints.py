@@ -7,6 +7,7 @@ import torch
 from murrai.adapters.checkpoint import FileCheckpointStore, InMemoryCheckpointStore
 from murrai.application.checkpoints import (
     CheckpointRecord,
+    GptShape,
     GradientRun,
     RunSettings,
     Snapshot,
@@ -128,6 +129,36 @@ def test_the_record_is_frozen():
         record.held_out_perplexity = 2.0
 
 
+def test_the_recorded_shape_cannot_change_underneath():
+    shape = GptShape(merges=300, depth=4, dimension=64, heads=1, max_time=64)
+
+    with pytest.raises(FrozenInstanceError):
+        shape.dimension = 128
+
+
+def test_the_file_store_round_trips_the_estimate_fields(tmp_path, counted):
+    store = FileCheckpointStore(tmp_path)
+    record = CheckpointRecord(
+        settings=RunSettings(
+            saved_at="2027-01-15T08:00:00+00:00",
+            corpus="data/corpus",
+            seed=0,
+            model="gpt",
+        ),
+        gradient=GradientRun(
+            steps=3,
+            batch=64,
+            learning_rate=3.0,
+            seconds=120.5,
+            shape=GptShape(merges=300, depth=4, dimension=64, heads=1, max_time=64),
+        ),
+    )
+    store.save("counted-bigram", snapshot_of(counted))
+    store.save_record("counted-bigram", record)
+
+    assert store.record("counted-bigram") == record
+
+
 def test_the_store_translates_the_record_to_flat_json(tmp_path, counted):
     store = FileCheckpointStore(tmp_path)
     store.save("counted-bigram", snapshot_of(counted))
@@ -156,6 +187,21 @@ def test_the_store_translates_the_record_to_flat_json(tmp_path, counted):
         "held_out_perplexity": 1.5,
     }
     assert store.record("counted-bigram").gradient.final_loss == 0.5
+
+
+def test_an_old_record_with_an_empty_shape_reads_as_none(tmp_path, counted):
+    store = FileCheckpointStore(tmp_path)
+    store.save("counted-bigram", snapshot_of(counted))
+    store.save_record(
+        "counted-bigram",
+        CheckpointRecord(gradient=GradientRun(steps=3, batch=64, learning_rate=3.0)),
+    )
+    path = tmp_path / "counted-bigram.json"
+    data = json.loads(path.read_text())
+    data["shape"] = {}
+    path.write_text(json.dumps(data))
+
+    assert store.record("counted-bigram").gradient.shape is None
 
 
 def test_reading_the_record_never_opens_the_weights(tmp_path, counted, monkeypatch):

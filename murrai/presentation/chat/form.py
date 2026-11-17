@@ -1,4 +1,5 @@
 import math
+import textwrap
 from collections.abc import Callable
 from dataclasses import dataclass
 
@@ -88,6 +89,7 @@ class Field:
     check: str = ""
     choices: tuple = ()
     shape: bool = False
+    about: str = ""
 
     def __post_init__(self):
         if self.check and self.check not in RULES:
@@ -202,6 +204,19 @@ class TrainingForm:
             return None
         return parsed if rule.allows(parsed) else None
 
+    def snapshot_values(self):
+        values = {}
+        for field in self.fields:
+            if self.locked(field.name):
+                continue
+            if field.kind == "choice":
+                values[field.name] = self.chosen(field.name)
+                continue
+            value = self._value(field)
+            if value is not None:
+                values[field.name] = value
+        return values
+
 
 def label_fragments(form, field):
     if form.locked(field.name):
@@ -226,6 +241,24 @@ def message_fragments(form):
     if not form.message:
         return []
     return [("class:failed", form.message)]
+
+
+def hint_fragments(form, width=None):
+    field = form.current
+    if field is None or not field.about:
+        return []
+    text = field.about[0].upper() + field.about[1:]
+    text = textwrap.fill(text, width) if width else text
+    return [("class:hint", text)]
+
+
+def estimate_fragments(form):
+    if form.command.estimates is None:
+        return []
+    lines = form.command.estimates(form.snapshot_values())
+    if not lines:
+        return []
+    return [("", "\n"), ("class:eta", lines[0]), ("", "\n")]
 
 
 class FormOverlay:
@@ -268,6 +301,18 @@ class FormOverlay:
                 rows.append(self._choice_row(field))
             else:
                 rows.extend(self._text_rows(field))
+        rows.append(
+            Window(
+                FormattedTextControl(lambda: estimate_fragments(self.form)),
+                wrap_lines=True,
+            ),
+        )
+        rows.append(
+            Window(
+                FormattedTextControl(lambda: hint_fragments(self.form, FORM_WIDTH - 2)),
+                wrap_lines=True,
+            ),
+        )
         rows.append(
             Window(
                 FormattedTextControl(lambda: message_fragments(self.form)),
