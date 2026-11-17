@@ -69,7 +69,7 @@ def test_the_menu_offers_new_load_and_retrain(corpus):
     ]
     assert all(c.continues for c in tree["retrain"])
     assert not any(c.continues for c in tree["new"])
-    assert tree["new"][1].fields == tree["retrain"][0].fields
+    assert tree["retrain"][0].fields[:-1] == tree["new"][1].fields
 
 
 def test_the_menu_reloads_the_checkpoints_each_time(corpus):
@@ -521,18 +521,21 @@ def test_the_counted_command_offers_its_knobs(corpus):
     counted = _command(corpus, "counted bigram", seed=0)
 
     assert [(f.name, f.label, f.kind, f.default) for f in counted.fields] == [
+        ("name", "name", "text", f"counted-bigram-{corpus.name}"),
         ("text", "text", "choice", corpus.name),
         ("size", "size", "choice", "all"),
         ("holdout", "holdout", "float", 0.1),
         ("merges", "merges", "int", 300),
     ]
     assert counted.fields[-1].check == "whole above zero"
+    assert "start_from" not in [f.name for f in counted.fields]
 
 
 def test_the_neural_command_offers_its_knobs(corpus):
     fields = _command(corpus, "retrain neural bigram", seed=0, neural_steps=20).fields
 
     assert [(f.name, f.label, f.kind, f.default) for f in fields] == [
+        ("name", "name", "text", f"neural-bigram-{corpus.name}"),
         ("text", "text", "choice", corpus.name),
         ("size", "size", "choice", "all"),
         ("steps", "steps", "int", 20),
@@ -541,13 +544,16 @@ def test_the_neural_command_offers_its_knobs(corpus):
         ("final_learning_rate", "final learning rate", "float", 0.1),
         ("seed", "seed", "int", 0),
         ("merges", "merges", "int", 300),
+        ("start_from", "start from", "choice", "fresh"),
     ]
+    assert fields[-1].choices == ("fresh",)
 
 
 def test_the_mlp_command_offers_its_knobs(corpus):
     fields = _command(corpus, "retrain windowed mlp", seed=0, mlp_steps=20).fields
 
     assert [(f.name, f.label, f.default) for f in fields] == [
+        ("name", "name", f"windowed-mlp-{corpus.name}"),
         ("text", "text", corpus.name),
         ("size", "size", "all"),
         ("steps", "steps", 20),
@@ -562,6 +568,7 @@ def test_the_mlp_command_offers_its_knobs(corpus):
         ("seed", "seed", 0),
         ("device", "device", "auto"),
         ("merges", "merges", 300),
+        ("start_from", "start from", "fresh"),
     ]
     assert [f.name for f in fields if f.shape] == [
         "window",
@@ -569,13 +576,14 @@ def test_the_mlp_command_offers_its_knobs(corpus):
         "hidden",
         "merges",
     ]
-    assert fields[-2].choices == ("auto", "prefer gpu", "cpu")
+    assert fields[-3].choices == ("auto", "prefer gpu", "cpu")
 
 
 def test_the_gpt_command_offers_its_knobs(corpus):
     fields = _command(corpus, "retrain gpt", seed=0, gpt_steps=20).fields
 
     assert [(f.name, f.label, f.default) for f in fields] == [
+        ("name", "name", f"gpt-{corpus.name}"),
         ("text", "text", corpus.name),
         ("size", "size", "all"),
         ("steps", "steps", 20),
@@ -591,6 +599,7 @@ def test_the_gpt_command_offers_its_knobs(corpus):
         ("seed", "seed", 0),
         ("device", "device", "auto"),
         ("merges", "merges", 300),
+        ("start_from", "start from", "fresh"),
     ]
     assert [f.name for f in fields if f.shape] == [
         "depth",
@@ -599,7 +608,7 @@ def test_the_gpt_command_offers_its_knobs(corpus):
         "max_time",
         "merges",
     ]
-    assert fields[-2].choices == ("auto", "prefer gpu", "cpu")
+    assert fields[-3].choices == ("auto", "prefer gpu", "cpu")
 
 
 def test_the_baked_command_trains_with_the_given_values(corpus, monkeypatch):

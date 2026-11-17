@@ -39,6 +39,17 @@ class MenuBar(MenuContainer):
             level.content.content = WideShadow(
                 level.content.content.content,
             ).container
+        bar = self.window
+
+        @Condition
+        def has_focus():
+            return get_app().layout.current_window == bar
+
+        for level, float_ in enumerate(self.container.floats[:3]):
+            if level:
+                float_.content.filter = has_focus & Condition(
+                    lambda level=level: len(self.selected_menu) > level + 1,
+                )
 
         @self.control.key_bindings.add("space")
         def _(event):
@@ -50,7 +61,8 @@ class MenuBar(MenuContainer):
     def _submenu(self, level=0):
         def get_text_fragments():
             result = []
-            if level < len(self.selected_menu):
+            entered = level == 0 or level + 1 < len(self.selected_menu)
+            if level < len(self.selected_menu) and entered:
                 menu = self._get_menu(level)
                 if menu.children:
                     width = menu.width + 3
@@ -81,6 +93,12 @@ class MenuBar(MenuContainer):
                             ):
                                 get_app().layout.focus_last()
                                 item.handler()
+                            elif mouse_event.event_type == MouseEventType.MOUSE_UP:
+                                self.selected_menu = [
+                                    *self.selected_menu[: level + 1],
+                                    i,
+                                    0,
+                                ]
 
                         if i == selected_item:
                             style = "class:menu-item.selected"

@@ -167,6 +167,52 @@ def test_the_submenu_opens_beside_the_parent_dropdown():
     assert marked[0][-2:] == [("[SetMenuPosition]", ""), ("class:menu", " ")]
 
 
+def test_the_submenu_stays_closed_until_the_parent_is_entered():
+    menubar = MenuBar(
+        body=Window(),
+        menu_items=[
+            MenuItem("Models", children=[MenuItem("new", children=[MenuItem("gpt")])]),
+        ],
+        floats=[],
+    )
+
+    menubar.selected_menu = [0, 0]
+    assert menubar._submenu(1).content.text() == []
+
+    menubar.selected_menu = [0, 0, 0]
+    assert menubar._submenu(1).content.text() != []
+
+
+def test_the_submenu_floats_hide_the_closed_levels():
+    menubar = MenuBar(
+        body=Window(),
+        menu_items=[
+            MenuItem("Models", children=[MenuItem("new", children=[MenuItem("gpt")])]),
+        ],
+        floats=[],
+    )
+
+    assert menubar.container.floats[1].content.filter is not None
+    assert menubar.container.floats[2].content.filter is not None
+
+
+def test_clicking_an_item_with_children_enters_it():
+    menubar = MenuBar(
+        body=Window(),
+        menu_items=[
+            MenuItem("Models", children=[MenuItem("new", children=[MenuItem("gpt")])]),
+        ],
+        floats=[],
+    )
+    menubar.selected_menu = [0, 0]
+
+    fragments = menubar._submenu(0).content.text()
+    handler = next(f[2] for f in fragments if len(f) >= 3)
+    handler(mouse(MouseEventType.MOUSE_UP))
+
+    assert menubar.selected_menu == [0, 0, 0]
+
+
 def test_the_dropdown_border_is_invisible_against_the_menu():
     border = STYLE.get_attrs_for_style_str("class:menu-border")
 

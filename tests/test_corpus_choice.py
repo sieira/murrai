@@ -72,7 +72,9 @@ def test_the_chosen_text_lands_in_the_run(tmp_path):
     store = InMemoryCheckpointStore()
     counted = _command(corpus, "counted bigram", seed=0, store=store)
 
-    counted.bake(_values(counted, text="philosophy")).build()
+    counted.bake(
+        _values(counted, text="philosophy", name="counted-bigram-philosophy"),
+    ).build()
 
     record = store.record("counted-bigram-philosophy")
     assert record.settings.corpus == str(tmp_path / "data" / "philosophy")
@@ -95,7 +97,9 @@ def test_the_chosen_text_trains_on_that_directory(tmp_path):
     store = InMemoryCheckpointStore()
     counted = _command(corpus, "counted bigram", seed=0, store=store)
 
-    counted.bake(_values(counted, text="philosophy")).build()
+    counted.bake(
+        _values(counted, text="philosophy", name="counted-bigram-philosophy"),
+    ).build()
 
     record = store.record("counted-bigram-philosophy")
     assert record.settings.corpus == str(tmp_path / "data" / "philosophy")
@@ -289,7 +293,7 @@ def test_a_missing_corpus_directory_still_builds_the_text_field(tmp_path):
 
 def _text_field_of(directory):
     counted = next(c for c in chat_commands(directory) if c.name == "counted bigram")
-    return counted.fields[0]
+    return next(f for f in counted.fields if f.name == "text")
 
 
 def test_a_checkpoint_s_name_carries_its_text(tmp_path):
@@ -297,6 +301,6 @@ def test_a_checkpoint_s_name_carries_its_text(tmp_path):
     store = InMemoryCheckpointStore()
     counted = _command(corpus, "counted bigram", seed=0, store=store)
 
-    counted.bake(_values(counted, text="philosophy")).build()
+    counted.bake(_values(counted, text="philosophy", name="a philosophy run")).build()
 
-    assert store.names() == ["counted-bigram-philosophy"]
+    assert store.names() == ["a philosophy run"]

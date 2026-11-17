@@ -81,7 +81,7 @@ def _trained_chat_session(run, directory, seed, store, clock, values, on_event=N
         nonlocal kept, name
         if store is None:
             return
-        name = f"{model.kind}-{Path(directory).name}"
+        name = values["name"]
         store.save(name, snapshot_of(model))
         kept = CheckpointRecord(
             settings=RunSettings(
@@ -227,6 +227,16 @@ def _run_gpt(text, seed, store, values, bus=None, keeper=None):
     )
 
 
+def _name_field(prefix, directory):
+    return Field(
+        "name",
+        "name",
+        "text",
+        f"{prefix}-{Path(directory).name}",
+        check="at least one character",
+    )
+
+
 def _holdout_field():
     return Field("holdout", "holdout", "float", 0.1, check="from zero below one")
 
@@ -261,6 +271,11 @@ def _seed_field(seed):
     return Field("seed", "seed", "int", seed, check="whole number")
 
 
+def _start_field(store):
+    names = store.names() if store is not None else ()
+    return Field(START_FROM, "start from", "choice", FRESH, choices=(FRESH, *names))
+
+
 def _device_field(default):
     return Field(
         "device",
@@ -277,6 +292,7 @@ def _merges_field():
 
 def _counted_fields(directory):
     return (
+        _name_field("counted-bigram", directory),
         _text_field(directory),
         _size_field(),
         _holdout_field(),
@@ -286,6 +302,7 @@ def _counted_fields(directory):
 
 def _neural_fields(directory, seed, steps):
     return (
+        _name_field("neural-bigram", directory),
         _text_field(directory),
         _size_field(),
         Field("steps", "steps", "int", steps, check="whole above zero"),
@@ -311,6 +328,7 @@ def _neural_fields(directory, seed, steps):
 
 def _mlp_fields(directory, seed, steps):
     return (
+        _name_field("windowed-mlp", directory),
         _text_field(directory),
         _size_field(),
         Field("steps", "steps", "int", steps, check="whole above zero"),
@@ -343,6 +361,7 @@ def _mlp_fields(directory, seed, steps):
 
 def _gpt_fields(directory, seed, steps):
     return (
+        _name_field("gpt", directory),
         _text_field(directory),
         _size_field(),
         Field("steps", "steps", "int", steps, check="whole above zero"),
@@ -479,7 +498,7 @@ def chat_menu(
             seed,
             store,
             clock,
-            _neural_fields(directory, seed, neural_steps),
+            (*_neural_fields(directory, seed, neural_steps), _start_field(store)),
             continues=True,
         ),
         _training_command(
@@ -490,7 +509,7 @@ def chat_menu(
             seed,
             store,
             clock,
-            _mlp_fields(directory, seed, mlp_steps),
+            (*_mlp_fields(directory, seed, mlp_steps), _start_field(store)),
             continues=True,
         ),
         _training_command(
@@ -501,7 +520,7 @@ def chat_menu(
             seed,
             store,
             clock,
-            _gpt_fields(directory, seed, gpt_steps),
+            (*_gpt_fields(directory, seed, gpt_steps), _start_field(store)),
             continues=True,
         ),
     )
