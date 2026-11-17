@@ -51,7 +51,7 @@ class MlpLM(torch.nn.Module):
         for context in contexts:
             tail = context[-self.window :]
             missing = self.window - len(tail)
-            rows.append([self.start] * missing + tail)
+            rows.append([self.start] * missing + list(tail))
         return torch.tensor(rows, dtype=torch.long, device=self._device())
 
     def forward_batch(self, contexts: list[list[int]]) -> torch.Tensor:

@@ -463,12 +463,12 @@ def train_transformer_lm(
             run["optimizer"] = optimizer.state_dict()
             snapshots(run_snapshot(model, run))
 
+    if keeper is not None:
+        keeper(model)
     if held is not None and (
         not run["validation_curve"] or run["validation_curve"][-1][0] != run["step"]
     ):
         _record_validation(model, held, run)
-    if keeper is not None:
-        keeper(model)
     tokens = run["step"] * batch * window
     return TransformerTrainingResult(
         model=model,
