@@ -1,17 +1,21 @@
 import itertools
+import math
 import random
+import time
+from array import array
 from dataclasses import dataclass
+from itertools import batched
 
 import torch
 import torch.nn.functional as F
 
-from murrai.application.checkpoints import Snapshot
+from murrai.application.checkpoints import Snapshot, run_snapshot
 from murrai.application.ports import Corpus, EventBus, TrainingEvent
 from murrai.domain.bigram import Bigram
 from murrai.domain.mlp import MlpLM
 from murrai.domain.neural_bigram import NeuralBigram
 from murrai.domain.tokenizer import TokenizerEncoderDecoder
-from murrai.domain.transformer import TransformerLM
+from murrai.domain.transformer import ROWS_PER_PASS, TransformerLM
 
 
 @dataclass
@@ -275,9 +279,71 @@ class TransformerTrainingResult:
     model: TransformerLM
     loss_curve: list[float]
     rate_curve: list[float]
-    train_chars: int
-    held_out_chars: int
+    validation_curve: list[tuple[int, float]]
     held_out_perplexity: float | None
+    steps: int
+    tokens_per_second: float
+
+
+def _draw_batch(stream, window, batch, generator):
+    last_start = len(stream) - window - 1
+    chosen = torch.randint(0, last_start + 1, (batch,), generator=generator)
+    chosen = chosen.to(stream.device)
+    span = torch.arange(window, device=stream.device)
+    rows = stream[chosen[:, None] + span].long()
+    return rows, stream[chosen[:, None] + span + 1].long()
+
+
+def _window_loss(model, rows, targets):
+    with torch.no_grad():
+        logits = model(rows)
+    return float(
+        F.cross_entropy(
+            logits.reshape(-1, logits.size(-1)),
+            targets.reshape(-1).long(),
+            reduction="sum",
+        ),
+    )
+
+
+def _stream_nll(model, stream, rows_per_pass=ROWS_PER_PASS):
+    positions = len(stream) - 1
+    if positions < 1:
+        return None
+    max_time = model.max_time
+    full = positions // max_time
+    total = 0.0
+    count = 0
+    offset = torch.arange(max_time, device=stream.device)
+    for group in batched(range(full), rows_per_pass, strict=False):
+        index = torch.tensor(group, device=stream.device)[:, None] * max_time + offset
+        total += _window_loss(model, stream[index], stream[index + 1])
+        count += len(group) * max_time
+    if positions % max_time:
+        start = full * max_time
+        length = positions - start
+        index = start + torch.arange(length, device=stream.device)
+        total += _window_loss(
+            model,
+            stream[index].unsqueeze(0),
+            stream[index + 1].unsqueeze(0),
+        )
+        count += length
+    return total / count
+
+
+def _fresh_run(learning_rate):
+    return {
+        "step": 0,
+        "rate": learning_rate,
+        "best": float("inf"),
+        "best_step": 0,
+        "train_seconds": 0.0,
+        "optimizer": None,
+        "loss_curve": [],
+        "rate_curve": [],
+        "validation_curve": [],
+    }
 
 
 def train_transformer_lm(
@@ -293,6 +359,10 @@ def train_transformer_lm(
     patience=200,
     shrink=0.5,
     holdout=0.1,
+    held_out_text=None,
+    validate_every=None,
+    checkpoint_every=None,
+    snapshots=None,
     device=None,
     bus: EventBus | None = None,
     keeper=None,
@@ -300,9 +370,6 @@ def train_transformer_lm(
     checkpoint: Snapshot | None = None,
 ):
     device = torch.device(device) if device is not None else torch.device("cpu")
-    cut = int(len(text) * (1 - holdout))
-    train, held_out = text[:cut], text[cut:]
-
     torch.manual_seed(seed)
     _reject_contradictory_shape(
         checkpoint,
@@ -311,7 +378,11 @@ def train_transformer_lm(
         max_time=max_time,
         heads=heads,
     )
-    tokenizer = _checkpoint_tokenizer(train, merges, checkpoint, bus)
+    cut = int(len(text) * (1 - holdout))
+    train_text, held_text = text[:cut], text[cut:]
+    if held_out_text is not None:
+        held_text = held_out_text
+    tokenizer = _checkpoint_tokenizer(train_text, merges, checkpoint, bus)
     if checkpoint is None:
         max_time = max_time or 64
         model = TransformerLM(
@@ -321,34 +392,43 @@ def train_transformer_lm(
             max_time=max_time,
             heads=heads or 1,
         ).to(device)
+        run = _fresh_run(learning_rate)
     else:
         model = TransformerLM.from_state(tokenizer, checkpoint.state).to(device)
         max_time = model.max_time
-    optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
+        run = _fresh_run(learning_rate)
+        run.update(checkpoint.state.get("run") or {})
+        run["loss_curve"] = list(run["loss_curve"])
+        run["rate_curve"] = list(run["rate_curve"])
+        run["validation_curve"] = list(run["validation_curve"])
+    start = run["step"]
+    optimizer = torch.optim.Adam(model.parameters(), lr=run["rate"])
+    if run["optimizer"] is not None:
+        optimizer.load_state_dict(run["optimizer"])
+        optimizer.param_groups[0]["lr"] = run["rate"]
 
-    ids = [
-        model.start,
-        *tokenizer.encode(train, bus=_stage_bus(bus, "encoding")),
-    ]
-    stream = torch.tensor(ids, dtype=torch.long, device=device)
+    ids = array("i", (model.start,))
+    ids.extend(tokenizer.encode(train_text, bus=_stage_bus(bus, "encoding")))
+    stream = torch.frombuffer(memoryview(ids), dtype=torch.int32).to(device)
     if len(stream) < 2:
         raise ValueError("corpus encodes to fewer than two tokens")
-    window = min(max_time, len(stream) - 1)
-    span = torch.arange(window, device=device)
-    last_start = len(stream) - window - 1
-
-    rng = random.Random(seed)
-    loss_curve, rate_curve = [], []
-    best = float("inf")
-    best_step = 0
-    rate = learning_rate
-    for step in range(steps):
-        chosen = torch.tensor(
-            [rng.randrange(max(last_start, 1)) for _ in range(batch)],
-            device=device,
+    held = None
+    if held_text:
+        held_ids = array("i", (model.start,))
+        held_ids.extend(
+            tokenizer.encode(held_text, bus=_stage_bus(bus, "encoding")),
         )
-        rows = stream[chosen[:, None] + span]
-        targets = stream[chosen[:, None] + span + 1]
+        held = torch.frombuffer(memoryview(held_ids), dtype=torch.int32).to(device)
+    window = min(max_time, len(stream) - 1)
+
+    if held is not None and start == 0:
+        _record_validation(model, held, run)
+
+    generator = torch.Generator().manual_seed(seed)
+    for step in range(run["step"], steps):
+        generator.manual_seed(seed + step)
+        mark = time.perf_counter()
+        rows, targets = _draw_batch(stream, window, batch, generator)
         logits = model(rows)
         loss = F.cross_entropy(
             logits.reshape(-1, tokenizer.vocab_size),
@@ -358,22 +438,60 @@ def train_transformer_lm(
         optimizer.step()
         optimizer.zero_grad()
         value = float(loss.detach())
-        best_step = step if value < best else best_step
-        best = min(best, value)
-        rate = plateau_rate(step - best_step, rate, patience, shrink)
-        optimizer.param_groups[0]["lr"] = rate
-        loss_curve.append(value)
-        rate_curve.append(rate)
+        run["train_seconds"] += time.perf_counter() - mark
+        run["best_step"] = step if value < run["best"] else run["best_step"]
+        run["best"] = min(run["best"], value)
+        run["rate"] = plateau_rate(
+            step - run["best_step"],
+            run["rate"],
+            patience,
+            shrink,
+        )
+        optimizer.param_groups[0]["lr"] = run["rate"]
+        run["loss_curve"].append(value)
+        run["rate_curve"].append(run["rate"])
+        run["step"] = step + 1
         if bus is not None:
             bus.emit(TrainingEvent(step=step + 1, total_steps=steps))
+        if validate_every and held is not None and run["step"] % validate_every == 0:
+            _record_validation(model, held, run)
+        if (
+            checkpoint_every
+            and snapshots is not None
+            and run["step"] % checkpoint_every == 0
+        ):
+            run["optimizer"] = optimizer.state_dict()
+            snapshots(run_snapshot(model, run))
 
+    if held is not None and (
+        not run["validation_curve"] or run["validation_curve"][-1][0] != run["step"]
+    ):
+        _record_validation(model, held, run)
     if keeper is not None:
         keeper(model)
+    tokens = run["step"] * batch * window
     return TransformerTrainingResult(
         model=model,
-        loss_curve=loss_curve,
-        rate_curve=rate_curve,
-        train_chars=len(train),
-        held_out_chars=len(held_out),
-        held_out_perplexity=model.perplexity(held_out) if held_out else None,
+        loss_curve=run["loss_curve"][start:],
+        rate_curve=run["rate_curve"][start:],
+        validation_curve=(
+            run["validation_curve"]
+            if start == 0
+            else [entry for entry in run["validation_curve"] if entry[0] > start]
+        ),
+        held_out_perplexity=(
+            math.exp(run["validation_curve"][-1][1])
+            if run["validation_curve"]
+            else None
+        ),
+        steps=run["step"],
+        tokens_per_second=(
+            tokens / run["train_seconds"] if run["train_seconds"] > 0 else 0.0
+        ),
     )
+
+
+def _record_validation(model, held, run):
+    loss = _stream_nll(model, held)
+    if loss is not None:
+        run["validation_curve"].append((run["step"], loss))

@@ -1,5 +1,7 @@
 from dataclasses import dataclass
 
+import torch
+
 from murrai.domain.bigram import Bigram
 from murrai.domain.mlp import MlpLM
 from murrai.domain.neural_bigram import NeuralBigram
@@ -37,11 +39,30 @@ class CheckpointRecord:
     held_out_perplexity: float | None = None
 
 
+def _clone(value):
+    if isinstance(value, torch.Tensor):
+        return value.detach().clone()
+    if isinstance(value, dict):
+        return {key: _clone(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return type(value)(_clone(item) for item in value)
+    return value
+
+
 def snapshot_of(model):
     return Snapshot(
         kind=model.kind,
         merges=model.tokenizer.merges,
-        state=model.state(),
+        state=_clone(model.state()),
+    )
+
+
+def run_snapshot(model, run_state):
+    snapshot = snapshot_of(model)
+    return Snapshot(
+        kind=snapshot.kind,
+        merges=snapshot.merges,
+        state={**snapshot.state, "run": _clone(run_state)},
     )
 
 

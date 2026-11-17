@@ -3,8 +3,9 @@ import math
 import pytest
 import torch
 
+from murrai.adapters.checkpoint import FileCheckpointStore
 from murrai.application.checkpoints import snapshot_of
-from murrai.application.runs import train_transformer_lm
+from murrai.application.runs import _draw_batch, train_transformer_lm
 from murrai.domain.tokenizer import TokenizerEncoderDecoder
 from murrai.domain.transformer import TransformerLM
 
@@ -306,3 +307,150 @@ def test_continuing_rejects_a_contradictory_shape():
             max_time=8,
             checkpoint=snapshot_of(first.model),
         )
+
+
+def test_batches_are_drawn_from_the_encoded_stream():
+    tokenizer = TokenizerEncoderDecoder()
+    stream = torch.tensor([tokenizer.vocab_size, *tokenizer.encode("aabbaabb" * 3)])
+    generator = torch.Generator().manual_seed(0)
+
+    rows, targets = _draw_batch(stream, window=4, batch=3, generator=generator)
+
+    starts = torch.randint(
+        0,
+        len(stream) - 4,
+        (3,),
+        generator=torch.Generator().manual_seed(0),
+    )
+    assert rows.shape == (3, 4)
+    assert targets.shape == (3, 4)
+    for index, start in enumerate(starts.tolist()):
+        assert rows[index].tolist() == stream[start : start + 4].tolist()
+        assert targets[index].tolist() == stream[start + 1 : start + 5].tolist()
+
+
+def test_the_run_validates_on_a_separate_held_out_stream():
+    result = train_transformer_lm(
+        "ab" * 400,
+        steps=10,
+        batch=8,
+        seed=0,
+        depth=1,
+        dimension=8,
+        max_time=8,
+        holdout=0,
+        held_out_text="ab" * 80,
+        validate_every=2,
+    )
+    assert [step for step, _ in result.validation_curve] == [0, 2, 4, 6, 8, 10]
+    assert all(math.isfinite(loss) for _, loss in result.validation_curve)
+    assert result.held_out_perplexity == pytest.approx(
+        math.exp(result.validation_curve[-1][1]),
+    )
+
+
+def test_the_validation_stream_is_never_trained_on():
+    common = {
+        "steps": 150,
+        "batch": 8,
+        "seed": 0,
+        "depth": 1,
+        "dimension": 8,
+        "max_time": 8,
+        "holdout": 0,
+        "merges": 0,
+    }
+    familiar = train_transformer_lm("ab" * 400, held_out_text="ab" * 200, **common)
+    foreign = train_transformer_lm("ab" * 400, held_out_text="cd" * 200, **common)
+
+    assert familiar.validation_curve[-1][1] < familiar.validation_curve[0][1] - 3.0
+    assert foreign.validation_curve[-1][1] > familiar.validation_curve[-1][1] + 3.0
+
+
+def test_the_validation_curve_appears_for_a_holdout_fraction():
+    result = train_transformer_lm(
+        "ab" * 400,
+        steps=6,
+        batch=8,
+        seed=0,
+        depth=1,
+        dimension=8,
+        max_time=8,
+        holdout=0.2,
+        validate_every=2,
+    )
+    assert [step for step, _ in result.validation_curve] == [0, 2, 4, 6]
+    assert result.held_out_perplexity == pytest.approx(
+        math.exp(result.validation_curve[-1][1]),
+    )
+
+
+def test_a_run_without_a_held_out_stream_reports_no_validation():
+    result = train_transformer_lm(
+        "ab" * 400,
+        steps=4,
+        batch=8,
+        seed=0,
+        depth=1,
+        dimension=8,
+        max_time=8,
+        holdout=0,
+    )
+    assert result.validation_curve == []
+    assert result.held_out_perplexity is None
+
+
+def test_the_run_reports_its_steps_and_token_throughput():
+    result = train_transformer_lm(
+        "ab" * 4000,
+        steps=10,
+        batch=8,
+        seed=0,
+        depth=1,
+        dimension=8,
+        max_time=8,
+        holdout=0,
+    )
+    assert result.steps == 10
+    assert result.tokens_per_second > 0
+
+
+def test_a_run_resumes_from_a_periodic_snapshot_and_continues_its_curve(tmp_path):
+    store = FileCheckpointStore(tmp_path / "checkpoints")
+    kept = []
+    common = {
+        "steps": 8,
+        "batch": 8,
+        "seed": 0,
+        "depth": 1,
+        "dimension": 8,
+        "max_time": 8,
+        "holdout": 0,
+        "held_out_text": "ab" * 80,
+        "validate_every": 2,
+    }
+
+    def snapshots(snapshot):
+        step = snapshot.state["run"]["step"]
+        kept.append(step)
+        store.save(f"midrun-{step}", snapshot)
+
+    first = train_transformer_lm(
+        "ab" * 400,
+        checkpoint_every=3,
+        snapshots=snapshots,
+        **common,
+    )
+    assert kept == [3, 6]
+
+    resumed = train_transformer_lm(
+        "ab" * 400,
+        checkpoint=store.load("midrun-3"),
+        **common,
+    )
+
+    assert resumed.loss_curve == first.loss_curve[3:]
+    assert resumed.rate_curve == first.rate_curve[3:]
+    assert resumed.validation_curve == first.validation_curve[2:]
+    assert resumed.steps == 8
+    assert resumed.tokens_per_second > 0

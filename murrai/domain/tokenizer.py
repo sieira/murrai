@@ -34,7 +34,7 @@ class TokenizerEncoderDecoder:
             ids = _merge_best(ids, pair, 256 + rank, None)
             if bus is not None:
                 bus.emit(Progress(rank + 1, len(self.merges)))
-        return list(ids)
+        return ids
 
     @property
     def pieces(self):

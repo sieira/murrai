@@ -1,6 +1,7 @@
 import itertools
 import random
 import time
+from array import array
 
 import pytest
 
@@ -39,27 +40,35 @@ def test_fit_tie_breaks_to_lowest_pair():
 def test_encode_replays_merges_in_learned_order():
     t = TokenizerEncoderDecoder().fit(CORPUS, num_merges=3)
     a, d, c = (ord(x) for x in "adc")
-    assert t.encode(CORPUS) == [258, d, 258, a, c]
+    assert list(t.encode(CORPUS)) == [258, d, 258, a, c]
     assert t.decode([258, d, 258, a, c]) == "aaabdaaabac"
+
+
+def test_encode_hands_back_a_compact_stream_not_a_list_of_objects():
+    t = TokenizerEncoderDecoder().fit(CORPUS, num_merges=3)
+    ids = t.encode(CORPUS)
+    assert isinstance(ids, array)
+    assert ids.itemsize == 4
+    assert list(ids) == [258, ord("d"), 258, ord("a"), ord("c")]
 
 
 def test_encode_resolves_overlaps_left_to_right():
     t = TokenizerEncoderDecoder().fit("aaaa", num_merges=1)
-    assert t.encode("aaaa") == [256, 256]
-    assert t.encode("aaa") == [256, ord("a")]
+    assert list(t.encode("aaaa")) == [256, 256]
+    assert list(t.encode("aaa")) == [256, ord("a")]
 
 
 def test_encode_rule_fires_only_after_earlier_rules_ran():
     t = TokenizerEncoderDecoder().fit("aab", num_merges=2)
     a, b = ord("a"), ord("b")
     assert t.merges == ((a, a), (256, b))
-    assert t.encode("aab") == [257]
-    assert t.encode("ab") == [a, b]
+    assert list(t.encode("aab")) == [257]
+    assert list(t.encode("ab")) == [a, b]
 
 
 def test_fresh_tokenizer_encodes_raw_bytes_without_fit():
     t = TokenizerEncoderDecoder()
-    assert t.encode("ab") == [ord("a"), ord("b")]
+    assert list(t.encode("ab")) == [ord("a"), ord("b")]
     assert t.decode([ord("a"), ord("b")]) == "ab"
 
 
@@ -124,7 +133,7 @@ def test_fit_encode_decode_are_separate_operations():
     t2 = t.fit(CORPUS, num_merges=2)
     assert t2 is t
     assert t.merges == ((ord("a"), ord("a")), (ord("a"), ord("b")))
-    assert t.encode("azb") == [ord("a"), ord("z"), ord("b")]
+    assert list(t.encode("azb")) == [ord("a"), ord("z"), ord("b")]
     assert t.decode(t.encode("azb")) == "azb"
 
 
@@ -178,7 +187,7 @@ def test_encode_matches_the_sequential_replay(text):
     expected = list(text.encode("utf-8"))
     for rank, pair in enumerate(t.merges):
         expected = _replace(expected, pair, 256 + rank)
-    assert t.encode(text) == expected
+    assert list(t.encode(text)) == expected
 
 
 def test_encode_on_a_large_corpus_does_not_replay_merge_by_merge():
