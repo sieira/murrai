@@ -14,8 +14,6 @@ from murrai.composition.train import train_and_held_out
 
 CORPUS = Path("data/corpus")
 
-GPT_STEPS = int(sys.argv[1]) if len(sys.argv) > 1 else 200
-MLP_STEPS = int(sys.argv[2]) if len(sys.argv) > 2 else 400
 WARMUP_STEPS = 5
 TIMING_CHARS = 4_000_000
 
@@ -47,7 +45,7 @@ def time_run(run, steps, warmup_steps):
     return rate, result
 
 
-def bench_gpt(device, text):
+def bench_gpt(device, text, steps):
     text = text[:TIMING_CHARS]
     train_text, held_text = train_and_held_out(text, 0.0005)
 
@@ -66,7 +64,7 @@ def bench_gpt(device, text):
         )
         return time.perf_counter() - started, result
 
-    rate, result = time_run(run, GPT_STEPS, WARMUP_STEPS)
+    rate, result = time_run(run, steps, WARMUP_STEPS)
     tokens = 256 * 64
     print(
         f"gpt : {rate:6.2f} steps/s  {rate * tokens / 1000:8.0f}k tokens/s  "
@@ -74,7 +72,7 @@ def bench_gpt(device, text):
     )
 
 
-def bench_mlp(device, text):
+def bench_mlp(device, text, steps):
     text = text[:TIMING_CHARS]
     train_text, held_text = train_and_held_out(text, 0.0005)
 
@@ -95,7 +93,7 @@ def bench_mlp(device, text):
         )
         return time.perf_counter() - started, result
 
-    rate, result = time_run(run, MLP_STEPS, WARMUP_STEPS)
+    rate, result = time_run(run, steps, WARMUP_STEPS)
     print(
         f"mlp : {rate:6.2f} steps/s  {rate * 256 / 1000:8.0f}k chars/s  "
         f"(loss {result.loss_curve[-1]:.3f})",
@@ -103,14 +101,16 @@ def bench_mlp(device, text):
 
 
 def correctness(device, text):
+    train_text, held_text = train_and_held_out(text[:200_000], 0.0005)
     result = train_transformer_lm(
-        text[:200_000],
+        train_text,
         steps=5,
         batch=64,
         seed=0,
         depth=4,
         dimension=64,
         max_time=64,
+        held_out_text=held_text or None,
         device=device,
     )
     sample = result.model.generate(20, seed=0)
@@ -119,7 +119,7 @@ def correctness(device, text):
     loaded = store.load("bench")
     saved_devices = {
         tensor.device.type
-        for tensor in loaded.state["parameters"].values()
+        for tensor in loaded.weights.values()
         if isinstance(tensor, torch.Tensor)
     }
     print(
@@ -137,15 +137,17 @@ def main():
             file=sys.stderr,
         )
         sys.exit(1)
+    gpt_steps = int(sys.argv[1]) if len(sys.argv) > 1 else 200
+    mlp_steps = int(sys.argv[2]) if len(sys.argv) > 2 else 400
     print(
         f"{platform.platform()} | torch {torch.__version__} | "
         f"corpus {len(text):,} chars | timing on first {TIMING_CHARS:,} chars | "
-        f"gpt {GPT_STEPS} steps, mlp {MLP_STEPS} steps",
+        f"gpt {gpt_steps} steps, mlp {mlp_steps} steps",
     )
     for device in devices():
         print(f"\n== {device_name(device)} ==")
-        bench_gpt(device, text)
-        bench_mlp(device, text)
+        bench_gpt(device, text, gpt_steps)
+        bench_mlp(device, text, mlp_steps)
         correctness(device, text)
 
 
