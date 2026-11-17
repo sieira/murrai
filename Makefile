@@ -1,4 +1,4 @@
-.PHONY: setup check test test-one lint boundaries bench bench-train corpus corpus-theme corpus-tinystories chat
+.PHONY: setup check test test-one lint boundaries bench bench-train train corpus corpus-theme corpus-tinystories chat
 
 setup:
 	uv sync
@@ -35,3 +35,6 @@ bench:
 
 bench-train:
 	uv run python scripts/train_bench.py
+
+train:
+	uv run python scripts/train.py $(STEPS)
