@@ -29,7 +29,7 @@ def test_a_training_runs_in_its_own_process_and_reports_over_a_pipe(tmp_path):
     command = next(
         c
         for c in chat_commands(corpus, seed=0, store=store, neural_steps=20)
-        if c.name == "retrain neural bigram"
+        if c.name == "neural bigram"
     )
     baked = command.bake({f.name: f.default for f in command.fields})
     log = ChatLog()
@@ -40,9 +40,9 @@ def test_a_training_runs_in_its_own_process_and_reports_over_a_pipe(tmp_path):
     _wait_for(log, "finished")
 
     lanes = [line.split(" ", 1)[1] for line in log.lines]
-    assert lanes[0] == "[train] retrain neural bigram started"
-    assert "[train] retrain neural bigram training 20/20" in lanes
-    assert lanes[-1] == "[train] retrain neural bigram finished"
+    assert lanes[0] == "[train] neural bigram started"
+    assert "[train] neural bigram training 20/20" in lanes
+    assert lanes[-1] == "[train] neural bigram finished"
     assert store.names() == ["neural-bigram-corpus"]
     record = store.record("neural-bigram-corpus")
     assert record.gradient.steps == 20

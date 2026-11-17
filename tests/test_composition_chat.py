@@ -9,7 +9,7 @@ from murrai.adapters.checkpoint import FileCheckpointStore, InMemoryCheckpointSt
 from murrai.application.checkpoints import CheckpointRecord, RunSettings, Snapshot
 from murrai.application.ports import TrainingEvent
 from murrai.application.runs import training_device
-from murrai.composition.chat import chat_commands
+from murrai.composition.chat import chat_commands, chat_menu
 from murrai.domain.transformer import TransformerLM
 
 
@@ -31,15 +31,86 @@ def test_chat_commands_list_the_models(corpus):
     )
     assert [command.name for command in commands] == [
         "counted bigram",
-        "retrain neural bigram",
-        "retrain windowed mlp",
-        "retrain gpt",
+        "neural bigram",
+        "windowed mlp",
+        "gpt",
     ]
     counted, neural, mlp, gpt = commands
     assert counted.trains
     assert neural.trains
     assert mlp.trains
     assert gpt.trains
+
+
+def test_the_menu_offers_new_load_and_retrain(corpus):
+    store = InMemoryCheckpointStore()
+    store.save("gpt-corpus", Snapshot(kind="gpt", merges=(), state={}))
+    store.save("counted-corpus", Snapshot(kind="counted-bigram", merges=(), state={}))
+
+    tree = chat_menu(
+        corpus,
+        seed=0,
+        neural_steps=20,
+        mlp_steps=20,
+        gpt_steps=20,
+        store=store,
+    )()
+
+    assert [c.name for c in tree["new"]] == [
+        "counted bigram",
+        "neural bigram",
+        "windowed mlp",
+        "gpt",
+    ]
+    assert [c.name for c in tree["load"]] == [
+        "load counted-corpus",
+        "load gpt-corpus",
+    ]
+    assert [c.name for c in tree["retrain"]] == ["retrain gpt-corpus"]
+    retrain = tree["retrain"][0]
+    assert retrain.continues
+    assert retrain.pin == {"start_from": "gpt-corpus"}
+    assert "start_from" not in [f.name for f in retrain.fields]
+    assert tree["retrain"][0].fields == tree["new"][3].fields
+
+
+def test_the_retrain_menu_lists_one_item_per_gradient_checkpoint(corpus):
+    store = InMemoryCheckpointStore()
+    store.save("neural-corpus", Snapshot(kind="neural-bigram", merges=(), state={}))
+    store.save("mlp-corpus", Snapshot(kind="windowed-mlp", merges=(), state={}))
+    store.save("counted-corpus", Snapshot(kind="counted-bigram", merges=(), state={}))
+
+    tree = chat_menu(
+        corpus,
+        seed=0,
+        neural_steps=20,
+        mlp_steps=20,
+        gpt_steps=20,
+        store=store,
+    )()
+
+    assert [c.name for c in tree["retrain"]] == [
+        "retrain mlp-corpus",
+        "retrain neural-corpus",
+    ]
+
+
+def test_the_menu_reloads_the_checkpoints_each_time(corpus):
+    store = InMemoryCheckpointStore()
+    menu = chat_menu(corpus, seed=0, store=store)
+
+    assert menu()["load"] == ()
+    store.save("gpt-corpus", Snapshot(kind="gpt", merges=(), state={}))
+    assert [c.name for c in menu()["load"]] == ["load gpt-corpus"]
+
+
+def test_a_new_gradient_command_trains_fresh(corpus, monkeypatch):
+    captured = _capturing(monkeypatch, "train_neural_bigram")
+    tree = chat_menu(corpus, seed=0, neural_steps=20)()
+
+    tree["new"][1].bake(_defaults(tree["new"][1])).build()
+
+    assert captured["kwargs"]["checkpoint"] is None
 
 
 def _command(corpus, name, **kwargs):
@@ -55,7 +126,7 @@ def test_counted_command_builds_a_working_session(corpus):
 
 
 def test_neural_command_builds_a_working_session(corpus):
-    session = _command(corpus, "retrain neural bigram", seed=0, neural_steps=20).build()
+    session = _command(corpus, "neural bigram", seed=0, neural_steps=20).build()
     session.extend_user("a")
     probabilities = [p for _, p in session.dice()]
     assert pytest.approx(sum(probabilities)) == 1.0
@@ -63,7 +134,7 @@ def test_neural_command_builds_a_working_session(corpus):
 
 
 def test_mlp_command_builds_a_working_session(corpus):
-    session = _command(corpus, "retrain windowed mlp", seed=0, mlp_steps=20).build()
+    session = _command(corpus, "windowed mlp", seed=0, mlp_steps=20).build()
     session.extend_user("a")
     probabilities = [p for _, p in session.dice()]
     assert pytest.approx(sum(probabilities)) == 1.0
@@ -71,7 +142,7 @@ def test_mlp_command_builds_a_working_session(corpus):
 
 
 def test_gpt_command_builds_a_working_session(corpus):
-    session = _command(corpus, "retrain gpt", seed=0, gpt_steps=20).build()
+    session = _command(corpus, "gpt", seed=0, gpt_steps=20).build()
     session.extend_user("a")
     probabilities = [p for _, p in session.dice()]
     assert pytest.approx(sum(probabilities)) == 1.0
@@ -79,7 +150,7 @@ def test_gpt_command_builds_a_working_session(corpus):
 
 
 def test_mlp_session_story_carries_generated_text(corpus):
-    session = _command(corpus, "retrain windowed mlp", seed=0, mlp_steps=20).build()
+    session = _command(corpus, "windowed mlp", seed=0, mlp_steps=20).build()
     session.extend_user("a")
     session.extend_generated("b")
     session.extend_user("a")
@@ -108,15 +179,15 @@ def test_training_commands_save_a_checkpoint(corpus):
     )
     _command(corpus, "counted bigram", store=store).build()
     assert store.names() == ["counted-bigram-corpus"]
-    _command(corpus, "retrain neural bigram", store=store, neural_steps=20).build()
+    _command(corpus, "neural bigram", store=store, neural_steps=20).build()
     assert store.names() == ["counted-bigram-corpus", "neural-bigram-corpus"]
-    _command(corpus, "retrain windowed mlp", store=store, mlp_steps=20).build()
+    _command(corpus, "windowed mlp", store=store, mlp_steps=20).build()
     assert store.names() == [
         "counted-bigram-corpus",
         "neural-bigram-corpus",
         "windowed-mlp-corpus",
     ]
-    _command(corpus, "retrain gpt", store=store, gpt_steps=20).build()
+    _command(corpus, "gpt", store=store, gpt_steps=20).build()
     assert store.names() == [
         "counted-bigram-corpus",
         "gpt-corpus",
@@ -133,7 +204,7 @@ def test_the_neural_checkpoint_records_its_info(corpus):
     store = InMemoryCheckpointStore()
     _command(
         corpus,
-        "retrain neural bigram",
+        "neural bigram",
         seed=0,
         neural_steps=20,
         store=store,
@@ -171,7 +242,7 @@ def test_the_mlp_checkpoint_records_its_info(corpus):
     store = InMemoryCheckpointStore()
     _command(
         corpus,
-        "retrain windowed mlp",
+        "windowed mlp",
         seed=0,
         mlp_steps=20,
         store=store,
@@ -189,7 +260,7 @@ def test_the_gpt_checkpoint_records_its_info(corpus):
     store = InMemoryCheckpointStore()
     _command(
         corpus,
-        "retrain gpt",
+        "gpt",
         seed=0,
         gpt_steps=20,
         store=store,
@@ -212,7 +283,7 @@ def test_the_checkpoint_records_the_last_loss_of_the_run(corpus, monkeypatch):
     store = InMemoryCheckpointStore()
     _command(
         corpus,
-        "retrain neural bigram",
+        "neural bigram",
         seed=0,
         neural_steps=20,
         store=store,
@@ -226,7 +297,7 @@ def test_the_load_command_describes_the_checkpoint(corpus):
     store = InMemoryCheckpointStore()
     _command(
         corpus,
-        "retrain neural bigram",
+        "neural bigram",
         seed=0,
         neural_steps=20,
         store=store,
@@ -260,7 +331,7 @@ def test_the_load_command_restores_the_trained_model(corpus):
     store = InMemoryCheckpointStore()
     trainer = _command(
         corpus,
-        "retrain neural bigram",
+        "neural bigram",
         seed=0,
         neural_steps=20,
         store=store,
@@ -281,7 +352,7 @@ def test_training_commands_stream_events_to_the_listener(corpus):
 
     command = _command(
         corpus,
-        "retrain neural bigram",
+        "neural bigram",
         seed=0,
         neural_steps=20,
     )
@@ -296,7 +367,7 @@ def test_commands_offer_loading_and_retraining(corpus):
     store = InMemoryCheckpointStore()
     trainer = _command(
         corpus,
-        "retrain neural bigram",
+        "neural bigram",
         seed=0,
         neural_steps=20,
         store=store,
@@ -315,16 +386,14 @@ def test_commands_offer_loading_and_retraining(corpus):
     names = [command.name for command in commands]
     assert "load neural-bigram-corpus" in names
     assert "counted bigram" in names
-    assert "retrain neural bigram" in names
-    assert "retrain windowed mlp" in names
-    assert "retrain gpt" in names
+    assert "retrain neural-bigram-corpus" in names
 
 
 def test_the_load_command_builds_a_working_session(corpus):
     store = InMemoryCheckpointStore()
     trainer = _command(
         corpus,
-        "retrain neural bigram",
+        "neural bigram",
         seed=0,
         neural_steps=20,
         store=store,
@@ -349,7 +418,7 @@ def test_training_saves_the_model_before_the_metrics_run(tmp_path, monkeypatch):
     corpus.mkdir()
     (corpus / "story.txt").write_text("aabbaabb" * 20)
     store = FileCheckpointStore(tmp_path / "checkpoints")
-    command = _command(corpus, "retrain gpt", seed=0, gpt_steps=5, store=store)
+    command = _command(corpus, "gpt", seed=0, gpt_steps=5, store=store)
     with pytest.raises(RuntimeError):
         command.build()
     assert store.names() == ["gpt-corpus"]
@@ -363,7 +432,7 @@ def test_the_retrain_command_trains_and_saves(corpus):
 
     retrainer = _command(
         corpus,
-        "retrain neural bigram",
+        "neural bigram",
         seed=0,
         neural_steps=20,
         store=store,
@@ -375,14 +444,9 @@ def test_the_retrain_command_trains_and_saves(corpus):
     assert session.rollout("a", 5)
 
 
-def test_no_store_means_counted_and_retraining_commands(corpus):
+def test_no_store_means_no_retrain_commands(corpus):
     commands = chat_commands(corpus, seed=0, neural_steps=20, mlp_steps=20)
-    assert [command.name for command in commands] == [
-        "counted bigram",
-        "retrain neural bigram",
-        "retrain windowed mlp",
-        "retrain gpt",
-    ]
+    assert not any(command.name.startswith("retrain ") for command in commands)
 
 
 def test_training_commands_survive_a_trip_to_another_process(corpus):
@@ -392,9 +456,9 @@ def test_training_commands_survive_a_trip_to_another_process(corpus):
     trains = [c for c in commands if c.trains]
     assert [c.name for c in trains] == [
         "counted bigram",
-        "retrain neural bigram",
-        "retrain windowed mlp",
-        "retrain gpt",
+        "neural bigram",
+        "windowed mlp",
+        "gpt",
     ]
 
     for command in trains:
@@ -416,7 +480,7 @@ def test_the_gpt_command_trains_on_the_policy_device(corpus, monkeypatch):
         return real(text, **kwargs)
 
     monkeypatch.setattr(murrai_composition_chat, "train_transformer_lm", recorder)
-    _command(corpus, "retrain gpt", seed=0, gpt_steps=20).build()
+    _command(corpus, "gpt", seed=0, gpt_steps=20).build()
     assert captured["device"] == training_device(prefer_mps=True)
 
 
@@ -429,7 +493,7 @@ def test_the_mlp_command_trains_on_the_policy_device(corpus, monkeypatch):
         return real(text, **kwargs)
 
     monkeypatch.setattr(murrai_composition_chat, "train_mlp_lm", recorder)
-    _command(corpus, "retrain windowed mlp", seed=0, mlp_steps=20).build()
+    _command(corpus, "windowed mlp", seed=0, mlp_steps=20).build()
     assert captured["device"] == training_device(prefer_mps=False)
 
 
@@ -473,18 +537,21 @@ def test_the_counted_command_offers_its_knobs(corpus):
     counted = _command(corpus, "counted bigram", seed=0)
 
     assert [(f.name, f.label, f.kind, f.default) for f in counted.fields] == [
+        ("name", "name", "text", f"counted-bigram-{corpus.name}"),
         ("text", "text", "choice", corpus.name),
         ("size", "size", "choice", "all"),
         ("holdout", "holdout", "float", 0.1),
         ("merges", "merges", "int", 300),
     ]
     assert counted.fields[-1].check == "whole above zero"
+    assert "start_from" not in [f.name for f in counted.fields]
 
 
 def test_the_neural_command_offers_its_knobs(corpus):
-    fields = _command(corpus, "retrain neural bigram", seed=0, neural_steps=20).fields
+    fields = _command(corpus, "neural bigram", seed=0, neural_steps=20).fields
 
     assert [(f.name, f.label, f.kind, f.default) for f in fields] == [
+        ("name", "name", "text", f"neural-bigram-{corpus.name}"),
         ("text", "text", "choice", corpus.name),
         ("size", "size", "choice", "all"),
         ("steps", "steps", "int", 20),
@@ -493,35 +560,14 @@ def test_the_neural_command_offers_its_knobs(corpus):
         ("final_learning_rate", "final learning rate", "float", 0.1),
         ("seed", "seed", "int", 0),
         ("merges", "merges", "int", 300),
-        ("start_from", "start from", "choice", "fresh"),
     ]
-    assert fields[-1].choices == ("fresh",)
-
-
-def test_the_start_from_choice_lists_the_saved_models(corpus):
-    store = InMemoryCheckpointStore()
-    store.save("gpt-corpus", Snapshot(kind="gpt", merges=(), state={}))
-    store.save(
-        "neural-bigram-corpus",
-        Snapshot(kind="neural-bigram", merges=(), state={}),
-    )
-
-    field = _field(
-        corpus,
-        "retrain neural bigram",
-        "start_from",
-        seed=0,
-        neural_steps=20,
-        store=store,
-    )
-
-    assert field.choices == ("fresh", "gpt-corpus", "neural-bigram-corpus")
 
 
 def test_the_mlp_command_offers_its_knobs(corpus):
-    fields = _command(corpus, "retrain windowed mlp", seed=0, mlp_steps=20).fields
+    fields = _command(corpus, "windowed mlp", seed=0, mlp_steps=20).fields
 
     assert [(f.name, f.label, f.default) for f in fields] == [
+        ("name", "name", f"windowed-mlp-{corpus.name}"),
         ("text", "text", corpus.name),
         ("size", "size", "all"),
         ("steps", "steps", 20),
@@ -536,7 +582,6 @@ def test_the_mlp_command_offers_its_knobs(corpus):
         ("seed", "seed", 0),
         ("device", "device", "auto"),
         ("merges", "merges", 300),
-        ("start_from", "start from", "fresh"),
     ]
     assert [f.name for f in fields if f.shape] == [
         "window",
@@ -544,14 +589,14 @@ def test_the_mlp_command_offers_its_knobs(corpus):
         "hidden",
         "merges",
     ]
-    assert fields[-3].choices == ("auto", "prefer gpu", "cpu")
-    assert fields[-1].choices == ("fresh",)
+    assert fields[-2].choices == ("auto", "prefer gpu", "cpu")
 
 
 def test_the_gpt_command_offers_its_knobs(corpus):
-    fields = _command(corpus, "retrain gpt", seed=0, gpt_steps=20).fields
+    fields = _command(corpus, "gpt", seed=0, gpt_steps=20).fields
 
     assert [(f.name, f.label, f.default) for f in fields] == [
+        ("name", "name", f"gpt-{corpus.name}"),
         ("text", "text", corpus.name),
         ("size", "size", "all"),
         ("steps", "steps", 20),
@@ -567,7 +612,6 @@ def test_the_gpt_command_offers_its_knobs(corpus):
         ("seed", "seed", 0),
         ("device", "device", "auto"),
         ("merges", "merges", 300),
-        ("start_from", "start from", "fresh"),
     ]
     assert [f.name for f in fields if f.shape] == [
         "depth",
@@ -576,13 +620,12 @@ def test_the_gpt_command_offers_its_knobs(corpus):
         "max_time",
         "merges",
     ]
-    assert fields[-3].choices == ("auto", "prefer gpu", "cpu")
-    assert fields[-1].choices == ("fresh",)
+    assert fields[-2].choices == ("auto", "prefer gpu", "cpu")
 
 
 def test_the_baked_command_trains_with_the_given_values(corpus, monkeypatch):
     captured = _capturing(monkeypatch, "train_neural_bigram")
-    command = _command(corpus, "retrain neural bigram", seed=0, neural_steps=20)
+    command = _command(corpus, "neural bigram", seed=0, neural_steps=20)
 
     command.bake(
         {**_defaults(command), "steps": 5, "batch": 7, "learning_rate": 1.5},
@@ -600,7 +643,7 @@ def test_a_chosen_savegame_flows_to_the_trainer_by_its_name(corpus, monkeypatch)
     store = InMemoryCheckpointStore()
     trainer = _command(
         corpus,
-        "retrain neural bigram",
+        "neural bigram",
         seed=0,
         neural_steps=20,
         store=store,
@@ -615,7 +658,7 @@ def test_a_chosen_savegame_flows_to_the_trainer_by_its_name(corpus, monkeypatch)
 
 def test_a_fresh_start_hands_the_trainer_no_snapshot(corpus, monkeypatch):
     captured = _capturing(monkeypatch, "train_neural_bigram")
-    command = _command(corpus, "retrain neural bigram", seed=0, neural_steps=20)
+    command = _command(corpus, "neural bigram", seed=0, neural_steps=20)
 
     command.bake(_defaults(command)).build()
 
@@ -626,22 +669,19 @@ def test_a_saved_start_leaves_the_shape_to_the_savegame(corpus, monkeypatch):
     gpt_captured = _capturing(monkeypatch, "train_transformer_lm")
     mlp_captured = _capturing(monkeypatch, "train_mlp_lm")
     store = InMemoryCheckpointStore()
-    gpt = _command(corpus, "retrain gpt", seed=0, gpt_steps=20, store=store)
-    mlp = _command(corpus, "retrain windowed mlp", seed=0, mlp_steps=20, store=store)
-    gpt.build()
-    mlp.build()
+    _command(corpus, "gpt", seed=0, gpt_steps=20, store=store).build()
+    _command(corpus, "windowed mlp", seed=0, mlp_steps=20, store=store).build()
+    gpt = _command(corpus, "retrain gpt-corpus", seed=0, gpt_steps=20, store=store)
+    mlp = _command(
+        corpus,
+        "retrain windowed-mlp-corpus",
+        seed=0,
+        mlp_steps=20,
+        store=store,
+    )
 
-    gpt.bake(
-        {**_defaults(gpt), "start_from": "gpt-corpus", "depth": 9, "max_time": 128},
-    ).build()
-    mlp.bake(
-        {
-            **_defaults(mlp),
-            "start_from": "windowed-mlp-corpus",
-            "window": 3,
-            "hidden": 9,
-        },
-    ).build()
+    gpt.bake({**_defaults(gpt), "depth": 9, "max_time": 128}).build()
+    mlp.bake({**_defaults(mlp), "window": 3, "hidden": 9}).build()
 
     for captured in (gpt_captured, mlp_captured):
         assert captured["kwargs"]["checkpoint"].kind in ("gpt", "windowed-mlp")
@@ -658,7 +698,7 @@ def test_a_saved_start_leaves_the_shape_to_the_savegame(corpus, monkeypatch):
 
 
 def test_a_baked_command_survives_the_trip_to_another_process(corpus):
-    command = _command(corpus, "retrain neural bigram", seed=0, neural_steps=20)
+    command = _command(corpus, "neural bigram", seed=0, neural_steps=20)
     baked = command.bake({**_defaults(command), "steps": 5})
 
     revived = pickle.loads(pickle.dumps(baked))
@@ -672,8 +712,8 @@ def test_the_device_choice_picks_where_the_training_runs(corpus, monkeypatch):
     mlp_captured, gpt_captured = {}, {}
     _stub_trainer(monkeypatch, "train_mlp_lm", mlp_captured)
     _stub_trainer(monkeypatch, "train_transformer_lm", gpt_captured)
-    mlp = _command(corpus, "retrain windowed mlp", seed=0, mlp_steps=20)
-    gpt = _command(corpus, "retrain gpt", seed=0, gpt_steps=20)
+    mlp = _command(corpus, "windowed mlp", seed=0, mlp_steps=20)
+    gpt = _command(corpus, "gpt", seed=0, gpt_steps=20)
 
     mlp.bake(_defaults(mlp)).build()
     gpt.bake(_defaults(gpt)).build()
