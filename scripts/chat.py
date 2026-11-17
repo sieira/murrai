@@ -22,7 +22,7 @@ def main():
     run_chat(
         session,
         commands=lambda: chat_commands(corpus, seed=seed, store=store),
-        menu=lambda: chat_menu(corpus, seed=seed, store=store),
+        menu=chat_menu(corpus, seed=seed, store=store),
         observer=ChatLog("chat.log"),
         load=lambda name: load_checkpoint_session(store, seed, name),
     )
