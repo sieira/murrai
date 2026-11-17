@@ -1,16 +1,28 @@
 from collections.abc import Callable
 from dataclasses import dataclass
+from enum import StrEnum
 from typing import Protocol, runtime_checkable
 
 from murrai.application.checkpoints import CheckpointRecord, Snapshot
 from murrai.domain.tokenizer import TokenizerEncoderDecoder
 
 
+class Stage(StrEnum):
+    COUNTING = "counting"
+    TOKENISING = "tokenising"
+    ENCODING = "encoding"
+    TRAINING = "training"
+
+
 @dataclass(frozen=True)
 class TrainingEvent:
     step: int
     total_steps: int
-    phase: str = "training"
+    phase: Stage = Stage.TRAINING
+
+    def __post_init__(self):
+        if not isinstance(self.phase, Stage):
+            raise ValueError(f"{self.phase!r} is not a training stage")
 
 
 class EventBus(Protocol):

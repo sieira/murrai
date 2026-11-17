@@ -10,7 +10,7 @@ import torch
 import torch.nn.functional as F
 
 from murrai.application.checkpoints import Snapshot, run_snapshot
-from murrai.application.ports import Corpus, EventBus, TrainingEvent
+from murrai.application.ports import Corpus, EventBus, Stage, TrainingEvent
 from murrai.domain.bigram import Bigram
 from murrai.domain.mlp import MlpLM
 from murrai.domain.neural_bigram import NeuralBigram
@@ -35,22 +35,22 @@ class NeuralTrainingResult:
 class _StageBus:
     # The domain reports stage-free Progress; the application names the
     # stage on the way out (ADR-0005).
-    def __init__(self, bus, phase):
+    def __init__(self, bus, stage):
         self._bus = bus
-        self._phase = phase
+        self._stage = stage
 
     def emit(self, event):
         self._bus.emit(
             TrainingEvent(
                 step=event.step,
                 total_steps=event.total_steps,
-                phase=self._phase,
+                phase=self._stage,
             ),
         )
 
 
-def _stage_bus(bus, phase):
-    return None if bus is None else _StageBus(bus, phase)
+def _stage_bus(bus, stage):
+    return None if bus is None else _StageBus(bus, stage)
 
 
 def train_bigram(
@@ -66,12 +66,12 @@ def train_bigram(
     tokenizer = TokenizerEncoderDecoder().fit(
         train,
         merges,
-        bus=_stage_bus(bus, "tokenising"),
+        bus=_stage_bus(bus, Stage.TOKENISING),
     )
     model = Bigram.fit(
         train,
         tokenizer,
-        bus=_stage_bus(bus, "counting"),
+        bus=_stage_bus(bus, Stage.COUNTING),
     )
     if keeper is not None:
         keeper(model)
@@ -89,10 +89,10 @@ def _checkpoint_tokenizer(train, merges, checkpoint, bus):
         return tokenizer, tokenizer.fit_encoded(
             train,
             merges,
-            bus=_stage_bus(bus, "tokenising"),
+            bus=_stage_bus(bus, Stage.TOKENISING),
         )
     tokenizer = TokenizerEncoderDecoder(checkpoint.merges)
-    return tokenizer, tokenizer.encode(train, bus=_stage_bus(bus, "encoding"))
+    return tokenizer, tokenizer.encode(train, bus=_stage_bus(bus, Stage.ENCODING))
 
 
 def _reject_contradictory_shape(checkpoint, **knobs):
@@ -413,7 +413,7 @@ def train_transformer_lm(
     if held_text:
         held_ids = array("i", (model.start,))
         held_ids.extend(
-            tokenizer.encode(held_text, bus=_stage_bus(bus, "encoding")),
+            tokenizer.encode(held_text, bus=_stage_bus(bus, Stage.ENCODING)),
         )
         held = torch.frombuffer(memoryview(held_ids), dtype=torch.int32).to(device)
         del held_ids

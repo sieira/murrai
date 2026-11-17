@@ -4,6 +4,7 @@ from pathlib import Path
 from murrai.adapters.checkpoint import FileCheckpointStore
 from murrai.adapters.corpus import DirTextCorpus
 from murrai.adapters.events import ListenerBus
+from murrai.application.ports import Stage
 from murrai.application.runs import training_device
 from murrai.composition.train import train_transformer_from_corpus
 
@@ -12,7 +13,7 @@ VALID_DIR = Path("data/corpus/tinystories-valid")
 
 
 def report(event):
-    if event.phase != "training":
+    if event.phase is not Stage.TRAINING:
         return
     if event.step % 100 == 0 or event.step == event.total_steps:
         print(f"step {event.step} / {event.total_steps}", flush=True)

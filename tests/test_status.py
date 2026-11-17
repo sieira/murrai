@@ -1,4 +1,4 @@
-from murrai.application.ports import TrainingEvent
+from murrai.application.ports import Stage, TrainingEvent
 from murrai.presentation.chat.repl import plain_text, status_line
 from murrai.presentation.chat.status import TrainingStatus, status_fragments
 
@@ -72,7 +72,7 @@ def test_two_trainings_share_one_line():
 def test_the_status_names_the_phase():
     status = TrainingStatus()
     status.track("retrain gpt")(
-        TrainingEvent(step=3, total_steps=300, phase="tokenising"),
+        TrainingEvent(step=3, total_steps=300, phase=Stage.TOKENISING),
     )
 
     text = plain_text(status_fragments(status))
@@ -85,12 +85,12 @@ def test_the_clock_restarts_when_the_phase_changes():
     status = TrainingStatus(clock=lambda: now["t"])
     listener = status.track("gpt")
 
-    listener(TrainingEvent(step=1, total_steps=300, phase="tokenising"))
+    listener(TrainingEvent(step=1, total_steps=300, phase=Stage.TOKENISING))
     now["t"] = 60.0
-    listener(TrainingEvent(step=300, total_steps=300, phase="tokenising"))
-    listener(TrainingEvent(step=1, total_steps=10, phase="training"))
+    listener(TrainingEvent(step=300, total_steps=300, phase=Stage.TOKENISING))
+    listener(TrainingEvent(step=1, total_steps=10, phase=Stage.TRAINING))
     now["t"] = 62.0
-    listener(TrainingEvent(step=2, total_steps=10, phase="training"))
+    listener(TrainingEvent(step=2, total_steps=10, phase=Stage.TRAINING))
 
     text = plain_text(status_fragments(status))
     assert "eta 8s" in text
