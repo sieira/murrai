@@ -14,6 +14,7 @@ def test_the_train_composition_targets_the_ten_million_parameter_model():
         steps=2,
         batch=8,
         seed=0,
+        corpus_name="smoke-train",
     )
     params = sum(p.numel() for p in result.model.parameters())
     assert 9_000_000 <= params <= 11_000_000
@@ -131,5 +132,16 @@ def test_the_validation_cadence_defaults_to_500_steps(monkeypatch):
         return real(*args, **kwargs)
 
     monkeypatch.setattr(composition_train, "train_transformer_lm", spy)
-    train_transformer_from_corpus(TextCorpus("ab" * 400), steps=1, batch=8, seed=0)
+    train_transformer_from_corpus(
+        TextCorpus("ab" * 400),
+        steps=1,
+        batch=8,
+        seed=0,
+        corpus_name="smoke-train",
+    )
     assert seen["validate_every"] == 500
+
+
+def test_the_record_names_the_corpus_the_caller_states():
+    with pytest.raises(TypeError):
+        train_transformer_from_corpus(TextCorpus("ab" * 400), steps=2)

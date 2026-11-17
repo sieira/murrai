@@ -37,6 +37,7 @@ def main():
         steps=steps,
         held_out=DirTextCorpus(valid_dir),
         store=FileCheckpointStore("checkpoints"),
+        corpus_name="tinystories-train",
         device=training_device(),
         bus=bus,
     )

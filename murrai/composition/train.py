@@ -13,6 +13,7 @@ MODEL = {"depth": 8, "dimension": 320, "max_time": 128, "heads": 5}
 def train_transformer_from_corpus(
     corpus,
     steps,
+    corpus_name,
     held_out=None,
     batch=256,
     seed=0,
@@ -21,7 +22,6 @@ def train_transformer_from_corpus(
     checkpoint_every=500,
     store=None,
     checkpoint_name="tinystories",
-    corpus_name="tinystories-train",
     merges=300,
     device=None,
     bus=None,
