@@ -1,5 +1,5 @@
 import json
-from dataclasses import FrozenInstanceError
+from dataclasses import FrozenInstanceError, dataclass
 
 import pytest
 import torch
@@ -359,3 +359,22 @@ def test_a_fake_store_drives_a_tiny_training_run_end_to_end():
     dice = session.dice()
     assert pytest.approx(sum(p for _, p in dice)) == 1.0
     assert session.rollout("ab", 5)
+
+
+@dataclass(frozen=True)
+class StreakRun(RunState):
+    streak: int = 0
+
+
+def test_the_store_saves_the_run_state_in_the_value_object_s_own_form(tmp_path):
+    run = StreakRun(**RunState.fresh(0.5).to_dict(), streak=7)
+    snapshot = Snapshot(
+        kind="transformer", merges=[], shape=Shape(), weights={}, run=run
+    )
+    store = FileCheckpointStore(tmp_path / "checkpoints")
+    store.save("streak", snapshot)
+
+    loaded = store.load("streak")
+
+    assert type(loaded.run) is RunState
+    assert loaded.run == RunState.fresh(0.5)
