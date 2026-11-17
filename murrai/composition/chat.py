@@ -477,12 +477,12 @@ def chat_menu(
             lambda: _neural_fields(directory, seed, neural_steps),
         ),
         "windowed-mlp": (
-            "eight tokens of memory through a hidden layer",
+            "a short token window through a hidden layer",
             _run_mlp,
             lambda: _mlp_fields(directory, seed, mlp_steps),
         ),
         "gpt": (
-            "attention over the last sixty-four tokens",
+            "attention over the recent context",
             _run_gpt,
             lambda: _gpt_fields(directory, seed, gpt_steps),
         ),

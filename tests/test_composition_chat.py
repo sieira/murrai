@@ -42,6 +42,13 @@ def test_the_menu_lists_the_models(corpus):
     assert gpt.trains
 
 
+def test_the_menu_descriptions_do_not_claim_the_editable_defaults(corpus):
+    tree = chat_menu(corpus, seed=0, neural_steps=20, mlp_steps=20, gpt_steps=20)()
+    _, _, mlp, gpt = tree["new"]
+    assert mlp.description == "a short token window through a hidden layer"
+    assert gpt.description == "attention over the recent context"
+
+
 def test_the_menu_offers_new_load_and_retrain(corpus):
     store = InMemoryCheckpointStore()
     store.save("gpt-corpus", Snapshot(kind="gpt", merges=(), state={}))
