@@ -82,7 +82,7 @@ presentation.md; it binds the same way.
 
 ## Generating
 
-- command: one selectable action in the chat's command panel; it names
+- command: one selectable action in the chat's menu; it names
   itself, describes itself, and knows how to build a session. A training
   command runs in the background (composition wires the concrete ones).
 - story: the chat's shared text; the characters the user typed plus the

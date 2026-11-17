@@ -35,8 +35,8 @@ from murrai.application.runs import (
     train_transformer_lm,
     training_device,
 )
+from murrai.presentation.chat.commands import Command, FormCommand
 from murrai.presentation.chat.form import FRESH, START_FROM, Field
-from murrai.presentation.chat.panel import Command, FormCommand
 from murrai.presentation.chat.session import ChatSession
 
 
@@ -841,14 +841,14 @@ def chat_menu(
             _neural_shape,
         ),
         "windowed-mlp": (
-            "eight tokens of memory through a hidden layer",
+            "a short token window through a hidden layer",
             _run_mlp,
             lambda: _mlp_fields(directory, seed, mlp_steps, chip),
             MLP_COST,
             _mlp_shape,
         ),
         "gpt": (
-            "attention over the last sixty-four tokens",
+            "attention over the recent context",
             _run_gpt,
             lambda: _gpt_fields(directory, seed, gpt_steps, chip),
             GPT_COST,
@@ -935,28 +935,3 @@ def _retrainable(store):
         for name in store.names()
         if store.load(name).kind in RETRAINABLE
     )
-
-
-def chat_commands(
-    directory,
-    seed=0,
-    store=None,
-    neural_steps=2000,
-    mlp_steps=10000,
-    gpt_steps=2000,
-    chip=None,
-    calibrators=None,
-    clock=time.time,
-):
-    tree = chat_menu(
-        directory,
-        seed,
-        store,
-        neural_steps,
-        mlp_steps,
-        gpt_steps,
-        chip,
-        calibrators,
-        clock,
-    )()
-    return [*tree["load"], *tree["new"], *tree["retrain"]]

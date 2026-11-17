@@ -52,8 +52,8 @@ make chat     # start the chat
 `make corpus` downloads 37 public-domain books from
 [Project Gutenberg](https://www.gutenberg.org/) and caches them in
 `data/corpus/`. `make chat` opens the chat; with no trained model yet it
-starts with the command panel open, where you pick a training command and
-wait for it to finish. The chat shows the story so far, offers the model's
+starts with the menu focused, where you pick a training command and wait
+for it to finish. The chat shows the story so far, offers the model's
 continuation as ghost text after your cursor (Tab takes it), and lists the
 odds the model gives its next few tokens.
 

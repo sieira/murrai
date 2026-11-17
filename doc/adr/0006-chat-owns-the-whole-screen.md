@@ -19,15 +19,12 @@ together.
   cyan, showing the tail. The write pane holds the live line with the
   model's offered ghost after the cursor. Tab takes the whole ghost;
   Enter commits the typed text alone and never takes it.
-- ctrl-p opens a command panel on the right: a list of command names,
-  moved with the arrow keys, with the highlighted command's description
-  in a box below. The list is rebuilt each time the panel opens. Escape
-  or ctrl-p closes it. The panel and the write pane share one vertical
-  split, so their boxes align.
+- ctrl-p and f9 both focus the menu bar from the write pane; escape
+  returns to the write pane. The bar toggles, so one key walks back out.
 - Picking a load command swaps the session in place. Picking a training
   command starts it in the background (ADR-0005); a finished training
   saves its checkpoint and its built session replaces the chat's when it
-  lands. A chat with no trained model opens with the panel open.
+  lands. A chat with no trained model opens with the menu focused.
 - A command is one selectable action. Composition builds the list of
   commands; presentation only shows them.
 - A menu bar sits on the top line, its dropdowns floating over the

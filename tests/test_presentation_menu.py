@@ -3,13 +3,13 @@ from prompt_toolkit.layout import Window
 from prompt_toolkit.mouse_events import MouseButton, MouseEvent, MouseEventType
 from prompt_toolkit.widgets import MenuItem
 
+from murrai.presentation.chat.commands import Command, FormCommand
 from murrai.presentation.chat.menu import (
     ClickableFormattedText,
     MenuBar,
     WideShadow,
     menu_tree,
 )
-from murrai.presentation.chat.panel import Command, FormCommand
 from murrai.presentation.chat.repl import STYLE
 
 
@@ -51,10 +51,10 @@ def test_every_dropdown_level_wears_the_wide_shadow():
     assert [geometry(level.content.content) for level in levels] == [wanted] * 3
 
 
-def _leaf(name, continues=False):
+def _leaf(name, continues=False, description="knobs"):
     return FormCommand(
         name,
-        "knobs",
+        description,
         lambda: None,
         fields=(),
         bake=lambda values: None,
@@ -65,7 +65,10 @@ def _leaf(name, continues=False):
 
 def test_the_models_menu_lists_new_load_and_retrain():
     tree = {
-        "new": (_leaf("counted bigram"), _leaf("neural bigram")),
+        "new": (
+            _leaf("counted bigram", description="tallied next-char odds"),
+            _leaf("neural bigram"),
+        ),
         "load": (Command("load gpt-corpus", "saved yesterday", lambda: None),),
         "retrain": (_leaf("retrain gpt", continues=True),),
     }
@@ -77,8 +80,8 @@ def test_the_models_menu_lists_new_load_and_retrain():
     models = items[0]
     assert [item.text for item in models.children] == ["new", "load", "retrain"]
     assert [item.text for item in models.children[0].children] == [
-        "counted bigram",
-        "neural bigram",
+        "counted bigram · tallied next-char odds",
+        "neural bigram · knobs",
     ]
     models.children[0].children[1].handler()
     assert picked[0].name == "neural bigram"

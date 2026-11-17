@@ -4,7 +4,7 @@ import time
 import pytest
 
 from murrai.adapters.checkpoint import FileCheckpointStore
-from murrai.composition.chat import chat_commands, load_checkpoint_session
+from murrai.composition.chat import chat_menu, load_checkpoint_session
 from murrai.domain.bigram import Bigram
 from murrai.domain.tokenizer import TokenizerEncoderDecoder
 from murrai.presentation.chat import ChatSession
@@ -28,7 +28,7 @@ def test_a_training_runs_in_its_own_process_and_reports_over_a_pipe(tmp_path):
     store = FileCheckpointStore(tmp_path / "checkpoints")
     command = next(
         c
-        for c in chat_commands(corpus, seed=0, store=store, neural_steps=20)
+        for c in chat_menu(corpus, seed=0, store=store, neural_steps=20)()["new"]
         if c.name == "neural bigram"
     )
     baked = command.bake({f.name: f.default for f in command.fields})
@@ -72,7 +72,7 @@ def test_a_failing_checkpoint_save_reports_failed(tmp_path):
     store = BrokenStore()
     command = next(
         c
-        for c in chat_commands(corpus, seed=0, store=store)
+        for c in chat_menu(corpus, seed=0, store=store)()["new"]
         if c.name == "counted bigram"
     )
     baked = command.bake({f.name: f.default for f in command.fields})
@@ -106,7 +106,7 @@ def test_the_counted_bigram_trains_in_a_process_and_swaps_in(tmp_path):
     store = FileCheckpointStore(tmp_path / "checkpoints")
     command = next(
         c
-        for c in chat_commands(corpus, seed=0, store=store)
+        for c in chat_menu(corpus, seed=0, store=store)()["new"]
         if c.name == "counted bigram"
     )
     baked = command.bake({f.name: f.default for f in command.fields})

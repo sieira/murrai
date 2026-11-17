@@ -16,10 +16,10 @@ from murrai.application.checkpoints import (
 )
 from murrai.application.ports import TrainingEvent
 from murrai.application.runs import training_device
-from murrai.composition.chat import chat_commands, chat_menu
+from murrai.composition.chat import chat_menu
 from murrai.domain.transformer import TransformerLM
+from murrai.presentation.chat.commands import FormCommand
 from murrai.presentation.chat.form import TrainingForm
-from murrai.presentation.chat.panel import FormCommand
 
 
 @pytest.fixture
@@ -30,25 +30,32 @@ def corpus(tmp_path):
     return corpus
 
 
-def test_chat_commands_list_the_models(corpus):
-    commands = chat_commands(
+def test_the_menu_lists_the_models(corpus):
+    tree = chat_menu(
         corpus,
         seed=0,
         neural_steps=20,
         mlp_steps=20,
         gpt_steps=20,
-    )
-    assert [command.name for command in commands] == [
+    )()
+    assert [command.name for command in tree["new"]] == [
         "counted bigram",
         "neural bigram",
         "windowed mlp",
         "gpt",
     ]
-    counted, neural, mlp, gpt = commands
+    counted, neural, mlp, gpt = tree["new"]
     assert counted.trains
     assert neural.trains
     assert mlp.trains
     assert gpt.trains
+
+
+def test_the_menu_descriptions_do_not_claim_the_editable_defaults(corpus):
+    tree = chat_menu(corpus, seed=0, neural_steps=20, mlp_steps=20, gpt_steps=20)()
+    _, _, mlp, gpt = tree["new"]
+    assert mlp.description == "a short token window through a hidden layer"
+    assert gpt.description == "attention over the recent context"
 
 
 def test_the_menu_offers_new_load_and_retrain(corpus):
@@ -122,8 +129,16 @@ def test_a_new_gradient_command_trains_fresh(corpus, monkeypatch):
     assert captured["kwargs"]["checkpoint"] is None
 
 
+def _commands(corpus, **kwargs):
+    tree = chat_menu(corpus, **kwargs)()
+    return (c for group in tree.values() for c in group)
+
+
 def _command(corpus, name, **kwargs):
-    return next(c for c in chat_commands(corpus, **kwargs) if c.name == name)
+    tree = chat_menu(corpus, **kwargs)()
+    return next(
+        command for group in tree.values() for command in group if command.name == name
+    )
 
 
 def test_counted_command_builds_a_working_session(corpus):
@@ -172,19 +187,15 @@ def test_mlp_session_story_carries_generated_text(corpus):
 
 
 def test_no_store_means_no_load_commands(corpus):
-    commands = chat_commands(corpus, seed=0, neural_steps=20, mlp_steps=20)
-    assert not any(command.name.startswith("load ") for command in commands)
+    tree = chat_menu(corpus, seed=0, neural_steps=20, mlp_steps=20)()
+    assert not any(
+        command.name.startswith("load ") for group in tree.values() for command in group
+    )
 
 
 def test_every_field_of_every_training_form_carries_an_explanation(corpus):
-    commands = chat_commands(
-        corpus,
-        seed=0,
-        neural_steps=20,
-        mlp_steps=20,
-        gpt_steps=20,
-    )
-    for command in commands:
+    tree = chat_menu(corpus, seed=0, neural_steps=20, mlp_steps=20, gpt_steps=20)()
+    for command in (c for group in tree.values() for c in group):
         if not isinstance(command, FormCommand):
             continue
         for field in command.fields:
@@ -562,7 +573,7 @@ def test_one_calibration_serves_rebuilt_commands(corpus, monkeypatch):
     calibrators = {}
     first = next(
         c
-        for c in chat_commands(
+        for c in _commands(
             corpus,
             seed=0,
             gpt_steps=20,
@@ -580,7 +591,7 @@ def test_one_calibration_serves_rebuilt_commands(corpus, monkeypatch):
 
     second = next(
         c
-        for c in chat_commands(
+        for c in _commands(
             corpus,
             seed=0,
             gpt_steps=20,
@@ -600,14 +611,6 @@ def test_one_calibration_serves_rebuilt_commands(corpus, monkeypatch):
 
 def test_training_commands_save_a_checkpoint(corpus):
     store = InMemoryCheckpointStore()
-    chat_commands(
-        corpus,
-        seed=0,
-        neural_steps=20,
-        mlp_steps=20,
-        gpt_steps=20,
-        store=store,
-    )
     _command(corpus, "counted bigram", store=store).build()
     assert store.names() == ["counted-bigram-corpus"]
     _command(corpus, "neural bigram", store=store, neural_steps=20).build()
@@ -807,16 +810,16 @@ def test_commands_offer_loading_and_retraining(corpus):
     )
     trainer.build()
 
-    commands = chat_commands(
+    tree = chat_menu(
         corpus,
         seed=0,
         neural_steps=20,
         mlp_steps=20,
         gpt_steps=20,
         store=store,
-    )
+    )()
 
-    names = [command.name for command in commands]
+    names = [command.name for group in tree.values() for command in group]
     assert "load neural-bigram-corpus" in names
     assert "counted bigram" in names
     assert "retrain neural-bigram-corpus" in names
@@ -878,15 +881,19 @@ def test_the_retrain_command_trains_and_saves(corpus):
 
 
 def test_no_store_means_no_retrain_commands(corpus):
-    commands = chat_commands(corpus, seed=0, neural_steps=20, mlp_steps=20)
-    assert not any(command.name.startswith("retrain ") for command in commands)
+    tree = chat_menu(corpus, seed=0, neural_steps=20, mlp_steps=20)()
+    assert not any(
+        command.name.startswith("retrain ")
+        for group in tree.values()
+        for command in group
+    )
 
 
 def test_training_commands_survive_a_trip_to_another_process(corpus):
     import pickle
 
-    commands = chat_commands(corpus, seed=0, neural_steps=20)
-    trains = [c for c in commands if c.trains]
+    tree = chat_menu(corpus, seed=0, neural_steps=20)()
+    trains = [c for c in tree["new"] if c.trains]
     assert [c.name for c in trains] == [
         "counted bigram",
         "neural bigram",

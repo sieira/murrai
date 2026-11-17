@@ -2,7 +2,7 @@ from types import SimpleNamespace
 
 import murrai.composition.chat as murrai_composition_chat
 from murrai.adapters.checkpoint import InMemoryCheckpointStore
-from murrai.composition.chat import _sliced_text, chat_commands
+from murrai.composition.chat import _sliced_text, chat_menu
 from murrai.domain.tokenizer import TokenizerEncoderDecoder
 from murrai.presentation.chat.form import TrainingForm
 
@@ -20,7 +20,8 @@ def _corpus_root(tmp_path, themes):
 
 
 def _command(directory, name, **kwargs):
-    return next(c for c in chat_commands(directory, **kwargs) if c.name == name)
+    tree = chat_menu(directory, **kwargs)()
+    return next(c for group in tree.values() for c in group if c.name == name)
 
 
 def _field(directory, command_name, field_name, **kwargs):
@@ -292,7 +293,9 @@ def test_a_missing_corpus_directory_still_builds_the_text_field(tmp_path):
 
 
 def _text_field_of(directory):
-    counted = next(c for c in chat_commands(directory) if c.name == "counted bigram")
+    counted = next(
+        c for c in chat_menu(directory)()["new"] if c.name == "counted bigram"
+    )
     return next(f for f in counted.fields if f.name == "text")
 
 
