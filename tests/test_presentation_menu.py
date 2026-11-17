@@ -6,8 +6,8 @@ from prompt_toolkit.widgets import MenuItem
 from murrai.presentation.chat.repl import STYLE, ChatMenu
 
 
-def mouse(kind):
-    return MouseEvent(Point(x=0, y=0), kind, MouseButton.LEFT, frozenset())
+def mouse(kind, x=0, y=0):
+    return MouseEvent(Point(x=x, y=y), kind, MouseButton.LEFT, frozenset())
 
 
 def container():
@@ -86,3 +86,22 @@ def test_hovering_moves_the_selection_and_clicks_wait_for_release():
 
     row[2](mouse(MouseEventType.MOUSE_UP))
     assert picked == [1]
+
+
+def test_the_click_fallback_yields_to_handled_clicks():
+    from murrai.presentation.chat.repl import ClickableFormattedText
+
+    handled = []
+    fallback = []
+    control = ClickableFormattedText(
+        on_click=lambda event: fallback.append(1),
+        text=lambda: [("class:x", "cell", lambda event: handled.append(1))],
+    )
+    control.create_content(width=80, height=1)
+
+    control.mouse_handler(mouse(MouseEventType.MOUSE_UP, x=2))
+    assert handled == [1]
+    assert fallback == []
+
+    control.mouse_handler(mouse(MouseEventType.MOUSE_UP, x=20))
+    assert fallback == [1]

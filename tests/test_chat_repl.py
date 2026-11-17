@@ -689,6 +689,31 @@ def test_f9_opens_the_menu_bar_arrows_walk_and_about_picks():
     assert session.text == "xy"
 
 
+def test_ctrl_c_inside_the_menu_bar_quits_the_chat():
+    session = _session()
+    output = _ScreenOutput()
+    done = []
+
+    with create_pipe_input() as pipe:
+
+        def chat():
+            run_chat(session, commands=[], input=pipe, output=output)
+            done.append(1)
+
+        thread = threading.Thread(target=chat)
+        thread.start()
+        time.sleep(0.5)
+        pipe.send_text("\x1b[20~")
+        time.sleep(0.3)
+        pipe.send_text("\x03")
+        thread.join(timeout=10)
+        if thread.is_alive():
+            pipe.send_text("\x03")
+            thread.join(timeout=5)
+            raise AssertionError("ctrl-c inside the menu bar did not quit")
+    assert done == [1]
+
+
 def test_a_click_outside_the_bar_deselects_it():
     session = _session()
     output = _ScreenOutput()

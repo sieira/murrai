@@ -76,6 +76,7 @@ def _layout_parts(command):
         panel=panel,
         status=TrainingStatus(),
         chat=GhostChat(None),
+        status_click=lambda event: None,
     )
     layout = Layout(
         MenuContainer(

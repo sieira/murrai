@@ -216,7 +216,10 @@ class ClickableFormattedText(FormattedTextControl):
 
     def mouse_handler(self, mouse_event):
         handled = super().mouse_handler(mouse_event)
-        if mouse_event.event_type == MouseEventType.MOUSE_UP:
+        if (
+            handled is NotImplemented
+            and mouse_event.event_type == MouseEventType.MOUSE_UP
+        ):
             self._on_click(mouse_event)
         return handled
 
@@ -229,7 +232,7 @@ def chat_body(
     panel,
     status,
     chat,
-    status_click=None,
+    status_click,
 ):
     panel_column = HSplit(
         [
@@ -246,21 +249,12 @@ def chat_body(
         ],
         width=PANEL_WIDTH,
     )
-    status_control = (
-        ClickableFormattedText(
-            on_click=status_click,
-            text=lambda: status_line(
-                status,
-                chat.session.kind if chat.session else None,
-            ),
-        )
-        if status_click is not None
-        else FormattedTextControl(
-            lambda: status_line(
-                status,
-                chat.session.kind if chat.session else None,
-            ),
-        )
+    status_control = ClickableFormattedText(
+        on_click=status_click,
+        text=lambda: status_line(
+            status,
+            chat.session.kind if chat.session else None,
+        ),
     )
     body = HSplit(
         [
@@ -315,7 +309,7 @@ class ChatMenu(MenuContainer):
                     selected_item = (
                         self.selected_menu[level + 1]
                         if level + 1 < len(self.selected_menu)
-                        else -1
+                        else None
                     )
 
                     def one_item(i, item):
