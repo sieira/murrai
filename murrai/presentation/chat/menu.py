@@ -1,3 +1,5 @@
+from importlib import metadata
+
 from prompt_toolkit.application.current import get_app
 from prompt_toolkit.filters import Condition
 from prompt_toolkit.key_binding import KeyBindings
@@ -29,7 +31,17 @@ class ClickableFormattedText(FormattedTextControl):
         return handled
 
 
-ABOUT_TEXT = "murrAI - a conversational language model built from scratch, one machine"
+ABOUT_TEXT = f"""\
+murrAI {metadata.version("murrai")}
+
+a conversational language model,
+built from scratch on one machine
+
+it aims to match or beat GPT-2-small
+per parameter (ADR-0004)
+
+GPL-3.0-only
+"""
 
 
 class MenuBar(MenuContainer):
