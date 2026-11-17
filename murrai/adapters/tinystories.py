@@ -3,8 +3,6 @@ import tempfile
 import urllib.request
 from pathlib import Path
 
-from murrai.adapters.corpus import DirTextCorpus
-
 TRAIN_URL = (
     "https://huggingface.co/datasets/roneneldan/TinyStories/resolve/main/"
     "TinyStories-train.txt"
@@ -29,15 +27,6 @@ class TinyStories:
         self._split(TRAIN, TRAIN_URL)
         self._split(VALID, VALID_URL)
         self._smoke_slice()
-
-    def train(self):
-        return DirTextCorpus(self._root / TRAIN)
-
-    def valid(self):
-        return DirTextCorpus(self._root / VALID)
-
-    def smoke(self):
-        return DirTextCorpus(self._root)
 
     def _split(self, name, url):
         target = self._root / name / FILE

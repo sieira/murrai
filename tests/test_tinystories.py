@@ -45,16 +45,6 @@ def test_fetch_downloads_both_splits_into_the_corpus_root(tmp_path):
     assert sorted(source.calls) == [TRAIN_URL, VALID_URL]
 
 
-def test_the_fetched_splits_come_back_through_the_corpus_port(tmp_path):
-    adapter, _ = _fetched(
-        tmp_path,
-        {TRAIN_URL: b"train story", VALID_URL: b"valid story"},
-    )
-
-    assert adapter.train().text() == "train story"
-    assert adapter.valid().text() == "valid story"
-
-
 def test_a_second_fetch_touches_no_network(tmp_path):
     adapter, source = _fetched(
         tmp_path,
@@ -119,5 +109,6 @@ def test_the_real_download_fills_both_splits():
     adapter.fetch()
 
     train_file = root / "tinystories-train" / "tinystories.txt"
+    valid_file = root / "tinystories-valid" / "tinystories.txt"
     assert train_file.stat().st_size > 1_000_000_000
-    assert len(adapter.valid().text()) > 1_000_000
+    assert len(valid_file.read_text(encoding="utf-8")) > 1_000_000
