@@ -24,10 +24,13 @@ ISO time in UTC, `corpus`, `seed`, `corpus_chars`, the characters of
 text the run trained on, written when a size cap was applied, and
 `model`, the model kind), and, when the run produced them, a gradient
 run (`steps`, `batch`, `learning_rate`, `final_loss`, the last loss in
-the curve, written once the curve is known, `shape`, the settings that
-fix the model's architecture, written for a fresh run and left empty
-when the run continued from a checkpoint, and `seconds`, the wall-clock
-duration of the run) and `held_out_perplexity`. The counted bigram has
+the curve, written once the curve is known, `shape`, a frozen value
+object of its own per model kind (`Shape` for the neural bigram,
+`MlpShape` for the windowed mlp, `GptShape` for the gpt), whose
+fields are the settings that fix the model's architecture, written
+for a fresh run and absent when the run continued from a checkpoint,
+and `seconds`, the wall-clock duration of the run) and
+`held_out_perplexity`. The counted bigram has
 no gradient run; the neural bigram has no held-out perplexity. A run
 that holds out no text reports no perplexity. A part the run did not
 produce is absent. The form's time estimate reads a record's model,

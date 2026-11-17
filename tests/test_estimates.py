@@ -1,7 +1,14 @@
+from dataclasses import FrozenInstanceError
+
+import pytest
+
 from murrai.application.checkpoints import (
     CheckpointRecord,
+    GptShape,
     GradientRun,
+    MlpShape,
     RunSettings,
+    Shape,
 )
 from murrai.application.estimates import (
     GPT_COST,
@@ -14,18 +21,39 @@ from murrai.application.estimates import (
 )
 
 
+def _gpt_shape(depth=4, dimension=128, heads=1, max_time=128, merges=300):
+    return GptShape(
+        merges=merges,
+        depth=depth,
+        dimension=dimension,
+        heads=heads,
+        max_time=max_time,
+    )
+
+
 def _run(
     model="gpt",
     corpus="data/corpus",
+    seconds=None,
     steps=4000,
     batch=128,
-    seconds=600.0,
-    shape=None,
     perplexity=11.7,
+    shape=None,
 ):
+    if shape is None:
+        shape = {
+            "gpt": _gpt_shape(),
+            "windowed-mlp": MlpShape(
+                merges=300,
+                window=8,
+                dimension=128,
+                hidden=256,
+            ),
+            "neural-bigram": Shape(merges=300),
+        }[model]
     return CheckpointRecord(
         settings=RunSettings(
-            saved_at="2026-11-16T10:16:59+00:00",
+            saved_at="x",
             corpus=corpus,
             seed=0,
             model=model,
@@ -35,29 +63,22 @@ def _run(
             batch=batch,
             learning_rate=0.001,
             seconds=seconds,
-            shape={} if shape is None else shape,
+            shape=shape,
         ),
         held_out_perplexity=perplexity,
     )
 
 
-def _values(**over):
-    values = {
-        "steps": 4000,
-        "batch": 128,
-        "merges": 300,
-        "depth": 6,
-        "dimension": 128,
-        "heads": 1,
-        "max_time": 128,
-    }
-    values.update(over)
-    return values
-
-
 class _Event:
     def __init__(self, phase="training"):
         self.phase = phase
+
+
+def test_the_recorded_shape_is_frozen():
+    shape = _gpt_shape()
+
+    with pytest.raises(FrozenInstanceError):
+        shape.dimension = 64
 
 
 def test_seconds_read_in_plain_units():
@@ -67,16 +88,22 @@ def test_seconds_read_in_plain_units():
 
 
 def test_time_scales_from_a_past_run_by_the_steps():
-    past = _run(seconds=600.0, steps=4000, shape=_values())
-    seconds = estimate_seconds([past], _values(steps=2000), "gpt", GPT_COST)
+    past = _run(seconds=600.0, steps=4000, shape=_gpt_shape())
+    seconds = estimate_seconds([past], _gpt_shape(), 128, 2000, GPT_COST)
 
     assert seconds is not None
     assert format_seconds(seconds) == "5 min"
 
 
 def test_time_scales_by_the_compute_of_the_shape():
-    past = _run(seconds=600.0, steps=4000, shape=_values())
-    seconds = estimate_seconds([past], _values(dimension=64), "gpt", GPT_COST)
+    past = _run(seconds=600.0, steps=4000, shape=_gpt_shape())
+    seconds = estimate_seconds(
+        [past],
+        _gpt_shape(dimension=64),
+        128,
+        4000,
+        GPT_COST,
+    )
 
     assert seconds is not None
     # dimension halves, so a step costs a quarter
@@ -84,9 +111,9 @@ def test_time_scales_by_the_compute_of_the_shape():
 
 
 def test_time_uses_the_closest_past_run():
-    far = _run(seconds=600.0, steps=4000, shape=_values(dimension=32))
-    close = _run(seconds=600.0, steps=4000, shape=_values(dimension=64))
-    seconds = estimate_seconds([far, close], _values(), "gpt", GPT_COST)
+    far = _run(seconds=600.0, steps=4000, shape=_gpt_shape(dimension=32))
+    close = _run(seconds=600.0, steps=4000, shape=_gpt_shape(dimension=64))
+    seconds = estimate_seconds([far, close], _gpt_shape(), 128, 4000, GPT_COST)
 
     assert seconds is not None
     assert format_seconds(seconds) == "40 min"
@@ -103,19 +130,21 @@ def test_time_ignores_runs_that_carry_no_measurement():
         gradient=GradientRun(steps=4000, batch=128, learning_rate=0.001),
     )
 
-    assert estimate_seconds([past], _values(), "gpt", GPT_COST) is None
-
-
-def test_time_ignores_a_record_whose_shape_misses_the_cost_keys():
-    past = _run(seconds=600.0, steps=4000, shape={"depth": 4})
-
-    assert estimate_seconds([past], _values(), "gpt", GPT_COST) is None
+    assert estimate_seconds([past], _gpt_shape(), 128, 4000, GPT_COST) is None
 
 
 def test_time_ignores_runs_of_another_kind():
-    past = _run(model="windowed-mlp", shape=_values())
+    past = _run(
+        model="windowed-mlp",
+        shape=MlpShape(
+            merges=300,
+            window=8,
+            dimension=64,
+            hidden=256,
+        ),
+    )
 
-    assert estimate_seconds([past], _values(), "gpt", GPT_COST) is None
+    assert estimate_seconds([past], _gpt_shape(), 128, 4000, GPT_COST) is None
 
 
 def test_the_mlp_costs_its_own_shape():
@@ -123,17 +152,15 @@ def test_the_mlp_costs_its_own_shape():
         model="windowed-mlp",
         seconds=600.0,
         steps=10000,
-        shape={"window": 8, "dimension": 128, "hidden": 256, "merges": 300},
+        shape=MlpShape(merges=300, window=8, dimension=128, hidden=256),
     )
-    values = {
-        "steps": 10000,
-        "batch": 128,
-        "merges": 300,
-        "window": 8,
-        "dimension": 64,
-        "hidden": 256,
-    }
-    seconds = estimate_seconds([past], values, "windowed-mlp", MLP_COST)
+    seconds = estimate_seconds(
+        [past],
+        MlpShape(merges=300, window=8, dimension=64, hidden=256),
+        128,
+        10000,
+        MLP_COST,
+    )
 
     assert seconds is not None
     assert format_seconds(seconds) == "5 min"
@@ -145,10 +172,9 @@ def test_the_neural_table_costs_its_piece_count():
         seconds=600.0,
         steps=2000,
         batch=64,
-        shape={"merges": 300},
+        shape=Shape(merges=300),
     )
-    values = {"steps": 2000, "batch": 64, "merges": 300}
-    seconds = estimate_seconds([past], values, "neural-bigram", NEURAL_COST)
+    seconds = estimate_seconds([past], Shape(merges=300), 64, 2000, NEURAL_COST)
 
     assert seconds is not None
     assert format_seconds(seconds) == "10 min"
@@ -189,19 +215,23 @@ def test_the_clock_drops_the_first_two_steps_as_warmup():
 def test_an_untimed_chip_projects_nothing_and_is_not_pending():
     calibrator = Calibrator(lambda: None, GPT_COST)
 
-    assert calibrator.project(_values()) is None
+    assert calibrator.project(_gpt_shape(), 128, 4000) is None
     assert not calibrator.pending
 
 
 def test_a_finished_calibration_projects_the_requested_shape():
     calibrator = Calibrator(
-        lambda: (0.1, {**_values(dimension=64), "batch": 128, "merges": 300}),
+        lambda: (
+            0.1,
+            _gpt_shape(dimension=64),
+            128,
+        ),
         GPT_COST,
     )
     calibrator.begin()
     calibrator.refresh()
 
-    seconds = calibrator.project(_values())
+    seconds = calibrator.project(_gpt_shape(), 128, 4000)
 
     # past: 0.1 s per step at dimension 64;
     # now: dimension 128 → 4x the cost per step
@@ -209,15 +239,15 @@ def test_a_finished_calibration_projects_the_requested_shape():
 
 
 def test_a_calibration_in_progress_is_pending_until_it_lands():
-    calibrator = Calibrator(lambda: (0.1, _values()), GPT_COST)
+    calibrator = Calibrator(lambda: (0.1, _gpt_shape(), 128), GPT_COST)
 
     calibrator.begin()
     assert calibrator.pending
-    assert calibrator.project(_values()) is None
+    assert calibrator.project(_gpt_shape(), 128, 4000) is None
 
     calibrator.refresh()
     assert not calibrator.pending
-    assert calibrator.project(_values()) is not None
+    assert calibrator.project(_gpt_shape(), 128, 4000) is not None
 
 
 def test_a_failed_calibration_is_not_pending_and_projects_nothing():
@@ -230,17 +260,17 @@ def test_a_failed_calibration_is_not_pending_and_projects_nothing():
     calibrator.refresh()
 
     assert not calibrator.pending
-    assert calibrator.project(_values()) is None
+    assert calibrator.project(_gpt_shape(), 128, 4000) is None
 
 
 def test_a_calibration_without_a_usable_step_is_not_pending():
-    calibrator = Calibrator(lambda: (None, _values()), GPT_COST)
+    calibrator = Calibrator(lambda: (None, _gpt_shape(), 128), GPT_COST)
 
     calibrator.begin()
     calibrator.refresh()
 
     assert not calibrator.pending
-    assert calibrator.project(_values()) is None
+    assert calibrator.project(_gpt_shape(), 128, 4000) is None
 
 
 def test_a_finished_calibration_does_not_measure_again():
@@ -248,7 +278,7 @@ def test_a_finished_calibration_does_not_measure_again():
 
     def measure():
         measures.append(1)
-        return (0.1, _values())
+        return (0.1, _gpt_shape(), 128)
 
     calibrator = Calibrator(measure, GPT_COST)
     calibrator.begin()

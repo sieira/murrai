@@ -2,42 +2,32 @@ import math
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
+from enum import Enum
 from itertools import pairwise
+
+from murrai.application.checkpoints import Shape
 
 
 @dataclass(frozen=True)
 class Cost:
-    keys: frozenset
-    of: Callable[[dict], float]
+    kind: str
+    of: Callable[[Shape, int], float]
 
 
 GPT_COST = Cost(
-    keys=frozenset({"batch", "max_time", "depth", "dimension"}),
-    of=lambda config: (
-        config["batch"]
-        * config["max_time"]
-        * config["depth"]
-        * config["dimension"] ** 2
-    ),
+    kind="gpt",
+    of=lambda shape, batch: batch * shape.max_time * shape.depth * shape.dimension**2,
 )
 
 MLP_COST = Cost(
-    keys=frozenset({"batch", "window", "dimension", "hidden"}),
-    of=lambda config: (
-        config["batch"] * config["window"] * config["dimension"] * config["hidden"]
-    ),
+    kind="windowed-mlp",
+    of=lambda shape, batch: batch * shape.window * shape.dimension * shape.hidden,
 )
 
 NEURAL_COST = Cost(
-    keys=frozenset({"batch", "merges"}),
-    of=lambda config: config["batch"] * (256 + config["merges"]),
+    kind="neural-bigram",
+    of=lambda shape, batch: batch * (256 + shape.merges),
 )
-
-
-def _cost_of(cost, config):
-    if not cost.keys <= config.keys():
-        return None
-    return cost.of(config)
 
 
 def format_seconds(seconds):
@@ -59,16 +49,14 @@ def _gradient_of(records, kind):
             yield gradient
 
 
-def estimate_seconds(records, config, kind, cost):
-    now_cost = _cost_of(cost, config)
-    if now_cost is None:
-        return None
+def estimate_seconds(records, shape, batch, steps, cost):
+    now_cost = cost.of(shape, batch)
     best = None
     best_gap = math.inf
-    for gradient in _gradient_of(records, kind):
-        past_cost = _cost_of(cost, {**gradient.shape, "batch": gradient.batch})
-        if past_cost is None or gradient.seconds is None or gradient.steps <= 0:
+    for gradient in _gradient_of(records, cost.kind):
+        if gradient.shape is None or gradient.seconds is None or gradient.steps <= 0:
             continue
+        past_cost = cost.of(gradient.shape, gradient.batch)
         gap = abs(math.log(now_cost / past_cost))
         if gap < best_gap:
             best_gap = gap
@@ -76,7 +64,7 @@ def estimate_seconds(records, config, kind, cost):
     if best is None:
         return None
     gradient, past_cost = best
-    scale = (config["steps"] / gradient.steps) * (now_cost / past_cost)
+    scale = (steps / gradient.steps) * (now_cost / past_cost)
     return gradient.seconds * scale
 
 
@@ -98,39 +86,44 @@ class StepClock:
         return sum(kept) / len(kept)
 
 
+class CalibratorState(Enum):
+    IDLE = "idle"
+    RUNNING = "running"
+    READY = "ready"
+    FAILED = "failed"
+
+
 class Calibrator:
     # states: idle → running → ready | failed; a calibration is
     # measured once, then it stays put.
     def __init__(self, measure, cost):
         self._measure = measure
         self._cost = cost
-        self._state = "idle"
+        self._state = CalibratorState.IDLE
         self._result = None
 
     def begin(self):
-        if self._state == "idle":
-            self._state = "running"
+        if self._state is CalibratorState.IDLE:
+            self._state = CalibratorState.RUNNING
 
     def refresh(self):
-        if self._state != "running":
+        if self._state is not CalibratorState.RUNNING:
             return
         try:
-            per_step, config = self._measure()
+            per_step, shape, batch = self._measure()
         except Exception:
-            self._state = "failed"
+            self._state = CalibratorState.FAILED
             return
-        self._result = (per_step, config) if per_step else None
-        self._state = "ready" if self._result else "failed"
+        self._result = (per_step, shape, batch) if per_step else None
+        self._state = CalibratorState.READY if self._result else CalibratorState.FAILED
 
     @property
     def pending(self):
-        return self._state == "running"
+        return self._state is CalibratorState.RUNNING
 
-    def project(self, config):
-        if self._state != "ready":
+    def project(self, shape, batch, steps):
+        if self._state is not CalibratorState.READY:
             return None
-        now_cost = _cost_of(self._cost, config)
-        past_cost = _cost_of(self._cost, self._result[1])
-        if now_cost is None or past_cost is None:
-            return None
-        return self._result[0] * (now_cost / past_cost) * config["steps"]
+        now_cost = self._cost.of(shape, batch)
+        past_cost = self._cost.of(self._result[1], self._result[2])
+        return self._result[0] * (now_cost / past_cost) * steps

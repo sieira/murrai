@@ -9,6 +9,7 @@ import murrai.composition.chat as murrai_composition_chat
 from murrai.adapters.checkpoint import FileCheckpointStore, InMemoryCheckpointStore
 from murrai.application.checkpoints import (
     CheckpointRecord,
+    GptShape,
     GradientRun,
     RunSettings,
     Snapshot,
@@ -171,23 +172,23 @@ def test_a_fresh_run_records_its_shape_model_and_duration(corpus):
 
     record = store.record("gpt-corpus")
     assert record.settings.model == "gpt"
-    assert record.gradient.shape == {
-        "depth": 4,
-        "dimension": 64,
-        "heads": 1,
-        "max_time": 64,
-        "merges": 300,
-    }
+    assert record.gradient.shape == GptShape(
+        merges=300,
+        depth=4,
+        dimension=64,
+        heads=1,
+        max_time=64,
+    )
     assert record.gradient.seconds == pytest.approx(6000)
 
 
-def test_a_continue_run_records_an_empty_shape(corpus):
+def test_a_continue_run_records_no_shape(corpus):
     store = InMemoryCheckpointStore()
     gpt = _command(corpus, "retrain gpt", seed=0, gpt_steps=20, store=store, chip="cpu")
     gpt.build()
     gpt.bake({**_defaults(gpt), "start_from": "gpt-corpus"}).build()
 
-    assert store.record("gpt-corpus").gradient.shape == {}
+    assert store.record("gpt-corpus").gradient.shape is None
 
 
 def test_the_gpt_form_estimates_from_history(corpus, monkeypatch):
@@ -211,13 +212,13 @@ def test_the_gpt_form_estimates_from_history(corpus, monkeypatch):
                 batch=64,
                 learning_rate=0.001,
                 seconds=600.0,
-                shape={
-                    "depth": 4,
-                    "dimension": 64,
-                    "heads": 1,
-                    "max_time": 64,
-                    "merges": 300,
-                },
+                shape=GptShape(
+                    merges=300,
+                    depth=4,
+                    dimension=64,
+                    heads=1,
+                    max_time=64,
+                ),
             ),
             held_out_perplexity=11.7,
         ),
@@ -328,6 +329,37 @@ def test_auto_and_prefer_gpu_share_one_measurement(corpus, monkeypatch):
     assert len(rehearsals) == 1
 
 
+def test_the_form_waits_for_the_rehearsal_before_starting_a_run(
+    corpus,
+    monkeypatch,
+):
+    real = murrai_composition_chat.train_transformer_lm
+
+    def slow(text, **kwargs):
+        time.sleep(0.3)
+        return real(text, **kwargs)
+
+    monkeypatch.setattr(murrai_composition_chat, "train_transformer_lm", slow)
+    calibrators = {}
+    gpt = _command(
+        corpus,
+        "retrain gpt",
+        seed=0,
+        gpt_steps=20,
+        chip="cpu",
+        calibrators=calibrators,
+    )
+    defaults = _defaults(gpt)
+
+    gpt.estimates(defaults)
+    calibrator = next(iter(calibrators.values()))
+    assert calibrator.pending
+
+    gpt.bake(defaults)
+
+    assert not calibrator.pending
+
+
 def test_a_vanished_checkpoint_is_ignored_by_the_estimate(corpus):
     store = InMemoryCheckpointStore()
     gpt = _command(corpus, "retrain gpt", seed=0, gpt_steps=20, store=store, chip="cpu")
@@ -367,13 +399,13 @@ def test_the_form_shows_the_eta_when_continuing_from_a_checkpoint(
                 batch=64,
                 learning_rate=0.001,
                 seconds=600.0,
-                shape={
-                    "depth": 4,
-                    "dimension": 64,
-                    "heads": 1,
-                    "max_time": 64,
-                    "merges": 300,
-                },
+                shape=GptShape(
+                    merges=300,
+                    depth=4,
+                    dimension=64,
+                    heads=1,
+                    max_time=64,
+                ),
             ),
         ),
     )

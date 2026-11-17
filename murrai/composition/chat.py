@@ -1,6 +1,6 @@
 import threading
 import time
-from dataclasses import replace
+from dataclasses import asdict, replace
 from datetime import UTC, datetime
 from functools import partial
 from pathlib import Path
@@ -9,8 +9,11 @@ from murrai.adapters.corpus import DirTextCorpus, TextCorpus
 from murrai.adapters.events import ListenerBus
 from murrai.application.checkpoints import (
     CheckpointRecord,
+    GptShape,
     GradientRun,
+    MlpShape,
     RunSettings,
+    Shape,
     restore,
     snapshot_of,
 )
@@ -169,13 +172,8 @@ def _settings(values):
     }
 
 
-def _record_settings(values, shape_names):
-    settings = _settings(values)
-    fresh = values.get(START_FROM, FRESH) == FRESH
-    settings["shape"] = (
-        {name: values[name] for name in shape_names if name in values} if fresh else {}
-    )
-    return settings
+def _record_settings(values, shape):
+    return {**_settings(values), "shape": shape}
 
 
 def _trainer_kwargs(values, seed, checkpoint, settings, extra, shape):
@@ -186,9 +184,31 @@ def _trainer_kwargs(values, seed, checkpoint, settings, extra, shape):
         **extra,
     }
     if checkpoint is None:
-        kwargs.update(merges=values["merges"])
-        kwargs.update((name, values[name]) for name in shape)
+        kwargs.update(asdict(shape))
     return kwargs
+
+
+def _neural_shape(values):
+    return Shape(merges=values["merges"])
+
+
+def _mlp_shape(values):
+    return MlpShape(
+        merges=values["merges"],
+        window=values["window"],
+        dimension=values["dimension"],
+        hidden=values["hidden"],
+    )
+
+
+def _gpt_shape(values):
+    return GptShape(
+        merges=values["merges"],
+        depth=values["depth"],
+        dimension=values["dimension"],
+        heads=values["heads"],
+        max_time=values["max_time"],
+    )
 
 
 def _run_counted(text, seed, store, values, bus=None, keeper=None):
@@ -203,30 +223,29 @@ def _run_counted(text, seed, store, values, bus=None, keeper=None):
 
 def _run_neural(text, seed, store, values, bus=None, keeper=None):
     checkpoint = _checkpoint_snapshot(store, values)
+    shape = _neural_shape(values) if checkpoint is None else None
     return train_neural_bigram(
         text,
         bus=bus,
-        keeper=_keeping(keeper, _record_settings(values, ("merges",))),
+        keeper=_keeping(keeper, _record_settings(values, shape)),
         **_trainer_kwargs(
             values,
             seed,
             checkpoint,
             _settings(values),
             {"final_learning_rate": values["final_learning_rate"]},
-            (),
+            shape,
         ),
     )
 
 
 def _run_mlp(text, seed, store, values, bus=None, keeper=None):
     checkpoint = _checkpoint_snapshot(store, values)
+    shape = _mlp_shape(values) if checkpoint is None else None
     return train_mlp_lm(
         text,
         bus=bus,
-        keeper=_keeping(
-            keeper,
-            _record_settings(values, ("window", "dimension", "hidden", "merges")),
-        ),
+        keeper=_keeping(keeper, _record_settings(values, shape)),
         **_trainer_kwargs(
             values,
             seed,
@@ -238,23 +257,18 @@ def _run_mlp(text, seed, store, values, bus=None, keeper=None):
                 "holdout": values["holdout"],
                 "device": _device(values, prefer_mps=PREFER_MPS["windowed-mlp"]),
             },
-            ("window", "dimension", "hidden"),
+            shape,
         ),
     )
 
 
 def _run_gpt(text, seed, store, values, bus=None, keeper=None):
     checkpoint = _checkpoint_snapshot(store, values)
+    shape = _gpt_shape(values) if checkpoint is None else None
     return train_transformer_lm(
         text,
         bus=bus,
-        keeper=_keeping(
-            keeper,
-            _record_settings(
-                values,
-                ("depth", "dimension", "heads", "max_time", "merges"),
-            ),
-        ),
+        keeper=_keeping(keeper, _record_settings(values, shape)),
         **_trainer_kwargs(
             values,
             seed,
@@ -266,7 +280,7 @@ def _run_gpt(text, seed, store, values, bus=None, keeper=None):
                 "holdout": values["holdout"],
                 "device": _device(values, prefer_mps=PREFER_MPS["gpt"]),
             },
-            ("depth", "dimension", "heads", "max_time"),
+            shape,
         ),
     )
 
@@ -617,74 +631,62 @@ def _records(store):
     return [store.record(name) for name in store.names()]
 
 
-def _cost_config(store, values, shape_names, shapes):
+def _cost_shape(store, values, build_shape, shapes):
     name = values.get(START_FROM, FRESH)
     if name != FRESH and store is not None:
-        return _continue_config(store, name, values, shape_names, shapes)
-    if any(field not in values for field in shape_names):
+        if name not in shapes:
+            try:
+                snapshot = store.load(name)
+                shapes[name] = build_shape(
+                    {**snapshot.state, "merges": len(snapshot.merges)},
+                )
+            except Exception:
+                # remember the failure too: the estimate renders on
+                # every keystroke, and a broken checkpoint must not be
+                # re-read each time
+                shapes[name] = None
+        return shapes[name]
+    try:
+        return build_shape(values)
+    except KeyError:
         return None
-    config = {field: values[field] for field in shape_names}
-    config["batch"] = values["batch"]
-    config["steps"] = values["steps"]
-    return config
 
 
-def _continue_config(store, name, values, shape_names, shapes):
-    if name not in shapes:
-        try:
-            snapshot = store.load(name)
-        except Exception:
-            # remember the failure too: the estimate renders on every
-            # keystroke, and a broken checkpoint must not be re-read
-            # each time
-            shapes[name] = None
-            return None
-        shape = {
-            key: snapshot.state[key]
-            for key in shape_names
-            if key != "merges" and key in snapshot.state
-        }
-        shape["merges"] = len(snapshot.merges)
-        shapes[name] = shape
-    if shapes[name] is None:
-        return None
-    config = dict(shapes[name])
-    config["batch"] = values["batch"]
-    config["steps"] = values["steps"]
-    return config
-
-
-def _measure(run, directory, seed, fields, shape_names, device):
+def _measure(run, directory, seed, fields, build_shape, device):
     defaults = {field.name: field.default for field in fields}
 
     def measure():
         burst = {**defaults, "steps": 10, "size": "100k", "device": device}
         clock = StepClock()
         run(_sliced_text(directory, burst), seed, None, burst, bus=clock)
-        config = {name: defaults[name] for name in shape_names}
-        config["batch"] = defaults["batch"]
-        return clock.per_step(), config
+        return clock.per_step(), build_shape(defaults), defaults["batch"]
 
     return measure
 
 
-def _estimates(kind, store, calibrator_for, cost, shape_names):
+def _estimates(kind, store, calibrator_for, cost, build_shape):
     shapes = {}
 
     def estimates(values):
         if not {"steps", "batch"} <= values.keys():
             return []
-        config = _cost_config(store, values, shape_names, shapes)
-        if config is None:
+        shape = _cost_shape(store, values, build_shape, shapes)
+        if shape is None:
             return []
         calibrator = calibrator_for(values)
-        projected = calibrator.project(config)
+        projected = calibrator.project(shape, values["batch"], values["steps"])
         if projected is None and calibrator.pending:
             return []
         if projected is None:
             # the calibration failed: fall back to the closest past
             # run of this kind
-            projected = estimate_seconds(_records(store), config, kind, cost)
+            projected = estimate_seconds(
+                _records(store),
+                shape,
+                values["batch"],
+                values["steps"],
+                cost,
+            )
         if projected is None:
             return []
         return [f"ETA: about {format_seconds(projected)}"]
@@ -704,32 +706,50 @@ def _training_command(
     kind=None,
     cost=None,
     calibrators=None,
+    build_shape=None,
 ):
-    shape_names = tuple(field.name for field in fields if field.shape)
     estimates = None
+    threads = {}
     if cost is not None:
 
-        def calibrator_for(values):
+        def calibrator_key(values):
             choice = values.get("device", "auto")
             device = training_device(
                 prefer_mps=PREFER_MPS.get(kind, False),
                 choice=choice,
             )
-            key = (kind, str(device))
+            return (kind, str(device))
+
+        def calibrator_for(values):
+            key = calibrator_key(values)
             calibrator = calibrators.get(key)
             if calibrator is None:
                 calibrator = Calibrator(
-                    _measure(run, directory, seed, fields, shape_names, choice),
+                    _measure(
+                        run,
+                        directory,
+                        seed,
+                        fields,
+                        build_shape,
+                        values.get("device", "auto"),
+                    ),
                     cost,
                 )
                 calibrators[key] = calibrator
                 calibrator.begin()
-                threading.Thread(target=calibrator.refresh, daemon=True).start()
+                threads[key] = threading.Thread(target=calibrator.refresh, daemon=True)
+                threads[key].start()
             return calibrator
 
-        estimates = _estimates(kind, store, calibrator_for, cost, shape_names)
+        estimates = _estimates(kind, store, calibrator_for, cost, build_shape)
 
     def bake(values):
+        if cost is not None:
+            thread = threads.get(calibrator_key(values))
+            if thread is not None:
+                # the real run needs the chip alone: let the rehearsal
+                # land before it starts
+                thread.join()
         return Command(
             name,
             description,
@@ -803,6 +823,7 @@ def chat_commands(
                 kind="neural-bigram",
                 cost=NEURAL_COST,
                 calibrators=calibrators,
+                build_shape=_neural_shape,
             ),
             _training_command(
                 "retrain windowed mlp",
@@ -816,6 +837,7 @@ def chat_commands(
                 kind="windowed-mlp",
                 cost=MLP_COST,
                 calibrators=calibrators,
+                build_shape=_mlp_shape,
             ),
             _training_command(
                 "retrain gpt",
@@ -829,6 +851,7 @@ def chat_commands(
                 kind="gpt",
                 cost=GPT_COST,
                 calibrators=calibrators,
+                build_shape=_gpt_shape,
             ),
         ],
     )

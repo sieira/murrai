@@ -1,4 +1,4 @@
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 from murrai.domain.bigram import Bigram
 from murrai.domain.mlp import MlpLM
@@ -24,12 +24,34 @@ class RunSettings:
 
 
 @dataclass(frozen=True)
+class Shape:
+    """the settings that fix a model's architecture"""
+
+    merges: int
+
+
+@dataclass(frozen=True)
+class MlpShape(Shape):
+    window: int
+    dimension: int
+    hidden: int
+
+
+@dataclass(frozen=True)
+class GptShape(Shape):
+    depth: int
+    dimension: int
+    heads: int
+    max_time: int
+
+
+@dataclass(frozen=True)
 class GradientRun:
     steps: int
     batch: int
     learning_rate: float
     final_loss: float | None = None
-    shape: dict = field(default_factory=dict)
+    shape: Shape | None = None
     seconds: float | None = None
 
 

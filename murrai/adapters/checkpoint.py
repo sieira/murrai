@@ -1,14 +1,18 @@
 import json
 import os
 import tempfile
+from dataclasses import asdict
 from pathlib import Path
 
 import torch
 
 from murrai.application.checkpoints import (
     CheckpointRecord,
+    GptShape,
     GradientRun,
+    MlpShape,
     RunSettings,
+    Shape,
     Snapshot,
 )
 
@@ -37,6 +41,17 @@ def _written_atomically(root, path, write):
     except BaseException:
         os.unlink(temp)
         raise
+
+
+def _shape_from_json(shape, kind):
+    known = {
+        "neural-bigram": Shape,
+        "windowed-mlp": MlpShape,
+        "gpt": GptShape,
+    }
+    if not shape or kind not in known:
+        return None
+    return known[kind](**shape)
 
 
 class FileCheckpointStore:
@@ -88,8 +103,8 @@ class FileCheckpointStore:
             )
             if record.gradient.final_loss is not None:
                 data["final_loss"] = record.gradient.final_loss
-            if record.gradient.shape:
-                data["shape"] = record.gradient.shape
+            if record.gradient.shape is not None:
+                data["shape"] = asdict(record.gradient.shape)
             if record.gradient.seconds is not None:
                 data["seconds"] = record.gradient.seconds
         if record.held_out_perplexity is not None:
@@ -135,7 +150,7 @@ class FileCheckpointStore:
                     batch=data["batch"],
                     learning_rate=data["learning_rate"],
                     final_loss=data.get("final_loss"),
-                    shape=data.get("shape", {}),
+                    shape=_shape_from_json(data.get("shape"), data.get("model", "")),
                     seconds=data.get("seconds"),
                 )
                 if "steps" in data
