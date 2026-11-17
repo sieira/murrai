@@ -86,12 +86,14 @@ def train_bigram(
 
 def _checkpoint_tokenizer(train, merges, checkpoint, bus):
     if checkpoint is None:
-        return TokenizerEncoderDecoder().fit(
+        tokenizer = TokenizerEncoderDecoder()
+        return tokenizer, tokenizer.fit_encoded(
             train,
             merges,
             bus=_stage_bus(bus, "tokenising"),
         )
-    return TokenizerEncoderDecoder(checkpoint.merges)
+    tokenizer = TokenizerEncoderDecoder(checkpoint.merges)
+    return tokenizer, tokenizer.encode(train, bus=_stage_bus(bus, "encoding"))
 
 
 def _reject_contradictory_shape(checkpoint, **knobs):
@@ -120,16 +122,14 @@ def train_neural_bigram(
     merges: int = 300,
     checkpoint: Snapshot | None = None,
 ):
-    tokenizer = _checkpoint_tokenizer(train, merges, checkpoint, bus)
+    tokenizer, train_ids = _checkpoint_tokenizer(train, merges, checkpoint, bus)
     _reject_contradictory_shape(checkpoint)
     if checkpoint is None:
         model = NeuralBigram(tokenizer)
     else:
         model = NeuralBigram.from_state(tokenizer, checkpoint.state)
-    ids = [
-        tokenizer.vocab_size,
-        *tokenizer.encode(train, bus=_stage_bus(bus, "encoding")),
-    ]
+    ids = [tokenizer.vocab_size, *train_ids]
+    del train_ids
     pairs = [(prev, nxt) for prev, nxt in itertools.pairwise(ids)]
 
     rng = random.Random(seed)
@@ -209,7 +209,7 @@ def train_mlp_lm(
         dimension=dimension,
         hidden=hidden,
     )
-    tokenizer = _checkpoint_tokenizer(train, merges, checkpoint, bus)
+    tokenizer, train_ids = _checkpoint_tokenizer(train, merges, checkpoint, bus)
     if checkpoint is None:
         window = window or 4
         model = MlpLM(
@@ -225,10 +225,8 @@ def train_mlp_lm(
         window = model.window
     optimizer = torch.optim.SGD(model.parameters(), lr=learning_rate)
 
-    ids = [
-        model.start,
-        *tokenizer.encode(train, bus=_stage_bus(bus, "encoding")),
-    ]
+    ids = [model.start, *train_ids]
+    del train_ids
     contexts = [ids[max(0, i - window) : i] for i in range(1, len(ids))]
     targets = ids[1:]
     pairs = len(targets)
@@ -384,7 +382,7 @@ def train_transformer_lm(
     train_text, held_text = text[:cut], text[cut:]
     if held_out_text is not None:
         held_text = held_out_text
-    tokenizer = _checkpoint_tokenizer(train_text, merges, checkpoint, bus)
+    tokenizer, train_ids = _checkpoint_tokenizer(train_text, merges, checkpoint, bus)
     if checkpoint is None:
         max_time = max_time or 64
         model = TransformerLM(
@@ -410,7 +408,8 @@ def train_transformer_lm(
         optimizer.param_groups[0]["lr"] = run["rate"]
 
     ids = array("i", (model.start,))
-    ids.extend(tokenizer.encode(train_text, bus=_stage_bus(bus, "encoding")))
+    ids.extend(train_ids)
+    del train_ids
     stream = torch.frombuffer(memoryview(ids), dtype=torch.int32).to(device)
     if len(stream) < 2:
         raise ValueError("corpus encodes to fewer than two tokens")

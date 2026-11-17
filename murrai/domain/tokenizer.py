@@ -14,6 +14,10 @@ class TokenizerEncoderDecoder:
         return 256 + len(self.merges)
 
     def fit(self, text, num_merges, bus=None):
+        self.fit_encoded(text, num_merges, bus)
+        return self
+
+    def fit_encoded(self, text, num_merges, bus=None):
         ids = array("i", iter(text.encode("utf-8")))
         counts = Counter(zip(ids, islice(ids, 1, None), strict=False))
         merges = []
@@ -26,7 +30,7 @@ class TokenizerEncoderDecoder:
             if bus is not None:
                 bus.emit(Progress(len(merges), num_merges))
         self.merges = tuple(merges)
-        return self
+        return ids
 
     def encode(self, text, bus=None):
         ids = array("i", iter(text.encode("utf-8")))

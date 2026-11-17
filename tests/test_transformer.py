@@ -561,3 +561,59 @@ def test_the_run_snapshots_before_its_final_metrics(monkeypatch):
             snapshots=kept.append,
         )
     assert [snapshot.state["run"]["step"] for snapshot in kept] == [3]
+
+
+def test_a_fresh_run_never_reencodes_its_train_text(monkeypatch):
+    calls = []
+    encode = TokenizerEncoderDecoder.encode
+
+    def counting_encode(self, text, bus=None):
+        calls.append(text)
+        return encode(self, text, bus)
+
+    monkeypatch.setattr(TokenizerEncoderDecoder, "encode", counting_encode)
+    train_transformer_lm(
+        "ab" * 200,
+        steps=1,
+        batch=8,
+        seed=0,
+        depth=1,
+        dimension=8,
+        max_time=8,
+        holdout=0,
+    )
+    assert calls == []
+
+
+def test_a_resumed_run_encodes_its_train_text_once(monkeypatch):
+    calls = []
+    encode = TokenizerEncoderDecoder.encode
+
+    def counting_encode(self, text, bus=None):
+        calls.append(text)
+        return encode(self, text, bus)
+
+    monkeypatch.setattr(TokenizerEncoderDecoder, "encode", counting_encode)
+    first = train_transformer_lm(
+        "ab" * 200,
+        steps=2,
+        batch=8,
+        seed=0,
+        depth=1,
+        dimension=8,
+        max_time=8,
+        holdout=0,
+    )
+    calls.clear()
+    train_transformer_lm(
+        "ab" * 200,
+        steps=1,
+        batch=8,
+        seed=0,
+        depth=1,
+        dimension=8,
+        max_time=8,
+        holdout=0,
+        checkpoint=snapshot_of(first.model),
+    )
+    assert calls == ["ab" * 200]

@@ -236,3 +236,10 @@ def test_fit_publishes_progress_through_a_bus():
 def test_fit_stays_silent_without_a_bus():
     t = TokenizerEncoderDecoder().fit(CORPUS, num_merges=2)
     assert len(t.merges) == 2
+
+
+def test_fitting_returns_the_stream_it_learned_on():
+    tokenizer = TokenizerEncoderDecoder()
+    ids = tokenizer.fit_encoded(CORPUS, 5)
+    replay = TokenizerEncoderDecoder(tokenizer.merges).encode(CORPUS)
+    assert ids == replay
