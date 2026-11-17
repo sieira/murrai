@@ -475,19 +475,16 @@ def chat_menu(
             "same memory, trained by gradient descent",
             _run_neural,
             lambda: _neural_fields(directory, seed, neural_steps),
-            neural_steps,
         ),
         "windowed-mlp": (
             "eight tokens of memory through a hidden layer",
             _run_mlp,
             lambda: _mlp_fields(directory, seed, mlp_steps),
-            mlp_steps,
         ),
         "gpt": (
             "attention over the last sixty-four tokens",
             _run_gpt,
             lambda: _gpt_fields(directory, seed, gpt_steps),
-            gpt_steps,
         ),
     }
 
@@ -502,7 +499,7 @@ def chat_menu(
             clock,
             fields(),
         )
-        for kind, (description, run, fields, steps) in retrain_kinds.items()
+        for kind, (description, run, fields) in retrain_kinds.items()
     )
 
     def menu():

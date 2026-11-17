@@ -72,12 +72,7 @@ def test_the_models_menu_lists_new_load_and_retrain():
     picked = []
     opened = []
 
-    items = menu_tree(
-        tree,
-        pick=picked.append,
-        about=lambda: opened.append(True),
-        retrain_ready=True,
-    )
+    items = menu_tree(tree, pick=picked.append, about=lambda: opened.append(True))
 
     models = items[0]
     assert [item.text for item in models.children] == ["new", "load", "retrain"]
@@ -94,7 +89,6 @@ def test_the_models_menu_lists_new_load_and_retrain():
     assert picked[-1].name == "load gpt-corpus"
 
     retrain_item = models.children[2].children[0]
-    assert not retrain_item.disabled
     retrain_item.handler()
     assert picked[-1].name == "retrain gpt"
 
@@ -104,35 +98,10 @@ def test_the_models_menu_lists_new_load_and_retrain():
     assert opened == [True]
 
 
-def test_the_retrain_items_lock_without_a_current_checkpoint():
-    tree = {
-        "new": (_leaf("counted bigram"),),
-        "load": (),
-        "retrain": (_leaf("retrain gpt"),),
-    }
-
-    items = menu_tree(
-        tree,
-        pick=lambda c: None,
-        about=lambda: None,
-        retrain_ready=False,
-    )
-
-    retrain_items = items[0].children[2].children
-    assert all(item.disabled for item in retrain_items)
-    new_items = items[0].children[0].children
-    assert not any(item.disabled for item in new_items)
-
-
 def test_without_menu_content_the_bar_keeps_only_sessions_and_about():
-    items = menu_tree(
-        None,
-        pick=lambda c: None,
-        about=lambda: None,
-        retrain_ready=False,
-    )
+    items = menu_tree(None, pick=lambda c: None, about=lambda: None)
 
-    assert [item.text for item in items] == ["Sessions", "About"]
+    assert [item.text for item in items] == ["Models", "Sessions", "About"]
 
 
 def test_the_submenu_opens_beside_the_parent_dropdown():

@@ -217,9 +217,10 @@ class AboutPopover:
         self._on_close()
 
 
-def menu_tree(content, pick, about, retrain_ready):
+def menu_tree(content, pick, about):
     if content is None:
         return [
+            MenuItem("Models"),
             MenuItem("Sessions"),
             MenuItem("About", children=[MenuItem("about", handler=about)]),
         ]
@@ -228,12 +229,7 @@ def menu_tree(content, pick, about, retrain_ready):
         return lambda: pick(item)
 
     retrain_items = [
-        MenuItem(
-            item.name,
-            handler=leaf(item) if retrain_ready else None,
-            disabled=not retrain_ready,
-        )
-        for item in content["retrain"]
+        MenuItem(item.name, handler=leaf(item)) for item in content["retrain"]
     ]
     models = MenuItem(
         "Models",

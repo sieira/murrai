@@ -8,7 +8,7 @@ from murrai.application.ports import TrainingEvent
 from murrai.domain.bigram import Bigram
 from murrai.domain.tokenizer import TokenizerEncoderDecoder
 from murrai.presentation.chat import ChatSession, Command, repl, run_chat
-from murrai.presentation.chat.form import Field
+from murrai.presentation.chat.form import START_FROM, Field
 from murrai.presentation.chat.lanes import ChatLog
 from murrai.presentation.chat.menu import AboutPopover
 from murrai.presentation.chat.panel import FormCommand
@@ -176,7 +176,7 @@ def test_the_menu_loads_a_checkpoint():
     assert loaded == ["other"]
 
 
-def test_picking_retrain_from_the_menu_pins_the_current_checkpoint(monkeypatch):
+def test_picking_retrain_from_the_menu_pins_the_items_own_checkpoint(monkeypatch):
     from murrai.presentation.chat import repl
     from murrai.presentation.chat.form import START_FROM, TrainingForm
 
@@ -227,7 +227,12 @@ def test_picking_retrain_from_the_menu_pins_the_current_checkpoint(monkeypatch):
             menu=lambda: {
                 "new": (Command("counted bigram", "knobs", lambda: _session()),),
                 "load": (),
-                "retrain": (_menu_form_command("retrain gpt"),),
+                "retrain": (
+                    _menu_form_command(
+                        "retrain gpt-corpus",
+                        pin={START_FROM: "gpt-corpus"},
+                    ),
+                ),
             },
             input=pipe,
             output=output,
@@ -235,8 +240,8 @@ def test_picking_retrain_from_the_menu_pins_the_current_checkpoint(monkeypatch):
         )
         thread.join()
 
-    assert opened[0][0] == "retrain gpt"
-    assert opened[0][1] == {START_FROM: "char-gpt"}
+    assert opened[0][0] == "retrain gpt-corpus"
+    assert opened[0][1] == {START_FROM: "gpt-corpus"}
 
 
 def test_a_training_command_without_a_load_function_fails_loudly():
@@ -446,7 +451,7 @@ def _steps_field(**extra):
 ACCEPTED = {}
 
 
-def _menu_form_command(name, continues=True):
+def _menu_form_command(name, continues=True, pin=None):
     def bake(values):
         ACCEPTED.clear()
         ACCEPTED.update(values)
@@ -460,10 +465,11 @@ def _menu_form_command(name, continues=True):
         bake=bake,
         trains=True,
         continues=continues,
+        pin=pin,
     )
 
 
-def _form_command(fields=None, continues=False):
+def _form_command(fields=None, continues=False, pin=None):
     def bake(values):
         ACCEPTED.clear()
         ACCEPTED.update(values)
@@ -482,6 +488,7 @@ def _form_command(fields=None, continues=False):
         bake=bake,
         trains=True,
         continues=continues,
+        pin=pin,
     )
 
 
@@ -605,7 +612,7 @@ def test_a_bad_value_keeps_the_form_open_and_spawns_nothing():
     ]
 
 
-def test_the_retrain_form_leaves_the_shape_to_the_current_checkpoint():
+def test_the_retrain_form_leaves_the_shape_to_the_savegame():
     fields = (
         _steps_field(),
         Field("depth", "depth", "int", 4, check="whole above zero", shape=True),
@@ -621,9 +628,14 @@ def test_the_retrain_form_leaves_the_shape_to_the_current_checkpoint():
         time.sleep(0.2)
         pipe.send_text("\x03")
         _form_chat(
-            [_form_command(fields, continues=True)],
+            [
+                _form_command(
+                    fields,
+                    continues=True,
+                    pin={START_FROM: "char-gpt"},
+                ),
+            ],
             spawn,
-            checkpoint="char-gpt",
         )(pipe)
 
     assert ACCEPTED == {"steps": 2000, "start_from": "char-gpt"}

@@ -9,9 +9,9 @@ from prompt_toolkit.layout import Dimension, HSplit, Layout, VSplit, Window
 from prompt_toolkit.layout.containers import ConditionalContainer
 from prompt_toolkit.layout.controls import FormattedTextControl
 from prompt_toolkit.styles import Style
-from prompt_toolkit.widgets import Frame, MenuItem, TextArea
+from prompt_toolkit.widgets import Frame, TextArea
 
-from murrai.presentation.chat.form import START_FROM, FormOverlay, TrainingForm
+from murrai.presentation.chat.form import FormOverlay, TrainingForm
 from murrai.presentation.chat.lanes import (
     SILENT,
     CommandPicked,
@@ -293,12 +293,7 @@ def run_chat(
 
     def swap(next_session):
         observer.on_event(SessionSwapped())
-        menu_bar.menu_items = _menu_items(
-            menu,
-            pick_menu,
-            about.open,
-            next_session is not None,
-        )
+        menu_bar.menu_items = menu_items()
         chat.use(next_session)
         suggestions.forget()
         buffer.text = next_session.text
@@ -324,15 +319,12 @@ def run_chat(
     )
 
     def open_form(command):
-        pin = None
-        if command.continues:
-            pin = {START_FROM: chat.session.checkpoint} if chat.session else None
         overlay.open(
             TrainingForm(
                 command,
                 remembered=remembered.get(command.name),
                 observer=observer,
-                pinned=pin,
+                pinned=command.pin,
             ),
         )
 
@@ -355,6 +347,9 @@ def run_chat(
             app.layout.focus(buffer)
 
     about = AboutPopover(on_close=lambda: focus(buffer), focus=focus)
+
+    def menu_items():
+        return menu_tree(menu() if menu is not None else None, pick_menu, about.open)
 
     editor_keys = KeyBindings()
 
@@ -475,12 +470,7 @@ def run_chat(
             chat=chat,
             status_click=lambda event: focus(buffer),
         ),
-        menu_items=_menu_items(
-            menu,
-            pick_menu,
-            about.open,
-            chat.session is not None,
-        ),
+        menu_items=menu_items(),
         floats=[overlay.float, about.float],
     )
 
@@ -515,21 +505,6 @@ def run_chat(
         app.output.write_raw(CURSOR_RESET)
         app.output.flush()
     return chat.session
-
-
-def _menu_items(content, open_form, about, retrain_ready):
-    if content is None:
-        return [
-            MenuItem("Models"),
-            MenuItem("Sessions"),
-            MenuItem("About", children=[MenuItem("about", handler=about)]),
-        ]
-    return menu_tree(
-        content(),
-        pick=open_form,
-        about=about,
-        retrain_ready=retrain_ready,
-    )
 
 
 def plain_text(fragments):
