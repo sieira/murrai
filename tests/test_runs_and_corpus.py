@@ -4,6 +4,7 @@ from murrai.adapters.corpus import DirTextCorpus
 from murrai.adapters.events import ListenerBus
 from murrai.application.ports import Corpus, TrainingEvent
 from murrai.application.runs import (
+    train_and_held_out,
     train_bigram,
     train_mlp_lm,
     train_transformer_lm,
@@ -197,3 +198,11 @@ def test_the_encoding_stage_reports_its_own_progress():
     assert "encoding" in phases
     assert phases.index("tokenising") < phases.index("encoding")
     assert phases.index("encoding") < phases.index("training")
+
+
+def test_the_held_out_split_returns_no_text_when_nothing_is_held_out():
+    assert train_and_held_out("abcd", 0) == ("abcd", None)
+
+
+def test_the_held_out_split_returns_the_tail_as_the_held_out_text():
+    assert train_and_held_out("abcd", 0.5) == ("ab", "cd")

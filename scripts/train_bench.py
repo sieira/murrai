@@ -9,8 +9,11 @@ import torch
 from murrai.adapters.checkpoint import FileCheckpointStore
 from murrai.adapters.corpus import DirTextCorpus
 from murrai.application.checkpoints import snapshot_of
-from murrai.application.runs import train_mlp_lm, train_transformer_lm
-from murrai.composition.train import train_and_held_out
+from murrai.application.runs import (
+    train_and_held_out,
+    train_mlp_lm,
+    train_transformer_lm,
+)
 
 CORPUS = Path("data/corpus")
 
@@ -59,7 +62,7 @@ def bench_gpt(device, text, steps):
             depth=4,
             dimension=64,
             max_time=64,
-            held_out_text=held_text or None,
+            held_out_text=held_text,
             device=device,
         )
         return time.perf_counter() - started, result
@@ -88,7 +91,7 @@ def bench_mlp(device, text, steps):
             hidden=256,
             learning_rate=0.5,
             patience=1000,
-            held_out_text=held_text or None,
+            held_out_text=held_text,
             device=device,
         )
         return time.perf_counter() - started, result
@@ -110,7 +113,7 @@ def correctness(device, text):
         depth=4,
         dimension=64,
         max_time=64,
-        held_out_text=held_text or None,
+        held_out_text=held_text,
         device=device,
     )
     sample = result.model.generate(20, seed=0)

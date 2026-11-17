@@ -19,6 +19,11 @@ from murrai.domain.tokenizer import TokenizerEncoderDecoder
 from murrai.domain.transformer import ROWS_PER_PASS, TransformerLM
 
 
+def train_and_held_out(text, holdout):
+    cut = int(len(text) * (1 - holdout))
+    return text[:cut], text[cut:] or None
+
+
 @dataclass
 class TrainingResult:
     model: Bigram

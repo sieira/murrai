@@ -2,11 +2,11 @@ import sys
 
 from murrai.adapters.corpus import DirTextCorpus
 from murrai.application.runs import (
+    train_and_held_out,
     train_bigram,
     train_mlp_lm,
     train_transformer_lm,
 )
-from murrai.composition.train import train_and_held_out
 
 
 def sample(model):

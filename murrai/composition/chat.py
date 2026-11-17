@@ -14,13 +14,13 @@ from murrai.application.checkpoints import (
     snapshot_of,
 )
 from murrai.application.runs import (
+    train_and_held_out,
     train_bigram,
     train_mlp_lm,
     train_neural_bigram,
     train_transformer_lm,
     training_device,
 )
-from murrai.composition.train import train_and_held_out
 from murrai.presentation.chat.form import FRESH, START_FROM, Field
 from murrai.presentation.chat.panel import Command, FormCommand
 from murrai.presentation.chat.session import ChatSession
@@ -161,7 +161,7 @@ def _run_counted(text, seed, store, values, bus=None, keeper=None):
     train_text, held_text = train_and_held_out(text, values["holdout"])
     return train_bigram(
         TextCorpus(train_text),
-        held_out_text=held_text or None,
+        held_out_text=held_text,
         merges=values["merges"],
         bus=bus,
         keeper=_keeping(keeper, {}),
@@ -200,7 +200,7 @@ def _run_mlp(text, seed, store, values, bus=None, keeper=None):
             {
                 "patience": values["patience"],
                 "shrink": values["shrink"],
-                "held_out_text": held_text or None,
+                "held_out_text": held_text,
                 "device": _device(values, prefer_mps=False),
             },
             ("window", "dimension", "hidden"),
@@ -223,7 +223,7 @@ def _run_gpt(text, seed, store, values, bus=None, keeper=None):
             {
                 "patience": values["patience"],
                 "shrink": values["shrink"],
-                "held_out_text": held_text or None,
+                "held_out_text": held_text,
                 "device": _device(values, prefer_mps=True),
             },
             ("depth", "dimension", "heads", "max_time"),

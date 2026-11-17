@@ -10,11 +10,6 @@ from murrai.application.runs import train_transformer_lm
 MODEL = {"depth": 8, "dimension": 320, "max_time": 128, "heads": 5}
 
 
-def train_and_held_out(text, holdout):
-    cut = int(len(text) * (1 - holdout))
-    return text[:cut], text[cut:]
-
-
 def train_transformer_from_corpus(
     corpus,
     steps,

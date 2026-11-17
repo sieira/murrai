@@ -5,8 +5,11 @@ from pathlib import Path
 from murrai.adapters.checkpoint import FileCheckpointStore
 from murrai.adapters.events import ListenerBus
 from murrai.application.ports import Stage
-from murrai.application.runs import train_transformer_lm, training_device
-from murrai.composition.train import train_and_held_out
+from murrai.application.runs import (
+    train_and_held_out,
+    train_transformer_lm,
+    training_device,
+)
 
 SMOKE = Path("data/corpus/tinystories.txt")
 
@@ -34,7 +37,7 @@ def main():
         "dimension": 64,
         "max_time": 64,
         "heads": 2,
-        "held_out_text": held_text or None,
+        "held_out_text": held_text,
         "validate_every": 60,
         "device": device,
         "bus": bus,
