@@ -3,7 +3,7 @@ from prompt_toolkit.layout import Window
 from prompt_toolkit.mouse_events import MouseButton, MouseEvent, MouseEventType
 from prompt_toolkit.widgets import MenuItem
 
-from murrai.presentation.chat.repl import STYLE, ChatMenu
+from murrai.presentation.chat.repl import STYLE, ChatMenu, WideShadow
 
 
 def mouse(kind, x=0, y=0):
@@ -26,6 +26,22 @@ def dropdown_fragments(container, selected=None):
     container.selected_menu = selected or [0, 0]
     window = container._submenu(0)
     return window.content.text()
+
+
+def geometry(shadow_container):
+    return [
+        (f.left, f.right, f.top, f.bottom, f.width, f.height)
+        for f in shadow_container.floats
+    ]
+
+
+def test_every_dropdown_level_wears_the_wide_shadow():
+    menubar = container()
+    wanted = geometry(WideShadow(Window()).container)
+
+    levels = menubar.container.floats[:3]
+
+    assert [geometry(level.content.content) for level in levels] == [wanted] * 3
 
 
 def test_the_dropdown_border_is_invisible_against_the_menu():

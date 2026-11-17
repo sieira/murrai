@@ -294,6 +294,13 @@ ABOUT_TEXT = "murrAI - a conversational language model built from scratch, one m
 
 
 class ChatMenu(MenuContainer):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        for level in self.container.floats[:3]:
+            level.content.content = WideShadow(
+                level.content.content.content,
+            ).container
+
     def _submenu(self, level=0):
         def get_text_fragments():
             result = []
@@ -364,7 +371,7 @@ class WideShadow:
                 Float(
                     bottom=-1,
                     height=1,
-                    left=1,
+                    left=2,
                     right=-2,
                     transparent=True,
                     content=Window(style="class:shadow"),
@@ -373,7 +380,7 @@ class WideShadow:
                     bottom=-1,
                     top=1,
                     width=2,
-                    right=-1,
+                    right=-2,
                     transparent=True,
                     content=Window(style="class:shadow"),
                 ),

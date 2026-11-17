@@ -1,9 +1,10 @@
 from prompt_toolkit.data_structures import Point
+from prompt_toolkit.layout.containers import Window, to_container
 from prompt_toolkit.layout.mouse_handlers import MouseHandlers
 from prompt_toolkit.layout.screen import Screen, WritePosition
 from prompt_toolkit.mouse_events import MouseButton, MouseEvent, MouseEventType
 
-from murrai.presentation.chat.repl import ABOUT_TEXT, AboutDialog
+from murrai.presentation.chat.repl import ABOUT_TEXT, AboutDialog, WideShadow
 
 
 def mouse(kind):
@@ -33,14 +34,31 @@ def test_the_popover_is_exactly_as_wide_as_its_text_and_its_frame():
     assert width == len(ABOUT_TEXT) + 2
 
 
-def test_the_popover_shadow_is_two_cells_wide_and_one_row_deep():
-    dialog = about([])
+def painted_shadow(container, box_width, box_height):
+    screen = Screen(initial_width=box_width + 6, initial_height=box_height + 4)
+    container.write_to_screen(
+        screen,
+        MouseHandlers(),
+        WritePosition(0, 0, box_width, box_height),
+        "",
+        False,
+        0,
+    )
+    screen.draw_all_floats()
+    return {
+        (x, y)
+        for y in range(box_height + 4)
+        for x in range(box_width + 6)
+        if "shadow" in screen.data_buffer[y][x].style
+    }
 
-    widths = [f.width for f in dialog.shadow.container.floats if f.width]
-    heights = [f.height for f in dialog.shadow.container.floats if f.height]
 
-    assert widths == [2]
-    assert heights == [1]
+def test_the_shadow_is_two_cells_wide_on_the_right_and_one_row_deep():
+    cells = painted_shadow(to_container(WideShadow(Window())), 10, 3)
+
+    right = {(x, y) for x in (10, 11) for y in (1, 2, 3)}
+    bottom = {(x, 3) for x in range(2, 12)}
+    assert cells == right | bottom
 
 
 def test_the_about_popover_never_shows_the_cursor():
