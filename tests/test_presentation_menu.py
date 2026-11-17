@@ -135,6 +135,38 @@ def test_without_menu_content_the_bar_keeps_only_sessions_and_about():
     assert [item.text for item in items] == ["Sessions", "About"]
 
 
+def test_the_submenu_opens_beside_the_parent_dropdown():
+    menubar = MenuBar(
+        body=Window(),
+        menu_items=[MenuItem("Models", children=[MenuItem("gpt", handler=None)])],
+        floats=[],
+    )
+    menubar.selected_menu = [0, 0, 0]
+
+    fragments = menubar._submenu(0).content.text()
+
+    lines = [[]]
+    for fragment in fragments:
+        if fragment[1] == "\n":
+            lines.append([])
+        else:
+            lines[-1].append(fragment)
+    lines = [line for line in lines if line]
+
+    assert all(
+        line[-1] == ("class:menu", " ")
+        or line[-2:] == [("[SetMenuPosition]", ""), ("class:menu", " ")]
+        for line in lines
+    )
+    marked = [
+        line
+        for line in lines
+        if any(style == "[SetMenuPosition]" for style, *_ in line)
+    ]
+    assert len(marked) == 1
+    assert marked[0][-2:] == [("[SetMenuPosition]", ""), ("class:menu", " ")]
+
+
 def test_the_dropdown_border_is_invisible_against_the_menu():
     border = STYLE.get_attrs_for_style_str("class:menu-border")
 

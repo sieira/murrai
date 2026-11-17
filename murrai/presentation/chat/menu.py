@@ -57,6 +57,7 @@ class MenuBar(MenuContainer):
                     result.append(("class:menu-border", Border.TOP_LEFT))
                     result.append(("class:menu-border", Border.HORIZONTAL * width))
                     result.append(("class:menu-border", Border.TOP_RIGHT))
+                    result.append(("class:menu", " "))
                     result.append(("", "\n"))
                     selected_item = (
                         self.selected_menu[level + 1]
@@ -82,7 +83,6 @@ class MenuBar(MenuContainer):
                                 item.handler()
 
                         if i == selected_item:
-                            yield ("[SetCursorPosition]", "")
                             style = "class:menu-item.selected"
                         else:
                             style = "class:menu-item"
@@ -94,6 +94,9 @@ class MenuBar(MenuContainer):
                             mouse_handler,
                         )
                         yield ("class:menu-border", Border.VERTICAL)
+                        if i == selected_item:
+                            yield ("[SetMenuPosition]", "")
+                            yield ("class:menu", " ")
                         yield ("", "\n")
 
                     for i, item in enumerate(menu.children):
@@ -101,6 +104,7 @@ class MenuBar(MenuContainer):
                     result.append(("class:menu-border", Border.BOTTOM_LEFT))
                     result.append(("class:menu-border", Border.HORIZONTAL * width))
                     result.append(("class:menu-border", Border.BOTTOM_RIGHT))
+                    result.append(("class:menu", " "))
             return result
 
         return Window(
