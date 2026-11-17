@@ -3,6 +3,7 @@ import math
 import torch
 import torch.nn.functional as F
 
+from murrai.domain.shape import Shape
 from murrai.domain.tokenizer import TokenizerEncoderDecoder
 
 
@@ -25,22 +26,24 @@ class MlpLM(torch.nn.Module):
         self.output = torch.nn.Linear(hidden, tokenizer.vocab_size)
 
     def state(self):
-        return {
-            "window": self.window,
-            "dimension": self.embed.embedding_dim,
-            "hidden": self.input.out_features,
-            "parameters": self.state_dict(),
-        }
+        return (
+            Shape(
+                window=self.window,
+                dimension=self.embed.embedding_dim,
+                hidden=self.input.out_features,
+            ),
+            self.state_dict(),
+        )
 
     @classmethod
-    def from_state(cls, tokenizer, state):
+    def from_state(cls, tokenizer, shape, weights):
         model = cls(
             tokenizer,
-            window=state["window"],
-            dimension=state["dimension"],
-            hidden=state["hidden"],
+            window=shape.window,
+            dimension=shape.dimension,
+            hidden=shape.hidden,
         )
-        model.load_state_dict(state["parameters"])
+        model.load_state_dict(weights)
         return model
 
     def _device(self):

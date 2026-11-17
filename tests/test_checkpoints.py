@@ -9,6 +9,7 @@ from murrai.application.checkpoints import (
     CheckpointRecord,
     GradientRun,
     RunSettings,
+    RunState,
     Snapshot,
     restore,
     snapshot_of,
@@ -17,6 +18,7 @@ from murrai.application.runs import train_mlp_lm, train_neural_bigram
 from murrai.domain.bigram import Bigram
 from murrai.domain.mlp import MlpLM
 from murrai.domain.neural_bigram import NeuralBigram
+from murrai.domain.shape import Shape
 from murrai.domain.tokenizer import TokenizerEncoderDecoder
 from murrai.domain.transformer import TransformerLM
 from murrai.presentation.chat import ChatSession
@@ -50,35 +52,128 @@ def transformer():
 
 def test_the_counted_bigram_round_trips_through_its_state(counted):
     tokenizer = TokenizerEncoderDecoder(counted.tokenizer.merges)
-    rebuilt = Bigram.from_state(tokenizer, counted.state())
+    rebuilt = Bigram.from_state(tokenizer, *counted.state())
     torch.testing.assert_close(rebuilt.probs([0]), counted.probs([0]))
     torch.testing.assert_close(rebuilt.probs([]), counted.probs([]))
 
 
 def test_the_neural_bigram_round_trips_through_its_state(neural):
     tokenizer = TokenizerEncoderDecoder(neural.tokenizer.merges)
-    rebuilt = NeuralBigram.from_state(tokenizer, neural.state())
+    rebuilt = NeuralBigram.from_state(tokenizer, *neural.state())
     assert rebuilt.probs([0]) == pytest.approx(neural.probs([0]))
 
 
 def test_the_mlp_round_trips_through_its_state(mlp):
     tokenizer = TokenizerEncoderDecoder(mlp.tokenizer.merges)
-    rebuilt = MlpLM.from_state(tokenizer, mlp.state())
+    rebuilt = MlpLM.from_state(tokenizer, *mlp.state())
     torch.testing.assert_close(rebuilt.probs([0, 1]), mlp.probs([0, 1]))
 
 
 def test_the_transformer_round_trips_through_its_state(transformer):
     tokenizer = TokenizerEncoderDecoder(transformer.tokenizer.merges)
-    rebuilt = TransformerLM.from_state(tokenizer, transformer.state())
+    rebuilt = TransformerLM.from_state(tokenizer, *transformer.state())
     torch.testing.assert_close(rebuilt.probs([0, 1]), transformer.probs([0, 1]))
 
 
-def test_a_snapshot_carries_kind_merges_and_state(counted, neural, mlp, transformer):
+def _same_weights(left, right):
+    if isinstance(left, dict):
+        return all(_same_weights(left[key], right[key]) for key in left)
+    if isinstance(left, (list, tuple)):
+        return all(
+            _same_weights(item, other) for item, other in zip(left, right, strict=False)
+        )
+    if isinstance(left, torch.Tensor):
+        return torch.equal(left, right)
+    return left == right
+
+
+def test_a_snapshot_carries_the_shape_and_the_weights(
+    counted,
+    neural,
+    mlp,
+    transformer,
+):
     for model in (counted, neural, mlp, transformer):
         snapshot = snapshot_of(model)
+        shape, weights = model.state()
         assert snapshot.kind == model.kind
         assert snapshot.merges == model.tokenizer.merges
-        assert snapshot.state
+        assert snapshot.shape == shape
+        assert _same_weights(snapshot.weights, weights)
+
+
+def test_the_run_state_is_frozen():
+    run = RunState(
+        step=1,
+        rate=0.1,
+        best=1.0,
+        best_step=0,
+        train_seconds=1.0,
+        optimizer=None,
+        loss_curve=[0.5],
+        rate_curve=[0.1],
+        validation_curve=[],
+    )
+    with pytest.raises(FrozenInstanceError):
+        run.step = 2
+
+
+def test_the_run_state_copies_its_curves():
+    loss_curve = [0.5]
+    rate_curve = [0.1]
+    validation_curve = [(1, 0.5)]
+    run = RunState(
+        step=1,
+        rate=0.1,
+        best=1.0,
+        best_step=0,
+        train_seconds=1.0,
+        optimizer=None,
+        loss_curve=loss_curve,
+        rate_curve=rate_curve,
+        validation_curve=validation_curve,
+    )
+    loss_curve.append(0.4)
+    rate_curve.append(0.2)
+    validation_curve.append((2, 0.4))
+    assert run.loss_curve == [0.5]
+    assert run.rate_curve == [0.1]
+    assert run.validation_curve == [(1, 0.5)]
+
+
+def test_the_run_state_copies_its_optimizer():
+    optimizer = {"state": {"momentum": torch.tensor([1.0])}}
+    run = RunState(
+        step=1,
+        rate=0.1,
+        best=1.0,
+        best_step=0,
+        train_seconds=1.0,
+        optimizer=optimizer,
+        loss_curve=[],
+        rate_curve=[],
+        validation_curve=[],
+    )
+    optimizer["state"]["momentum"][0] = 99.0
+    assert run.optimizer["state"]["momentum"][0] == 1.0
+
+
+def test_the_run_state_resumes_with_fresh_curves():
+    saved = RunState(
+        step=10,
+        rate=0.1,
+        best=0.5,
+        best_step=5,
+        train_seconds=10.0,
+        optimizer={"state": {}},
+        loss_curve=[0.5],
+        rate_curve=[0.1],
+        validation_curve=[],
+    )
+    resumed = saved.to_dict()
+    resumed["loss_curve"].append(0.4)
+    assert saved.loss_curve == [0.5]
+    assert resumed["loss_curve"] == [0.5, 0.4]
 
 
 def test_restore_rebuilds_each_model(counted, neural, mlp, transformer):
@@ -192,7 +287,7 @@ def test_the_memory_store_carries_the_record(counted):
 
 
 def test_restore_rejects_an_unknown_kind():
-    snapshot = Snapshot(kind="nonsense", merges=(), state={})
+    snapshot = Snapshot(kind="nonsense", merges=(), shape=Shape(), weights=None)
     with pytest.raises(ValueError):
         restore(snapshot)
 

@@ -1,4 +1,5 @@
 import math
+from dataclasses import replace
 
 import pytest
 import torch
@@ -46,7 +47,7 @@ def test_generation_wanders_past_the_window(model):
 def test_the_state_round_trips(model):
     rebuilt = TransformerLM.from_state(
         TokenizerEncoderDecoder(model.tokenizer.merges),
-        model.state(),
+        *model.state(),
     )
     torch.testing.assert_close(rebuilt.logits([0, 1, 0]), model.logits([0, 1, 0]))
 
@@ -160,18 +161,19 @@ def test_a_four_head_state_round_trips_to_identical_outputs(tokenizer):
     model = TransformerLM(tokenizer, depth=2, dimension=16, max_time=8, heads=4)
     rebuilt = TransformerLM.from_state(
         TokenizerEncoderDecoder(model.tokenizer.merges),
-        model.state(),
+        *model.state(),
     )
     assert rebuilt.blocks[0].attend.heads == 4
     assert torch.equal(rebuilt.logits([0, 1, 0]), model.logits([0, 1, 0]))
 
 
 def test_a_state_saved_before_heads_existed_loads_as_one_head(model, tokenizer):
-    legacy = model.state()
-    del legacy["heads"]
+    shape, weights = model.state()
+    legacy_shape = replace(shape, heads=None)
     rebuilt = TransformerLM.from_state(
         TokenizerEncoderDecoder(model.tokenizer.merges),
-        legacy,
+        legacy_shape,
+        weights,
     )
     assert rebuilt.blocks[0].attend.heads == 1
     torch.testing.assert_close(rebuilt.logits([0, 1, 0]), model.logits([0, 1, 0]))
@@ -407,7 +409,7 @@ def test_a_run_resumes_from_a_periodic_snapshot_and_continues_its_curve(tmp_path
     }
 
     def snapshots(snapshot):
-        step = snapshot.state["run"]["step"]
+        step = snapshot.run.step
         kept.append(step)
         store.save(f"midrun-{step}", snapshot)
 
@@ -487,7 +489,7 @@ def test_the_run_snapshots_once_after_its_last_step():
         checkpoint_every=5,
         snapshots=kept.append,
     )
-    assert [snapshot.state["run"]["step"] for snapshot in kept] == [2]
+    assert [snapshot.run.step for snapshot in kept] == [2]
 
 
 def test_the_final_snapshot_does_not_duplicate_the_cadence():
@@ -503,7 +505,7 @@ def test_the_final_snapshot_does_not_duplicate_the_cadence():
         checkpoint_every=2,
         snapshots=kept.append,
     )
-    assert [snapshot.state["run"]["step"] for snapshot in kept] == [2, 4]
+    assert [snapshot.run.step for snapshot in kept] == [2, 4]
 
 
 def test_the_run_snapshots_before_its_final_metrics(monkeypatch):
@@ -530,7 +532,7 @@ def test_the_run_snapshots_before_its_final_metrics(monkeypatch):
             checkpoint_every=5,
             snapshots=kept.append,
         )
-    assert [snapshot.state["run"]["step"] for snapshot in kept] == [3]
+    assert [snapshot.run.step for snapshot in kept] == [3]
 
 
 def test_a_fresh_run_never_reencodes_its_train_text(monkeypatch):

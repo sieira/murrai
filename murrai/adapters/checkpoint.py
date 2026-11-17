@@ -9,8 +9,10 @@ from murrai.application.checkpoints import (
     CheckpointRecord,
     GradientRun,
     RunSettings,
+    RunState,
     Snapshot,
 )
+from murrai.domain.shape import Shape
 
 
 def _state_to_cpu(state):
@@ -53,7 +55,9 @@ class FileCheckpointStore:
         snapshot = Snapshot(
             kind=snapshot.kind,
             merges=snapshot.merges,
-            state=_state_to_cpu(snapshot.state),
+            shape=snapshot.shape,
+            weights=_state_to_cpu(snapshot.weights),
+            run=snapshot.run,
         )
         _written_atomically(
             self._root,
@@ -62,7 +66,11 @@ class FileCheckpointStore:
                 {
                     "kind": snapshot.kind,
                     "merges": snapshot.merges,
-                    "state": snapshot.state,
+                    "shape": vars(snapshot.shape),
+                    "weights": snapshot.weights,
+                    "run": (
+                        _state_to_cpu(vars(snapshot.run)) if snapshot.run else None
+                    ),
                 },
                 file,
             ),
@@ -99,7 +107,13 @@ class FileCheckpointStore:
         if not path.exists():
             raise KeyError(name)
         data = torch.load(path, weights_only=True)
-        return Snapshot(kind=data["kind"], merges=data["merges"], state=data["state"])
+        return Snapshot(
+            kind=data["kind"],
+            merges=data["merges"],
+            shape=Shape(**data["shape"]),
+            weights=data["weights"],
+            run=RunState(**data["run"]) if data.get("run") else None,
+        )
 
     def record(self, name):
         path = self._record_path(name)

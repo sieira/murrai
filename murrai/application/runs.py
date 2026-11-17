@@ -9,11 +9,12 @@ from itertools import batched
 import torch
 import torch.nn.functional as F
 
-from murrai.application.checkpoints import Snapshot, run_snapshot
+from murrai.application.checkpoints import RunState, Snapshot, run_snapshot
 from murrai.application.ports import Corpus, EventBus, Stage, TrainingEvent
 from murrai.domain.bigram import Bigram
 from murrai.domain.mlp import MlpLM
 from murrai.domain.neural_bigram import NeuralBigram
+from murrai.domain.shape import Shape
 from murrai.domain.tokenizer import TokenizerEncoderDecoder
 from murrai.domain.transformer import ROWS_PER_PASS, TransformerLM
 
@@ -95,20 +96,6 @@ def _checkpoint_tokenizer(train, merges, checkpoint, bus):
     return tokenizer, tokenizer.encode(train, bus=_stage_bus(bus, Stage.ENCODING))
 
 
-def _reject_contradictory_shape(checkpoint, **knobs):
-    if checkpoint is None:
-        return
-    mismatches = [
-        f"{name}={value}"
-        for name, value in knobs.items()
-        if value is not None and value != checkpoint.state.get(name, value)
-    ]
-    if mismatches:
-        raise ValueError(
-            f"a checkpoint keeps its own shape; pass no {', '.join(mismatches)}",
-        )
-
-
 def train_neural_bigram(
     train,
     steps,
@@ -122,11 +109,11 @@ def train_neural_bigram(
     checkpoint: Snapshot | None = None,
 ):
     tokenizer, train_ids = _checkpoint_tokenizer(train, merges, checkpoint, bus)
-    _reject_contradictory_shape(checkpoint)
+    (checkpoint.shape if checkpoint else Shape()).reject_contradictory()
     if checkpoint is None:
         model = NeuralBigram(tokenizer)
     else:
-        model = NeuralBigram.from_state(tokenizer, checkpoint.state)
+        model = NeuralBigram.from_state(tokenizer, checkpoint.shape, checkpoint.weights)
     ids = [tokenizer.vocab_size, *train_ids]
     del train_ids
     pairs = [(prev, nxt) for prev, nxt in itertools.pairwise(ids)]
@@ -202,8 +189,7 @@ def train_mlp_lm(
     held_out = held_out_text or ""
 
     torch.manual_seed(seed)
-    _reject_contradictory_shape(
-        checkpoint,
+    (checkpoint.shape if checkpoint else Shape()).reject_contradictory(
         window=window,
         dimension=dimension,
         hidden=hidden,
@@ -220,7 +206,11 @@ def train_mlp_lm(
             device,
         )
     else:
-        model = MlpLM.from_state(tokenizer, checkpoint.state).to(device)
+        model = MlpLM.from_state(
+            tokenizer,
+            checkpoint.shape,
+            checkpoint.weights,
+        ).to(device)
         window = model.window
     optimizer = torch.optim.SGD(model.parameters(), lr=learning_rate)
 
@@ -329,20 +319,6 @@ def _stream_nll(model, stream, rows_per_pass=ROWS_PER_PASS):
     return total / count
 
 
-def _fresh_run(learning_rate):
-    return {
-        "step": 0,
-        "rate": learning_rate,
-        "best": float("inf"),
-        "best_step": 0,
-        "train_seconds": 0.0,
-        "optimizer": None,
-        "loss_curve": [],
-        "rate_curve": [],
-        "validation_curve": [],
-    }
-
-
 def train_transformer_lm(
     text,
     steps,
@@ -369,8 +345,7 @@ def train_transformer_lm(
         raise ValueError("steps counts the steps this run adds; pass one or more")
     device = torch.device(device) if device is not None else torch.device("cpu")
     torch.manual_seed(seed)
-    _reject_contradictory_shape(
-        checkpoint,
+    (checkpoint.shape if checkpoint else Shape()).reject_contradictory(
         depth=depth,
         dimension=dimension,
         max_time=max_time,
@@ -387,15 +362,19 @@ def train_transformer_lm(
             max_time=max_time,
             heads=heads or 1,
         ).to(device)
-        run = _fresh_run(learning_rate)
+        run = RunState.fresh(learning_rate).to_dict()
     else:
-        model = TransformerLM.from_state(tokenizer, checkpoint.state).to(device)
+        model = TransformerLM.from_state(
+            tokenizer,
+            checkpoint.shape,
+            checkpoint.weights,
+        ).to(device)
         max_time = model.max_time
-        run = _fresh_run(learning_rate)
-        run.update(checkpoint.state.get("run") or {})
-        run["loss_curve"] = list(run["loss_curve"])
-        run["rate_curve"] = list(run["rate_curve"])
-        run["validation_curve"] = list(run["validation_curve"])
+        run = (
+            checkpoint.run.to_dict()
+            if checkpoint.run is not None
+            else RunState.fresh(learning_rate).to_dict()
+        )
     start = run["step"]
     optimizer = torch.optim.Adam(model.parameters(), lr=run["rate"])
     if run["optimizer"] is not None:

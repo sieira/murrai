@@ -3,6 +3,7 @@ import math
 import torch
 
 from murrai.domain.ports import Progress
+from murrai.domain.shape import Shape
 
 
 class Bigram:
@@ -32,11 +33,11 @@ class Bigram:
         return tokenizer.vocab_size
 
     def state(self):
-        return {"probs": self._probs}
+        return Shape(), self._probs
 
     @classmethod
-    def from_state(cls, tokenizer, state):
-        return cls(tokenizer, state["probs"])
+    def from_state(cls, tokenizer, shape, weights):
+        return cls(tokenizer, weights)
 
     def probs(self, context_ids):
         return self._probs[context_ids[-1] if context_ids else self.start]

@@ -2,6 +2,8 @@ import random
 
 import torch
 
+from murrai.domain.shape import Shape
+
 
 class NeuralBigram:
     kind = "neural-bigram"
@@ -20,14 +22,14 @@ class NeuralBigram:
         return self.weights[prev_id]
 
     def state(self):
-        return {"weights": self.weights.tolist()}
+        return Shape(), self.weights.tolist()
 
     @classmethod
-    def from_state(cls, tokenizer, state):
+    def from_state(cls, tokenizer, shape, weights):
         model = cls(tokenizer)
         with torch.no_grad():
             model.weights.copy_(
-                torch.tensor(state["weights"], dtype=torch.float32),
+                torch.tensor(weights, dtype=torch.float32),
             )
         return model
 

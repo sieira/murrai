@@ -13,6 +13,7 @@ from murrai.application.ports import TrainingEvent
 from murrai.application.runs import training_device
 from murrai.composition.chat import chat_commands
 from murrai.composition.train import train_transformer_from_corpus
+from murrai.domain.shape import Shape
 
 
 @pytest.fixture
@@ -252,7 +253,7 @@ def test_a_checkpoint_without_a_record_keeps_the_old_load_line(corpus):
     store = InMemoryCheckpointStore()
     store.save(
         "neural-bigram-corpus",
-        Snapshot(kind="neural-bigram", merges=(), state={}),
+        Snapshot(kind="neural-bigram", merges=(), shape=Shape(), weights={}),
     )
     loader = _command(corpus, "load neural-bigram-corpus", seed=0, store=store)
     assert loader.description == "pick up this trained model"
@@ -540,10 +541,10 @@ def test_the_neural_command_offers_its_knobs(corpus):
 
 def test_the_start_from_choice_lists_the_saved_models(corpus):
     store = InMemoryCheckpointStore()
-    store.save("gpt-corpus", Snapshot(kind="gpt", merges=(), state={}))
+    store.save("gpt-corpus", Snapshot(kind="gpt", merges=(), shape=Shape(), weights={}))
     store.save(
         "neural-bigram-corpus",
-        Snapshot(kind="neural-bigram", merges=(), state={}),
+        Snapshot(kind="neural-bigram", merges=(), shape=Shape(), weights={}),
     )
 
     field = _field(
@@ -747,7 +748,7 @@ def test_the_load_line_shows_the_capped_size(corpus):
     )
     store.save(
         "counted-bigram-corpus",
-        Snapshot(kind="counted-bigram", merges=(), state={}),
+        Snapshot(kind="counted-bigram", merges=(), shape=Shape(), weights={}),
     )
     store.save_record(
         "counted-bigram-corpus",

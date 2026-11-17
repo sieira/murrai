@@ -5,6 +5,7 @@ import torch
 import torch.nn.functional as F
 
 from murrai.domain.block import TransformerBlock
+from murrai.domain.shape import Shape
 from murrai.domain.tokenizer import TokenizerEncoderDecoder
 
 ROWS_PER_PASS = 512
@@ -34,24 +35,26 @@ class TransformerLM(torch.nn.Module):
         self.head = torch.nn.Linear(dimension, tokenizer.vocab_size)
 
     def state(self):
-        return {
-            "depth": len(self.blocks),
-            "dimension": self.embed.embedding_dim,
-            "max_time": self.max_time,
-            "heads": self.blocks[0].attend.heads,
-            "parameters": self.state_dict(),
-        }
+        return (
+            Shape(
+                depth=len(self.blocks),
+                dimension=self.embed.embedding_dim,
+                max_time=self.max_time,
+                heads=self.blocks[0].attend.heads,
+            ),
+            self.state_dict(),
+        )
 
     @classmethod
-    def from_state(cls, tokenizer, state):
+    def from_state(cls, tokenizer, shape, weights):
         model = cls(
             tokenizer,
-            depth=state["depth"],
-            dimension=state["dimension"],
-            max_time=state["max_time"],
-            heads=state.get("heads", 1),
+            depth=shape.depth,
+            dimension=shape.dimension,
+            max_time=shape.max_time,
+            heads=shape.heads or 1,
         )
-        model.load_state_dict(state["parameters"])
+        model.load_state_dict(weights)
         return model
 
     def _device(self):
