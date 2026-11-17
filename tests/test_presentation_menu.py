@@ -28,10 +28,11 @@ def dropdown_fragments(container, selected=None):
     return window.content.text()
 
 
-def test_the_dropdown_border_matches_the_shadow():
-    attrs = STYLE.get_attrs_for_style_str("class:menu-border")
+def test_the_dropdown_border_is_invisible_against_the_menu():
+    border = STYLE.get_attrs_for_style_str("class:menu-border")
 
-    assert attrs.bgcolor == STYLE.get_attrs_for_style_str("class:shadow").bgcolor
+    assert border.bgcolor == STYLE.get_attrs_for_style_str("class:menu").bgcolor
+    assert border.color == border.bgcolor
 
 
 def test_the_dropdown_rows_are_left_aligned_with_a_two_space_pad():
@@ -56,9 +57,6 @@ def test_the_selected_row_is_marked_and_the_mark_is_invisible():
     selected_row = next(f for f in fragments if "about" in f[1])
 
     assert selected_row[0] == "class:menu-item.selected"
-    assert STYLE.get_attrs_for_style_str("class:menu-border").color == (
-        STYLE.get_attrs_for_style_str("class:menu-border").bgcolor
-    )
 
 
 def test_hovering_moves_the_selection_and_clicks_wait_for_release():

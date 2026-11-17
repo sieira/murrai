@@ -24,6 +24,12 @@ def test_the_about_popover_centers_itself_without_a_position():
     assert dialog.float.top is None
 
 
+def test_the_popover_is_exactly_as_wide_as_its_text_and_its_frame():
+    from murrai.presentation.chat.repl import ABOUT_TEXT, ABOUT_WIDTH
+
+    assert len(ABOUT_TEXT) + 2 == ABOUT_WIDTH
+
+
 def test_the_about_popover_never_shows_the_cursor():
     dialog = about([])
 

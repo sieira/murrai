@@ -73,7 +73,7 @@ STYLE = Style.from_dict(
         "menu-bar": "bg:ansiblue fg:ansiwhite",
         "menu-bar.selected-item": "bg:ansiwhite fg:ansiblue",
         "menu": "bg:ansiblue fg:ansiwhite",
-        "menu-border": "bg:#000087 fg:#000087",
+        "menu-border": "bg:ansiblue fg:ansiblue",
         "menu-item": "bg:ansiblue fg:ansiwhite",
         "menu-item.selected": "bg:ansiwhite fg:ansiblue",
         "shadow": "bg:#000087",
@@ -291,7 +291,7 @@ def chat_body(
 
 
 ABOUT_TEXT = "murrAI - a conversational language model built from scratch, one machine"
-ABOUT_WIDTH = 78
+ABOUT_WIDTH = 74
 
 
 class ChatMenu(MenuContainer):
