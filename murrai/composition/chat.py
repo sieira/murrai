@@ -634,8 +634,10 @@ def _continue_config(store, name, values, shape_names, shapes):
         try:
             snapshot = store.load(name)
         except Exception:
-            # the estimate renders on every keystroke; a broken
-            # checkpoint must not take the chat down
+            # remember the failure too: the estimate renders on every
+            # keystroke, and a broken checkpoint must not be re-read
+            # each time
+            shapes[name] = None
             return None
         shape = {
             key: snapshot.state[key]
@@ -644,6 +646,8 @@ def _continue_config(store, name, values, shape_names, shapes):
         }
         shape["merges"] = len(snapshot.merges)
         shapes[name] = shape
+    if shapes[name] is None:
+        return None
     config = dict(shapes[name])
     config["batch"] = values["batch"]
     config["steps"] = values["steps"]
@@ -658,7 +662,7 @@ def _measure(run, directory, seed, fields, shape_names, device):
         clock = StepClock()
         run(_sliced_text(directory, burst), seed, None, burst, bus=clock)
         config = {name: defaults[name] for name in shape_names}
-        config.update(batch=defaults["batch"], merges=defaults["merges"])
+        config["batch"] = defaults["batch"]
         return clock.per_step(), config
 
     return measure
@@ -668,7 +672,7 @@ def _estimates(kind, store, calibrator_for, cost, shape_names):
     shapes = {}
 
     def estimates(values):
-        if not {"steps", "batch", "merges"} <= values.keys():
+        if not {"steps", "batch"} <= values.keys():
             return []
         config = _cost_config(store, values, shape_names, shapes)
         if config is None:

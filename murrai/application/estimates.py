@@ -99,8 +99,8 @@ class StepClock:
 
 
 class Calibrator:
-    # states: idle → running → ready | failed; a failed or ready
-    # calibration stays put until begin() is asked for again.
+    # states: idle → running → ready | failed; a calibration is
+    # measured once, then it stays put.
     def __init__(self, measure, cost):
         self._measure = measure
         self._cost = cost
@@ -108,7 +108,7 @@ class Calibrator:
         self._result = None
 
     def begin(self):
-        if self._state in ("idle", "failed"):
+        if self._state == "idle":
             self._state = "running"
 
     def refresh(self):

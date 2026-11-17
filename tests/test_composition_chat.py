@@ -17,6 +17,7 @@ from murrai.application.ports import TrainingEvent
 from murrai.application.runs import training_device
 from murrai.composition.chat import chat_commands
 from murrai.domain.transformer import TransformerLM
+from murrai.presentation.chat.form import TrainingForm
 from murrai.presentation.chat.panel import FormCommand
 
 
@@ -333,6 +334,112 @@ def test_a_vanished_checkpoint_is_ignored_by_the_estimate(corpus):
     values = {**_defaults(gpt), "start_from": "gone"}
 
     assert gpt.estimates(values) == []
+
+
+def test_the_form_shows_the_eta_when_continuing_from_a_checkpoint(
+    corpus,
+    monkeypatch,
+):
+    def boom(*args, **kwargs):
+        raise RuntimeError("no chip")
+
+    monkeypatch.setattr(murrai_composition_chat, "train_transformer_lm", boom)
+    store = InMemoryCheckpointStore()
+    store.save(
+        "gpt-corpus",
+        Snapshot(
+            kind="gpt",
+            merges=(),
+            state={"depth": 4, "dimension": 64, "heads": 1, "max_time": 64},
+        ),
+    )
+    store.save_record(
+        "gpt-corpus",
+        CheckpointRecord(
+            settings=RunSettings(
+                saved_at="2026-11-16T10:16:59+00:00",
+                corpus=str(corpus),
+                seed=0,
+                model="gpt",
+            ),
+            gradient=GradientRun(
+                steps=20,
+                batch=64,
+                learning_rate=0.001,
+                seconds=600.0,
+                shape={
+                    "depth": 4,
+                    "dimension": 64,
+                    "heads": 1,
+                    "max_time": 64,
+                    "merges": 300,
+                },
+            ),
+        ),
+    )
+    gpt = _command(corpus, "retrain gpt", seed=0, gpt_steps=20, store=store, chip="cpu")
+    form = TrainingForm(gpt)
+    form.move_choice("start_from", 1)
+    values = form.snapshot_values()
+
+    assert "merges" not in values
+    lines = []
+    for _ in range(200):
+        lines = gpt.estimates(values)
+        if lines:
+            break
+        time.sleep(0.01)
+
+    assert lines == ["ETA: about 10 min"]
+
+
+def test_a_failed_checkpoint_load_is_read_once(corpus, monkeypatch):
+    store = InMemoryCheckpointStore()
+    loads = []
+
+    def failing_load(name):
+        loads.append(name)
+        raise RuntimeError("weights are gone")
+
+    monkeypatch.setattr(store, "load", failing_load)
+    gpt = _command(corpus, "retrain gpt", seed=0, gpt_steps=20, store=store, chip="cpu")
+    values = {**_defaults(gpt), "start_from": "gone"}
+
+    gpt.estimates(values)
+    gpt.estimates(values)
+    gpt.estimates(values)
+
+    assert len(loads) == 1
+
+
+def test_a_corrupt_record_file_is_ignored(corpus, tmp_path, monkeypatch):
+    def boom(*args, **kwargs):
+        raise RuntimeError("no chip")
+
+    monkeypatch.setattr(murrai_composition_chat, "train_transformer_lm", boom)
+    store = FileCheckpointStore(tmp_path)
+    store.save("gpt-corpus", Snapshot(kind="gpt", merges=(), state={}))
+    (tmp_path / "gpt-corpus.json").write_text("{truncated")
+    calibrators = {}
+    gpt = _command(
+        corpus,
+        "retrain gpt",
+        seed=0,
+        gpt_steps=20,
+        store=store,
+        chip="cpu",
+        calibrators=calibrators,
+    )
+    defaults = _defaults(gpt)
+
+    gpt.estimates(defaults)
+    calibrator = next(iter(calibrators.values()))
+    for _ in range(200):
+        if not calibrator.pending:
+            break
+        time.sleep(0.01)
+
+    assert gpt.estimates(defaults) == []
 
 
 def test_one_calibration_serves_rebuilt_commands(corpus, monkeypatch):

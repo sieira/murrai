@@ -111,7 +111,12 @@ class FileCheckpointStore:
         path = self._record_path(name)
         if not path.exists():
             return CheckpointRecord()
-        data = json.loads(path.read_text())
+        try:
+            data = json.loads(path.read_text())
+        except OSError, ValueError:
+            # a truncated or hand-edited record feeds nothing; the
+            # weights beside it stay usable
+            return CheckpointRecord()
         return CheckpointRecord(
             settings=(
                 RunSettings(
