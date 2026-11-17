@@ -1,6 +1,6 @@
 import math
-import threading
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
 from itertools import pairwise
 
@@ -9,6 +9,41 @@ from itertools import pairwise
 class Estimate:
     text: str
     runs: int
+
+
+@dataclass(frozen=True)
+class Cost:
+    keys: frozenset
+    of: Callable[[dict], float]
+
+
+GPT_COST = Cost(
+    keys=frozenset({"batch", "max_time", "depth", "dimension"}),
+    of=lambda config: (
+        config["batch"]
+        * config["max_time"]
+        * config["depth"]
+        * config["dimension"] ** 2
+    ),
+)
+
+MLP_COST = Cost(
+    keys=frozenset({"batch", "window", "dimension", "hidden"}),
+    of=lambda config: (
+        config["batch"] * config["window"] * config["dimension"] * config["hidden"]
+    ),
+)
+
+NEURAL_COST = Cost(
+    keys=frozenset({"batch", "merges"}),
+    of=lambda config: config["batch"] * (256 + config["merges"]),
+)
+
+
+def _cost_of(cost, config):
+    if not cost.keys <= config.keys():
+        return None
+    return cost.of(config)
 
 
 def format_seconds(seconds):
@@ -27,31 +62,6 @@ def uniform_perplexity(merges):
     return 256 + merges
 
 
-def gpt_cost(config):
-    return (
-        config["batch"]
-        * config["max_time"]
-        * config["depth"]
-        * config["dimension"] ** 2
-    )
-
-
-def mlp_cost(config):
-    return config["batch"] * config["window"] * config["dimension"] * config["hidden"]
-
-
-def neural_cost(config):
-    return config["batch"] * (256 + config["merges"])
-
-
-def _guarded(cost, config):
-    try:
-        value = cost(config)
-    except KeyError:
-        return None
-    return value if value > 0 else None
-
-
 def _gradient_of(records, kind):
     for record in records:
         settings = record.settings
@@ -60,15 +70,15 @@ def _gradient_of(records, kind):
             yield record, settings, gradient
 
 
-def estimate_seconds(records, values, kind, cost):
-    now_cost = _guarded(cost, values)
+def estimate_seconds(records, config, kind, cost):
+    now_cost = _cost_of(cost, config)
     if now_cost is None:
         return None
     best = None
     best_gap = math.inf
     runs = 0
     for _, _, gradient in _gradient_of(records, kind):
-        past_cost = _guarded(cost, {**gradient.shape, "batch": gradient.batch})
+        past_cost = _cost_of(cost, {**gradient.shape, "batch": gradient.batch})
         if past_cost is None or gradient.seconds is None or gradient.steps <= 0:
             continue
         runs += 1
@@ -80,7 +90,7 @@ def estimate_seconds(records, values, kind, cost):
         return None
     gradient, past_cost = best
     seconds = (
-        gradient.seconds * (values["steps"] / gradient.steps) * (now_cost / past_cost)
+        gradient.seconds * (config["steps"] / gradient.steps) * (now_cost / past_cost)
     )
     return Estimate(text=f"about {format_seconds(seconds)}", runs=runs)
 
@@ -126,30 +136,38 @@ class StepClock:
 
 
 class Calibrator:
+    # states: idle → running → ready | failed; a failed or ready
+    # calibration stays put until begin() is asked for again.
     def __init__(self, measure, cost):
         self._measure = measure
         self._cost = cost
+        self._state = "idle"
         self._result = None
-        self._kicked = False
 
-    def kick(self):
-        self._kicked = True
-        threading.Thread(target=self.refresh, daemon=True).start()
+    def begin(self):
+        if self._state in ("idle", "failed"):
+            self._state = "running"
 
     def refresh(self):
-        per_step, config = self._measure()
+        if self._state != "running":
+            return
+        try:
+            per_step, config = self._measure()
+        except Exception:
+            self._state = "failed"
+            return
         self._result = (per_step, config) if per_step else None
+        self._state = "ready" if self._result else "failed"
 
     @property
     def pending(self):
-        return self._kicked and self._result is None
+        return self._state == "running"
 
     def project(self, config):
-        if self._result is None:
+        if self._state != "ready":
             return None
-        per_step, past = self._result
-        now_cost = _guarded(self._cost, config)
-        past_cost = _guarded(self._cost, past)
+        now_cost = _cost_of(self._cost, config)
+        past_cost = _cost_of(self._cost, self._result[1])
         if now_cost is None or past_cost is None:
             return None
-        return per_step * (now_cost / past_cost) * config["steps"]
+        return self._result[0] * (now_cost / past_cost) * config["steps"]

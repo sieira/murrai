@@ -73,6 +73,11 @@ presentation.md; it binds the same way.
   take a lock, delivering may not; a listener never blocks.
 - perplexity: loss converted to "how many equally likely choices per
   token"; lower is better; our target metric (ADR-0004).
+- chip: the compute device a run trains on: cpu, mps, or cuda.
+- calibration: a short rehearsal of a few steps that times the chip;
+  it feeds the time estimate in the training form.
+- estimate: a prediction for a run before it starts, from the
+  calibration and past records; the form shows it beside the knobs.
 
 ## Generating
 

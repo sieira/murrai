@@ -237,13 +237,75 @@ def test_the_gpt_form_probes_the_chip_with_a_rehearsal(corpus, monkeypatch):
     captured = _capturing(monkeypatch, "train_transformer_lm")
     gpt = _command(corpus, "retrain gpt", seed=0, gpt_steps=20, chip="cpu")
 
-    gpt.probe()
+    gpt.calibrate()
     for _ in range(200):
         if "kwargs" in captured:
             break
         time.sleep(0.01)
 
     assert captured["kwargs"]["steps"] == 10
+
+
+def test_a_vanished_checkpoint_shows_the_floor_instead_of_a_crash(corpus):
+    store = InMemoryCheckpointStore()
+    gpt = _command(corpus, "retrain gpt", seed=0, gpt_steps=20, store=store, chip="cpu")
+    values = {**_defaults(gpt), "start_from": "gone"}
+
+    assert gpt.estimates(values) == [
+        "a uniform guess over the 556 pieces lands at ppl 556",
+    ]
+
+
+def test_one_calibration_serves_rebuilt_commands(corpus, monkeypatch):
+    real = murrai_composition_chat.train_transformer_lm
+    rehearsals = []
+
+    def counting(text, **kwargs):
+        rehearsals.append(kwargs)
+        return real(text, **kwargs)
+
+    monkeypatch.setattr(murrai_composition_chat, "train_transformer_lm", counting)
+    calibrators = {}
+    first = next(
+        c
+        for c in chat_commands(
+            corpus,
+            seed=0,
+            gpt_steps=20,
+            chip="cpu",
+            calibrators=calibrators,
+        )
+        if c.name == "retrain gpt"
+    )
+    first.calibrate()
+    for _ in range(200):
+        if first.estimates(_defaults(first)) and not any(
+            "measuring" in line for line in first.estimates(_defaults(first))
+        ):
+            break
+        time.sleep(0.01)
+    assert len(rehearsals) == 1
+
+    second = next(
+        c
+        for c in chat_commands(
+            corpus,
+            seed=0,
+            gpt_steps=20,
+            chip="cpu",
+            calibrators=calibrators,
+        )
+        if c.name == "retrain gpt"
+    )
+    second.calibrate()
+    for _ in range(200):
+        if second.estimates(_defaults(second)) and not any(
+            "measuring" in line for line in second.estimates(_defaults(second))
+        ):
+            break
+        time.sleep(0.01)
+
+    assert len(rehearsals) == 1
 
 
 def test_training_commands_save_a_checkpoint(corpus):

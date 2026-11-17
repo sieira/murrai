@@ -15,13 +15,19 @@ def main():
 
     seed = int(sys.argv[1]) if len(sys.argv) > 1 else 0
     store = FileCheckpointStore("checkpoints")
+    calibrators = {}
     session = load_checkpoint_session(store, seed) if store.names() else None
     if session is None:
         print("no trained model yet; ctrl-p opens commands")
 
     run_chat(
         session,
-        commands=lambda: chat_commands(corpus, seed=seed, store=store),
+        commands=lambda: chat_commands(
+            corpus,
+            seed=seed,
+            store=store,
+            calibrators=calibrators,
+        ),
         observer=ChatLog("chat.log"),
         load=lambda name: load_checkpoint_session(store, seed, name),
     )

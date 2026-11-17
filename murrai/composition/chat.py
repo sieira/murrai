@@ -1,3 +1,4 @@
+import threading
 import time
 from dataclasses import replace
 from datetime import UTC, datetime
@@ -14,14 +15,14 @@ from murrai.application.checkpoints import (
     snapshot_of,
 )
 from murrai.application.estimates import (
+    GPT_COST,
+    MLP_COST,
+    NEURAL_COST,
     Calibrator,
     StepClock,
     estimate_perplexity,
     estimate_seconds,
     format_seconds,
-    gpt_cost,
-    mlp_cost,
-    neural_cost,
     uniform_perplexity,
 )
 from murrai.application.runs import (
@@ -614,24 +615,36 @@ def _records(store):
     return [store.record(name) for name in store.names()]
 
 
-def _cost_config(store, values, shape_names):
-    config = {name: values[name] for name in shape_names if name in values}
-    config.update(
-        batch=values["batch"],
-        merges=values["merges"],
-        steps=values["steps"],
-    )
+def _cost_config(store, values, shape_names, shapes):
     name = values.get(START_FROM, FRESH)
     if name != FRESH and store is not None:
-        snapshot = store.load(name)
-        config.update(
-            {
-                key: snapshot.state[key]
-                for key in shape_names
-                if key != "merges" and key in snapshot.state
-            },
-        )
-        config["merges"] = len(snapshot.merges)
+        return _continue_config(store, name, values, shape_names, shapes)
+    if any(field not in values for field in shape_names):
+        return None
+    config = {field: values[field] for field in shape_names}
+    config["batch"] = values["batch"]
+    config["steps"] = values["steps"]
+    return config
+
+
+def _continue_config(store, name, values, shape_names, shapes):
+    if name not in shapes:
+        try:
+            snapshot = store.load(name)
+        except Exception:
+            # the estimate renders on every keystroke; a broken
+            # checkpoint must not take the chat down
+            return None
+        shape = {
+            key: snapshot.state[key]
+            for key in shape_names
+            if key != "merges" and key in snapshot.state
+        }
+        shape["merges"] = len(snapshot.merges)
+        shapes[name] = shape
+    config = dict(shapes[name])
+    config["batch"] = values["batch"]
+    config["steps"] = values["steps"]
     return config
 
 
@@ -649,32 +662,40 @@ def _measure(run, directory, seed, fields, shape_names):
     return measure
 
 
+def _calibrate(calibrator):
+    def calibrate():
+        calibrator.begin()
+        threading.Thread(target=calibrator.refresh, daemon=True).start()
+
+    return calibrate
+
+
 def _estimates(kind, store, directory, calibrator, cost, shape_names):
+    shapes = {}
+
     def estimates(values):
         if not {"steps", "batch", "merges"} <= values.keys():
             return []
+        records = _records(store)
         lines = []
-        projected = calibrator.project(_cost_config(store, values, shape_names))
-        if projected is not None:
-            lines.append(
-                f"this run should take about {format_seconds(projected)}",
-            )
-        elif calibrator.pending:
-            lines.append("measuring this chip…")
-        else:
-            history = estimate_seconds(
-                _records(store),
-                values,
-                kind,
-                cost,
-            )
-            if history is not None:
-                plural = "" if history.runs == 1 else "s"
+        config = _cost_config(store, values, shape_names, shapes)
+        if config is not None:
+            projected = calibrator.project(config)
+            if projected is not None:
                 lines.append(
-                    f"{history.text} (from {history.runs} past run{plural})",
+                    f"this run should take about {format_seconds(projected)}",
                 )
+            elif calibrator.pending:
+                lines.append("measuring this chip…")
+            else:
+                history = estimate_seconds(records, config, kind, cost)
+                if history is not None:
+                    plural = "" if history.runs == 1 else "s"
+                    lines.append(
+                        f"{history.text} (from {history.runs} past run{plural})",
+                    )
         evidence = estimate_perplexity(
-            _records(store),
+            records,
             kind,
             str(_chosen_directory(directory, values)),
         )
@@ -701,16 +722,20 @@ def _training_command(
     fields,
     kind=None,
     cost=None,
+    calibrators=None,
 ):
     shape_names = tuple(field.name for field in fields if field.shape)
-    estimates = probe = None
+    estimates = calibrate = None
     if cost is not None:
-        calibrator = Calibrator(
-            _measure(run, directory, seed, fields, shape_names),
-            cost,
-        )
+        calibrator = calibrators.get(kind)
+        if calibrator is None:
+            calibrator = Calibrator(
+                _measure(run, directory, seed, fields, shape_names),
+                cost,
+            )
+            calibrators[kind] = calibrator
         estimates = _estimates(kind, store, directory, calibrator, cost, shape_names)
-        probe = calibrator.kick
+        calibrate = _calibrate(calibrator)
 
     def bake(values):
         return Command(
@@ -729,7 +754,7 @@ def _training_command(
         bake=bake,
         trains=True,
         estimates=estimates,
-        probe=probe,
+        calibrate=calibrate,
     )
 
 
@@ -748,9 +773,11 @@ def chat_commands(
     mlp_steps=10000,
     gpt_steps=2000,
     chip=None,
+    calibrators=None,
     clock=time.time,
 ):
     chip = chip_profile() if chip is None else chip
+    calibrators = {} if calibrators is None else calibrators
     commands = []
     if store is not None:
         for name in store.names():
@@ -783,7 +810,8 @@ def chat_commands(
                 clock,
                 _neural_fields(directory, seed, store, neural_steps, chip),
                 kind="neural-bigram",
-                cost=neural_cost,
+                cost=NEURAL_COST,
+                calibrators=calibrators,
             ),
             _training_command(
                 "retrain windowed mlp",
@@ -795,7 +823,8 @@ def chat_commands(
                 clock,
                 _mlp_fields(directory, seed, store, mlp_steps, chip),
                 kind="windowed-mlp",
-                cost=mlp_cost,
+                cost=MLP_COST,
+                calibrators=calibrators,
             ),
             _training_command(
                 "retrain gpt",
@@ -807,7 +836,8 @@ def chat_commands(
                 clock,
                 _gpt_fields(directory, seed, store, gpt_steps, chip),
                 kind="gpt",
-                cost=gpt_cost,
+                cost=GPT_COST,
+                calibrators=calibrators,
             ),
         ],
     )

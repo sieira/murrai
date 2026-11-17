@@ -128,6 +128,29 @@ def test_the_record_is_frozen():
         record.held_out_perplexity = 2.0
 
 
+def test_the_file_store_round_trips_the_estimate_fields(tmp_path, counted):
+    store = FileCheckpointStore(tmp_path)
+    record = CheckpointRecord(
+        settings=RunSettings(
+            saved_at="2027-01-15T08:00:00+00:00",
+            corpus="data/corpus",
+            seed=0,
+            model="gpt",
+        ),
+        gradient=GradientRun(
+            steps=3,
+            batch=64,
+            learning_rate=3.0,
+            seconds=120.5,
+            shape={"depth": 4, "dimension": 64, "max_time": 64},
+        ),
+    )
+    store.save("counted-bigram", snapshot_of(counted))
+    store.save_record("counted-bigram", record)
+
+    assert store.record("counted-bigram") == record
+
+
 def test_the_store_translates_the_record_to_flat_json(tmp_path, counted):
     store = FileCheckpointStore(tmp_path)
     store.save("counted-bigram", snapshot_of(counted))

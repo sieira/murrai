@@ -1,20 +1,17 @@
-import threading
-import time
-
 from murrai.application.checkpoints import (
     CheckpointRecord,
     GradientRun,
     RunSettings,
 )
 from murrai.application.estimates import (
+    GPT_COST,
+    MLP_COST,
+    NEURAL_COST,
     Calibrator,
     StepClock,
     estimate_perplexity,
     estimate_seconds,
     format_seconds,
-    gpt_cost,
-    mlp_cost,
-    neural_cost,
     uniform_perplexity,
 )
 
@@ -77,7 +74,7 @@ def test_seconds_read_in_plain_units():
 
 def test_time_scales_from_a_past_run_by_the_steps():
     past = _run(seconds=600.0, steps=4000, shape=_values())
-    estimate = estimate_seconds([past], _values(steps=2000), "gpt", gpt_cost)
+    estimate = estimate_seconds([past], _values(steps=2000), "gpt", GPT_COST)
 
     assert estimate is not None
     assert "about 5 min" in estimate.text
@@ -85,7 +82,7 @@ def test_time_scales_from_a_past_run_by_the_steps():
 
 def test_time_scales_by_the_compute_of_the_shape():
     past = _run(seconds=600.0, steps=4000, shape=_values())
-    estimate = estimate_seconds([past], _values(dimension=64), "gpt", gpt_cost)
+    estimate = estimate_seconds([past], _values(dimension=64), "gpt", GPT_COST)
 
     assert estimate is not None
     # dimension halves, so a step costs a quarter
@@ -95,7 +92,7 @@ def test_time_scales_by_the_compute_of_the_shape():
 def test_time_uses_the_closest_past_run():
     far = _run(seconds=600.0, steps=4000, shape=_values(dimension=32))
     close = _run(seconds=600.0, steps=4000, shape=_values(dimension=64))
-    estimate = estimate_seconds([far, close], _values(), "gpt", gpt_cost)
+    estimate = estimate_seconds([far, close], _values(), "gpt", GPT_COST)
 
     assert estimate is not None
     assert estimate.runs == 2
@@ -113,13 +110,19 @@ def test_time_ignores_runs_that_carry_no_measurement():
         gradient=GradientRun(steps=4000, batch=128, learning_rate=0.001),
     )
 
-    assert estimate_seconds([past], _values(), "gpt", gpt_cost) is None
+    assert estimate_seconds([past], _values(), "gpt", GPT_COST) is None
+
+
+def test_time_ignores_a_record_whose_shape_misses_the_cost_keys():
+    past = _run(seconds=600.0, steps=4000, shape={"depth": 4})
+
+    assert estimate_seconds([past], _values(), "gpt", GPT_COST) is None
 
 
 def test_time_ignores_runs_of_another_kind():
     past = _run(model="windowed-mlp", shape=_values())
 
-    assert estimate_seconds([past], _values(), "gpt", gpt_cost) is None
+    assert estimate_seconds([past], _values(), "gpt", GPT_COST) is None
 
 
 def test_the_mlp_costs_its_own_shape():
@@ -137,7 +140,7 @@ def test_the_mlp_costs_its_own_shape():
         "dimension": 64,
         "hidden": 256,
     }
-    estimate = estimate_seconds([past], values, "windowed-mlp", mlp_cost)
+    estimate = estimate_seconds([past], values, "windowed-mlp", MLP_COST)
 
     assert estimate is not None
     assert "about 5 min" in estimate.text
@@ -152,7 +155,7 @@ def test_the_neural_table_costs_its_piece_count():
         shape={"merges": 300},
     )
     values = {"steps": 2000, "batch": 64, "merges": 300}
-    estimate = estimate_seconds([past], values, "neural-bigram", neural_cost)
+    estimate = estimate_seconds([past], values, "neural-bigram", NEURAL_COST)
 
     assert estimate is not None
     assert "about 10 min" in estimate.text
@@ -234,8 +237,8 @@ def test_the_clock_drops_the_first_two_steps_as_warmup():
     assert clock.per_step() == 1.0
 
 
-def test_an_untimed_chip_projects_nothing():
-    calibrator = Calibrator(lambda: None, gpt_cost)
+def test_an_untimed_chip_projects_nothing_and_is_not_pending():
+    calibrator = Calibrator(lambda: None, GPT_COST)
 
     assert calibrator.project(_values()) is None
     assert not calibrator.pending
@@ -244,8 +247,9 @@ def test_an_untimed_chip_projects_nothing():
 def test_a_finished_calibration_projects_the_requested_shape():
     calibrator = Calibrator(
         lambda: (0.1, {**_values(dimension=64), "batch": 128, "merges": 300}),
-        gpt_cost,
+        GPT_COST,
     )
+    calibrator.begin()
     calibrator.refresh()
 
     seconds = calibrator.project(_values())
@@ -255,17 +259,51 @@ def test_a_finished_calibration_projects_the_requested_shape():
     assert "26 min" in format_seconds(seconds)
 
 
-def test_a_running_calibration_is_pending():
-    gate = threading.Event()
-    calibrator = Calibrator(lambda: (gate.wait(1), (0.1, _values()))[1], gpt_cost)
+def test_a_calibration_in_progress_is_pending_until_it_lands():
+    calibrator = Calibrator(lambda: (0.1, _values()), GPT_COST)
 
-    calibrator.kick()
+    calibrator.begin()
     assert calibrator.pending
-    gate.set()
-    for _ in range(200):
-        if not calibrator.pending:
-            break
-        time.sleep(0.01)
+    assert calibrator.project(_values()) is None
 
+    calibrator.refresh()
     assert not calibrator.pending
     assert calibrator.project(_values()) is not None
+
+
+def test_a_failed_calibration_is_not_pending_and_projects_nothing():
+    calibrator = Calibrator(
+        lambda: (_ for _ in ()).throw(RuntimeError("corpus is empty")),
+        GPT_COST,
+    )
+
+    calibrator.begin()
+    calibrator.refresh()
+
+    assert not calibrator.pending
+    assert calibrator.project(_values()) is None
+
+
+def test_a_calibration_without_a_usable_step_is_not_pending():
+    calibrator = Calibrator(lambda: (None, _values()), GPT_COST)
+
+    calibrator.begin()
+    calibrator.refresh()
+
+    assert not calibrator.pending
+    assert calibrator.project(_values()) is None
+
+
+def test_a_finished_calibration_does_not_measure_again():
+    measures = []
+
+    def measure():
+        measures.append(1)
+        return (0.1, _values())
+
+    calibrator = Calibrator(measure, GPT_COST)
+    calibrator.begin()
+    calibrator.refresh()
+    calibrator.refresh()
+
+    assert len(measures) == 1
