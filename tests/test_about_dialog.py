@@ -3,7 +3,7 @@ from prompt_toolkit.layout.mouse_handlers import MouseHandlers
 from prompt_toolkit.layout.screen import Screen, WritePosition
 from prompt_toolkit.mouse_events import MouseButton, MouseEvent, MouseEventType
 
-from murrai.presentation.chat.repl import AboutDialog
+from murrai.presentation.chat.repl import ABOUT_TEXT, AboutDialog
 
 
 def mouse(kind):
@@ -25,9 +25,22 @@ def test_the_about_popover_centers_itself_without_a_position():
 
 
 def test_the_popover_is_exactly_as_wide_as_its_text_and_its_frame():
-    from murrai.presentation.chat.repl import ABOUT_TEXT, ABOUT_WIDTH
+    dialog = about([])
+    dialog.open()
 
-    assert len(ABOUT_TEXT) + 2 == ABOUT_WIDTH
+    width = dialog.container.preferred_width(100).preferred
+
+    assert width == len(ABOUT_TEXT) + 2
+
+
+def test_the_popover_shadow_is_two_cells_wide_and_one_row_deep():
+    dialog = about([])
+
+    widths = [f.width for f in dialog.shadow.container.floats if f.width]
+    heights = [f.height for f in dialog.shadow.container.floats if f.height]
+
+    assert widths == [2]
+    assert heights == [1]
 
 
 def test_the_about_popover_never_shows_the_cursor():

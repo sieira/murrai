@@ -10,6 +10,7 @@ from prompt_toolkit.layout import Dimension, HSplit, Layout, VSplit, Window
 from prompt_toolkit.layout.containers import (
     ConditionalContainer,
     Float,
+    FloatContainer,
     WindowAlign,
 )
 from prompt_toolkit.layout.controls import (
@@ -18,7 +19,6 @@ from prompt_toolkit.layout.controls import (
 from prompt_toolkit.mouse_events import MouseEventType
 from prompt_toolkit.styles import Style
 from prompt_toolkit.widgets import (
-    Dialog,
     Frame,
     MenuContainer,
     MenuItem,
@@ -291,7 +291,6 @@ def chat_body(
 
 
 ABOUT_TEXT = "murrAI - a conversational language model built from scratch, one machine"
-ABOUT_WIDTH = 74
 
 
 class ChatMenu(MenuContainer):
@@ -357,6 +356,34 @@ class ChatMenu(MenuContainer):
         )
 
 
+class WideShadow:
+    def __init__(self, body):
+        self.container = FloatContainer(
+            content=body,
+            floats=[
+                Float(
+                    bottom=-1,
+                    height=1,
+                    left=1,
+                    right=-2,
+                    transparent=True,
+                    content=Window(style="class:shadow"),
+                ),
+                Float(
+                    bottom=-1,
+                    top=1,
+                    width=2,
+                    right=-1,
+                    transparent=True,
+                    content=Window(style="class:shadow"),
+                ),
+            ],
+        )
+
+    def __pt_container__(self):
+        return self.container
+
+
 class AboutDialog:
     def __init__(self, on_close, focus):
         self.visible = False
@@ -385,12 +412,16 @@ class AboutDialog:
                 show_cursor=False,
             ),
         )
-        self.container = ConditionalContainer(
-            Dialog(
+        self.shadow = WideShadow(
+            body=Frame(
                 body=HSplit([self.cross, self.text]),
                 title="about",
-                width=ABOUT_WIDTH,
+                style="class:dialog.body",
+                modal=True,
             ),
+        )
+        self.container = ConditionalContainer(
+            self.shadow,
             Condition(lambda: self.visible),
         )
         self.float = Float(content=self.container)
