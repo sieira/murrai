@@ -54,6 +54,7 @@ STYLE = Style.from_dict(
         "die-hit": "ansibrightcyan bold",
         "more": "ansibrightblack",
         "hint": "ansibrightblack",
+        "eta": "ansicyan",
         "selected": "ansibrightcyan bold",
         "bar": "ansigreen",
         "failed": "ansired bold",

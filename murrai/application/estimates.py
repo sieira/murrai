@@ -6,12 +6,6 @@ from itertools import pairwise
 
 
 @dataclass(frozen=True)
-class Estimate:
-    text: str
-    runs: int
-
-
-@dataclass(frozen=True)
 class Cost:
     keys: frozenset
     of: Callable[[dict], float]
@@ -50,16 +44,11 @@ def format_seconds(seconds):
     seconds = max(round(seconds), 1)
     if seconds >= 3600:
         hours, rest = divmod(seconds, 3600)
-        minutes = rest // 60
-        return f"{hours} h {minutes} min" if minutes else f"{hours} h"
+        return f"{hours} h {minutes} min" if (minutes := rest // 60) else f"{hours} h"
     if seconds >= 60:
         minutes, rest = divmod(seconds, 60)
         return f"{minutes} min {rest} s" if rest else f"{minutes} min"
     return f"{seconds} s"
-
-
-def uniform_perplexity(merges):
-    return 256 + merges
 
 
 def _gradient_of(records, kind):
@@ -67,7 +56,7 @@ def _gradient_of(records, kind):
         settings = record.settings
         gradient = record.gradient
         if settings is not None and settings.model == kind and gradient is not None:
-            yield record, settings, gradient
+            yield gradient
 
 
 def estimate_seconds(records, config, kind, cost):
@@ -76,12 +65,10 @@ def estimate_seconds(records, config, kind, cost):
         return None
     best = None
     best_gap = math.inf
-    runs = 0
-    for _, _, gradient in _gradient_of(records, kind):
+    for gradient in _gradient_of(records, kind):
         past_cost = _cost_of(cost, {**gradient.shape, "batch": gradient.batch})
         if past_cost is None or gradient.seconds is None or gradient.steps <= 0:
             continue
-        runs += 1
         gap = abs(math.log(now_cost / past_cost))
         if gap < best_gap:
             best_gap = gap
@@ -89,32 +76,8 @@ def estimate_seconds(records, config, kind, cost):
     if best is None:
         return None
     gradient, past_cost = best
-    seconds = (
-        gradient.seconds * (config["steps"] / gradient.steps) * (now_cost / past_cost)
-    )
-    return Estimate(text=f"about {format_seconds(seconds)}", runs=runs)
-
-
-def estimate_perplexity(records, kind, corpus):
-    scores = [
-        record.held_out_perplexity
-        for record, settings, _ in _gradient_of(records, kind)
-        if settings.corpus == corpus and record.held_out_perplexity is not None
-    ]
-    if not scores:
-        return None
-    if len(scores) == 1:
-        return Estimate(
-            text=f"the last run like this landed at ppl {scores[0]:.1f}",
-            runs=1,
-        )
-    return Estimate(
-        text=(
-            f"runs like this landed between ppl {min(scores):.1f}"
-            f" and {max(scores):.1f} (from {len(scores)} runs)"
-        ),
-        runs=len(scores),
-    )
+    scale = (config["steps"] / gradient.steps) * (now_cost / past_cost)
+    return gradient.seconds * scale
 
 
 class StepClock:

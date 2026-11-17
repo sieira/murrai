@@ -243,12 +243,9 @@ def estimate_fragments(form):
     if form.command.estimates is None:
         return []
     lines = form.command.estimates(form.snapshot_values())
-    fragments = []
-    for line in lines:
-        if fragments:
-            fragments.append(("", "\n"))
-        fragments.append(("class:hint", line))
-    return fragments
+    if not lines:
+        return []
+    return [("", "\n"), ("class:eta", lines[0])]
 
 
 class FormOverlay:

@@ -9,10 +9,8 @@ from murrai.application.estimates import (
     NEURAL_COST,
     Calibrator,
     StepClock,
-    estimate_perplexity,
     estimate_seconds,
     format_seconds,
-    uniform_perplexity,
 )
 
 
@@ -62,10 +60,6 @@ class _Event:
         self.phase = phase
 
 
-def test_a_uniform_guess_lands_at_the_piece_count():
-    assert uniform_perplexity(300) == 556
-
-
 def test_seconds_read_in_plain_units():
     assert format_seconds(90) == "1 min 30 s"
     assert format_seconds(2400) == "40 min"
@@ -74,29 +68,28 @@ def test_seconds_read_in_plain_units():
 
 def test_time_scales_from_a_past_run_by_the_steps():
     past = _run(seconds=600.0, steps=4000, shape=_values())
-    estimate = estimate_seconds([past], _values(steps=2000), "gpt", GPT_COST)
+    seconds = estimate_seconds([past], _values(steps=2000), "gpt", GPT_COST)
 
-    assert estimate is not None
-    assert "about 5 min" in estimate.text
+    assert seconds is not None
+    assert format_seconds(seconds) == "5 min"
 
 
 def test_time_scales_by_the_compute_of_the_shape():
     past = _run(seconds=600.0, steps=4000, shape=_values())
-    estimate = estimate_seconds([past], _values(dimension=64), "gpt", GPT_COST)
+    seconds = estimate_seconds([past], _values(dimension=64), "gpt", GPT_COST)
 
-    assert estimate is not None
+    assert seconds is not None
     # dimension halves, so a step costs a quarter
-    assert "about 2 min 30 s" in estimate.text
+    assert format_seconds(seconds) == "2 min 30 s"
 
 
 def test_time_uses_the_closest_past_run():
     far = _run(seconds=600.0, steps=4000, shape=_values(dimension=32))
     close = _run(seconds=600.0, steps=4000, shape=_values(dimension=64))
-    estimate = estimate_seconds([far, close], _values(), "gpt", GPT_COST)
+    seconds = estimate_seconds([far, close], _values(), "gpt", GPT_COST)
 
-    assert estimate is not None
-    assert estimate.runs == 2
-    assert "about 40 min" in estimate.text
+    assert seconds is not None
+    assert format_seconds(seconds) == "40 min"
 
 
 def test_time_ignores_runs_that_carry_no_measurement():
@@ -140,10 +133,10 @@ def test_the_mlp_costs_its_own_shape():
         "dimension": 64,
         "hidden": 256,
     }
-    estimate = estimate_seconds([past], values, "windowed-mlp", MLP_COST)
+    seconds = estimate_seconds([past], values, "windowed-mlp", MLP_COST)
 
-    assert estimate is not None
-    assert "about 5 min" in estimate.text
+    assert seconds is not None
+    assert format_seconds(seconds) == "5 min"
 
 
 def test_the_neural_table_costs_its_piece_count():
@@ -155,54 +148,10 @@ def test_the_neural_table_costs_its_piece_count():
         shape={"merges": 300},
     )
     values = {"steps": 2000, "batch": 64, "merges": 300}
-    estimate = estimate_seconds([past], values, "neural-bigram", NEURAL_COST)
+    seconds = estimate_seconds([past], values, "neural-bigram", NEURAL_COST)
 
-    assert estimate is not None
-    assert "about 10 min" in estimate.text
-
-
-def test_ppl_of_one_past_run_names_it():
-    past = _run()
-
-    estimate = estimate_perplexity([past], "gpt", past.settings.corpus)
-
-    assert estimate is not None
-    assert estimate.text == "the last run like this landed at ppl 11.7"
-
-
-def test_ppl_of_several_past_runs_spans_a_band():
-    runs = [_run(perplexity=8.0), _run(perplexity=14.0), _run(perplexity=11.0)]
-
-    estimate = estimate_perplexity(runs, "gpt", runs[0].settings.corpus)
-
-    assert estimate is not None
-    assert estimate.text == (
-        "runs like this landed between ppl 8.0 and 14.0 (from 3 runs)"
-    )
-
-
-def test_ppl_ignores_other_kinds_and_other_corpora():
-    elsewhere = _run(corpus="data/other")
-    other_kind = _run(model="windowed-mlp")
-
-    assert estimate_perplexity([elsewhere], "gpt", "data/corpus") is None
-    assert estimate_perplexity([other_kind], "gpt", "data/corpus") is None
-
-
-def test_ppl_ignores_runs_without_a_held_out_score():
-    past = _run(perplexity=None)
-
-    assert estimate_perplexity([past], "gpt", "data/corpus") is None
-
-
-def test_ppl_ignores_records_older_than_the_record_schema():
-    past = CheckpointRecord(
-        settings=RunSettings(saved_at="x", corpus="data/corpus", seed=0),
-        gradient=GradientRun(steps=1, batch=1, learning_rate=0.001),
-        held_out_perplexity=11.7,
-    )
-
-    assert estimate_perplexity([past], "gpt", "data/corpus") is None
+    assert seconds is not None
+    assert format_seconds(seconds) == "10 min"
 
 
 def test_the_clock_times_only_the_training_steps():

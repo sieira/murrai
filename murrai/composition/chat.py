@@ -20,10 +20,8 @@ from murrai.application.estimates import (
     NEURAL_COST,
     Calibrator,
     StepClock,
-    estimate_perplexity,
     estimate_seconds,
     format_seconds,
-    uniform_perplexity,
 )
 from murrai.application.runs import (
     chip_profile,
@@ -670,43 +668,23 @@ def _calibrate(calibrator):
     return calibrate
 
 
-def _estimates(kind, store, directory, calibrator, cost, shape_names):
+def _estimates(kind, store, calibrator, cost, shape_names):
     shapes = {}
 
     def estimates(values):
         if not {"steps", "batch", "merges"} <= values.keys():
             return []
-        records = _records(store)
-        lines = []
         config = _cost_config(store, values, shape_names, shapes)
-        if config is not None:
-            projected = calibrator.project(config)
-            if projected is not None:
-                lines.append(
-                    f"this run should take about {format_seconds(projected)}",
-                )
-            elif calibrator.pending:
-                lines.append("measuring this chip…")
-            else:
-                history = estimate_seconds(records, config, kind, cost)
-                if history is not None:
-                    plural = "" if history.runs == 1 else "s"
-                    lines.append(
-                        f"{history.text} (from {history.runs} past run{plural})",
-                    )
-        evidence = estimate_perplexity(
-            records,
-            kind,
-            str(_chosen_directory(directory, values)),
-        )
-        if evidence is not None:
-            lines.append(evidence.text)
-        else:
-            floor = uniform_perplexity(values["merges"])
-            lines.append(
-                f"a uniform guess over the {floor} pieces lands at ppl {floor}",
-            )
-        return lines
+        if config is None:
+            return []
+        projected = calibrator.project(config)
+        if projected is None and not calibrator.pending:
+            # the calibration failed or never ran: fall back to the
+            # closest past run of this kind
+            projected = estimate_seconds(_records(store), config, kind, cost)
+        if projected is None:
+            return []
+        return [f"ETA: about {format_seconds(projected)}"]
 
     return estimates
 
@@ -734,7 +712,7 @@ def _training_command(
                 cost,
             )
             calibrators[kind] = calibrator
-        estimates = _estimates(kind, store, directory, calibrator, cost, shape_names)
+        estimates = _estimates(kind, store, calibrator, cost, shape_names)
         calibrate = _calibrate(calibrator)
 
     def bake(values):

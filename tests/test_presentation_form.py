@@ -436,22 +436,18 @@ def test_locked_fields_stay_out_of_the_estimates_values():
     assert "depth" not in form.snapshot_values()
 
 
-def test_the_dialog_lists_the_estimate_lines():
+def test_the_estimate_sits_apart_from_the_hint_as_one_eta_line():
     command = FormCommand(
         "retrain x",
         "same memory",
         lambda: None,
         fields=_fields(),
         bake=lambda values: Command("retrain x", "same memory", lambda: None),
-        estimates=lambda values: ("about 5 min", "landed at ppl 11.7"),
+        estimates=lambda values: ("ETA: about 5 min",),
     )
     form = TrainingForm(command)
 
-    assert estimate_fragments(form) == [
-        ("class:hint", "about 5 min"),
-        ("", "\n"),
-        ("class:hint", "landed at ppl 11.7"),
-    ]
+    assert estimate_fragments(form) == [("", "\n"), ("class:eta", "ETA: about 5 min")]
 
 
 def test_a_command_without_estimates_shows_no_lines():

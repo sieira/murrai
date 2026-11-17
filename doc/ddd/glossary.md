@@ -76,8 +76,9 @@ presentation.md; it binds the same way.
 - chip: the compute device a run trains on: cpu, mps, or cuda.
 - calibration: a short rehearsal of a few steps that times the chip;
   it feeds the time estimate in the training form.
-- estimate: a prediction for a run before it starts, from the
-  calibration and past records; the form shows it beside the knobs.
+- estimate: a prediction of a run's duration before it starts, shown
+  as "ETA" in the training form; silent when there is nothing honest
+  to say.
 
 ## Generating
 

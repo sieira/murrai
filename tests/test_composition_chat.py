@@ -219,18 +219,15 @@ def test_the_gpt_form_estimates_from_history(corpus):
     )
     gpt = _command(corpus, "retrain gpt", seed=0, gpt_steps=20, store=store, chip="cpu")
 
-    lines = gpt.estimates(_defaults(gpt))
+    seconds = gpt.estimates(_defaults(gpt))
 
-    assert any("about 10 min (from 1 past run)" in line for line in lines)
-    assert any("ppl 11.7" in line for line in lines)
+    assert seconds == ["ETA: about 10 min"]
 
 
-def test_the_gpt_form_falls_back_to_the_uniform_floor(corpus):
+def test_the_form_is_silent_when_it_has_nothing_to_say(corpus):
     gpt = _command(corpus, "retrain gpt", seed=0, gpt_steps=20, chip="cpu")
 
-    assert gpt.estimates(_defaults(gpt)) == [
-        "a uniform guess over the 556 pieces lands at ppl 556",
-    ]
+    assert gpt.estimates(_defaults(gpt)) == []
 
 
 def test_the_gpt_form_probes_the_chip_with_a_rehearsal(corpus, monkeypatch):
@@ -246,14 +243,12 @@ def test_the_gpt_form_probes_the_chip_with_a_rehearsal(corpus, monkeypatch):
     assert captured["kwargs"]["steps"] == 10
 
 
-def test_a_vanished_checkpoint_shows_the_floor_instead_of_a_crash(corpus):
+def test_a_vanished_checkpoint_is_ignored_by_the_estimate(corpus):
     store = InMemoryCheckpointStore()
     gpt = _command(corpus, "retrain gpt", seed=0, gpt_steps=20, store=store, chip="cpu")
     values = {**_defaults(gpt), "start_from": "gone"}
 
-    assert gpt.estimates(values) == [
-        "a uniform guess over the 556 pieces lands at ppl 556",
-    ]
+    assert gpt.estimates(values) == []
 
 
 def test_one_calibration_serves_rebuilt_commands(corpus, monkeypatch):
@@ -279,9 +274,7 @@ def test_one_calibration_serves_rebuilt_commands(corpus, monkeypatch):
     )
     first.calibrate()
     for _ in range(200):
-        if first.estimates(_defaults(first)) and not any(
-            "measuring" in line for line in first.estimates(_defaults(first))
-        ):
+        if first.estimates(_defaults(first)):
             break
         time.sleep(0.01)
     assert len(rehearsals) == 1
@@ -299,9 +292,7 @@ def test_one_calibration_serves_rebuilt_commands(corpus, monkeypatch):
     )
     second.calibrate()
     for _ in range(200):
-        if second.estimates(_defaults(second)) and not any(
-            "measuring" in line for line in second.estimates(_defaults(second))
-        ):
+        if second.estimates(_defaults(second)):
             break
         time.sleep(0.01)
 

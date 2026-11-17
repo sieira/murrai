@@ -30,10 +30,10 @@ when the run continued from a checkpoint, and `seconds`, the wall-clock
 duration of the run) and `held_out_perplexity`. The counted bigram has
 no gradient run; the neural bigram has no held-out perplexity. A run
 that holds out no text reports no perplexity. A part the run did not
-produce is absent. The form's estimates read a record's model, shape,
-and duration to predict what the next run will cost and reach; a
-record from before a field existed carries no value for it, so old
-records simply say nothing to the estimates. Composition assembles the
+produce is absent. The form's time estimate reads a record's model,
+shape, and duration to predict what the next run will cost; a record
+from before a field existed carries no value for it, so old records
+say nothing to the estimate. Composition assembles the
 record because it holds the settings and the run result. A trainer
 hands its keeper the finished model, as before; the builder wraps that
 keeper to add the settings it knows, and the session writes the record
@@ -57,6 +57,5 @@ bigram has no gradient steps, so it always counts from scratch.
 - A run whose metrics fail keeps its checkpoint. The record keeps the
   settings and misses the run numbers.
 - The form's estimates are only as good as the records behind them. A
-  record that misses the shape or the duration feeds the perplexity
-  estimate nothing and the time estimate nothing; the estimates say
-  so in the count of runs they show.
+  record that misses the shape or the duration feeds the time estimate
+  nothing; the form stays silent instead of guessing.

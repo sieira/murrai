@@ -231,7 +231,7 @@ def test_the_dialog_shows_the_hint_of_the_selected_field():
 
 def test_the_dialog_shows_the_time_estimate():
     command = _form_command(
-        estimates=lambda values: ("this run should take about 1 min",),
+        estimates=lambda values: ("ETA: about 1 min",),
     )
     output = _chat_screen(
         [("\x10", 0.3), ("\r", 0.3)],
@@ -239,7 +239,7 @@ def test_the_dialog_shows_the_time_estimate():
     )
 
     screens = _screens(output)
-    assert any("this run should take about 1 min" in _text(rows) for rows in screens)
+    assert any("ETA: about 1 min" in _text(rows) for rows in screens)
 
 
 def test_closing_the_form_leaves_no_box_behind():
