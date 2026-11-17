@@ -334,7 +334,7 @@ def train_transformer_lm(
     held_out_text=None,
     validate_every=None,
     checkpoint_every=None,
-    snapshots=None,
+    mid_run_checkpoints=None,
     device=None,
     bus: EventBus | None = None,
     keeper=None,
@@ -436,16 +436,16 @@ def train_transformer_lm(
             _record_validation(model, held, run)
         if (
             checkpoint_every
-            and snapshots is not None
+            and mid_run_checkpoints is not None
             and run["step"] % checkpoint_every == 0
         ):
             run["optimizer"] = optimizer.state_dict()
             saved_step = run["step"]
-            snapshots(run_snapshot(model, run))
+            mid_run_checkpoints(run_snapshot(model, run))
 
-    if snapshots is not None and saved_step != run["step"]:
+    if mid_run_checkpoints is not None and saved_step != run["step"]:
         run["optimizer"] = optimizer.state_dict()
-        snapshots(run_snapshot(model, run))
+        mid_run_checkpoints(run_snapshot(model, run))
     if keeper is not None:
         keeper(model)
     if held is not None and (

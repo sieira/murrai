@@ -408,7 +408,7 @@ def test_a_run_resumes_from_a_periodic_snapshot_and_continues_its_curve(tmp_path
         "validate_every": 2,
     }
 
-    def snapshots(snapshot):
+    def mid_run_checkpoints(snapshot):
         step = snapshot.run.step
         kept.append(step)
         store.save(f"midrun-{step}", snapshot)
@@ -416,7 +416,7 @@ def test_a_run_resumes_from_a_periodic_snapshot_and_continues_its_curve(tmp_path
     first = train_transformer_lm(
         "ab" * 400,
         checkpoint_every=3,
-        snapshots=snapshots,
+        mid_run_checkpoints=mid_run_checkpoints,
         **common,
     )
     assert kept == [3, 6, 8]
@@ -446,7 +446,7 @@ def test_training_continues_a_finished_run_by_more_steps():
         dimension=8,
         max_time=8,
         checkpoint_every=8,
-        snapshots=kept.append,
+        mid_run_checkpoints=kept.append,
     )
     later = train_transformer_lm(
         "ab" * 200,
@@ -487,7 +487,7 @@ def test_the_run_snapshots_once_after_its_last_step():
         dimension=8,
         max_time=8,
         checkpoint_every=5,
-        snapshots=kept.append,
+        mid_run_checkpoints=kept.append,
     )
     assert [snapshot.run.step for snapshot in kept] == [2]
 
@@ -503,7 +503,7 @@ def test_the_final_snapshot_does_not_duplicate_the_cadence():
         dimension=8,
         max_time=8,
         checkpoint_every=2,
-        snapshots=kept.append,
+        mid_run_checkpoints=kept.append,
     )
     assert [snapshot.run.step for snapshot in kept] == [2, 4]
 
@@ -530,7 +530,7 @@ def test_the_run_snapshots_before_its_final_metrics(monkeypatch):
             held_out_text="ab" * 40,
             validate_every=2,
             checkpoint_every=5,
-            snapshots=kept.append,
+            mid_run_checkpoints=kept.append,
         )
     assert [snapshot.run.step for snapshot in kept] == [3]
 

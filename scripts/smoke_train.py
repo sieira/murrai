@@ -48,7 +48,7 @@ def main():
             train_text,
             steps=part,
             checkpoint_every=part,
-            snapshots=lambda snapshot: store.save("midrun", snapshot),
+            mid_run_checkpoints=lambda snapshot: store.save("midrun", snapshot),
             **common,
         )
         bus.flush()

@@ -37,13 +37,13 @@ def train_transformer_from_corpus(
         seed=seed,
     )
     checkpoint = None
-    snapshots = None
+    mid_run_checkpoints = None
     keeper = None
     if store is not None:
         if checkpoint_name in store.names():
             checkpoint = store.load(checkpoint_name)
 
-        def snapshots(snapshot):
+        def mid_run_checkpoints(snapshot):
             store.save(checkpoint_name, snapshot)
 
         def keeper(model):
@@ -67,7 +67,7 @@ def train_transformer_from_corpus(
         learning_rate=learning_rate,
         validate_every=validate_every,
         checkpoint_every=checkpoint_every,
-        snapshots=snapshots,
+        mid_run_checkpoints=mid_run_checkpoints,
         held_out_text=held_out.text() if held_out is not None else None,
         merges=merges,
         device=device,
