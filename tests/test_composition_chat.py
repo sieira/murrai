@@ -6,11 +6,21 @@ import torch
 
 import murrai.composition.chat as murrai_composition_chat
 from murrai.adapters.checkpoint import FileCheckpointStore, InMemoryCheckpointStore
-from murrai.application.checkpoints import CheckpointRecord, RunSettings, Snapshot
+from murrai.adapters.story import InMemoryStoryStore
+from murrai.application.checkpoints import (
+    CheckpointRecord,
+    RunSettings,
+    Snapshot,
+    snapshot_of,
+)
 from murrai.application.ports import TrainingEvent
 from murrai.application.runs import training_device
+from murrai.application.sessions import StorySave
 from murrai.composition.chat import chat_menu
+from murrai.domain.bigram import Bigram
+from murrai.domain.tokenizer import TokenizerEncoderDecoder
 from murrai.domain.transformer import TransformerLM
+from murrai.presentation.chat import ChatSession
 
 
 @pytest.fixture
@@ -19,6 +29,81 @@ def corpus(tmp_path):
     corpus.mkdir()
     (corpus / "story.txt").write_text("aabbaabb" * 20)
     return corpus
+
+
+@pytest.fixture
+def live_story():
+    model = Bigram.fit("abab", TokenizerEncoderDecoder())
+    session = ChatSession(model, seed=0, checkpoint="gpt-corpus")
+    session.extend_user("ab")
+    session.extend_generated("b")
+    return session
+
+
+def test_the_sessions_menu_saves_the_live_story(corpus, live_story):
+    stories = InMemoryStoryStore()
+    tree = chat_menu(
+        corpus,
+        seed=0,
+        neural_steps=20,
+        mlp_steps=20,
+        gpt_steps=20,
+        stories=stories,
+        session=lambda: live_story,
+    )()
+
+    (save_story,) = tree["sessions"]
+    assert save_story.name == "save story"
+    assert save_story.fields[0].name == "name"
+
+    command = save_story.bake({"name": "first"})
+    assert command.build() is live_story
+    assert stories.load("first") == StorySave(
+        ids=tuple(
+            live_story._model.tokenizer.encode("ab")
+            + live_story._model.tokenizer.encode("b"),
+        ),
+        origins=("entered", "entered", "generated"),
+        checkpoint="gpt-corpus",
+    )
+
+
+def test_the_sessions_menu_loads_a_story_back(corpus, live_story):
+    stories = InMemoryStoryStore()
+    stories.save("first", live_story.to_save())
+    store = InMemoryCheckpointStore()
+    store.save("gpt-corpus", snapshot_of(live_story._model))
+    tree = chat_menu(
+        corpus,
+        seed=0,
+        neural_steps=20,
+        mlp_steps=20,
+        gpt_steps=20,
+        store=store,
+        stories=stories,
+        session=lambda: None,
+    )()
+
+    assert [command.name for command in tree["sessions"]] == ["load first"]
+    session = tree["sessions"][0].build()
+    assert session.text == "abb"
+    assert session.segments() == [("ab", "entered"), ("b", "generated")]
+    assert session.checkpoint == "gpt-corpus"
+
+
+def test_the_sessions_menu_stays_empty_without_a_story(corpus):
+    stories = InMemoryStoryStore()
+    tree = chat_menu(
+        corpus,
+        seed=0,
+        neural_steps=20,
+        mlp_steps=20,
+        gpt_steps=20,
+        stories=stories,
+        session=lambda: None,
+    )()
+
+    assert tree["sessions"] == ()
 
 
 def test_the_menu_lists_the_models(corpus):

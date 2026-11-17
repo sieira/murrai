@@ -229,6 +229,7 @@ def run_chat(
     spawn=spawn_training,
     observer=SILENT,
     load=None,
+    on_swap=None,
 ):
     chat = GhostChat(session)
     suggestions = GhostSuggestions(chat)
@@ -252,6 +253,8 @@ def run_chat(
         suggestions.forget()
         buffer.text = next_session.text
         buffer.cursor_position = len(next_session.text)
+        if on_swap is not None:
+            on_swap(next_session)
 
     def schedule_swap(name):
         with contextlib.suppress(RuntimeError):
@@ -263,7 +266,11 @@ def run_chat(
 
     def accept_form(form, values):
         remembered[form.command.name] = values
-        spawn(form.command.bake(values), status, schedule_swap)
+        command = form.command.bake(values)
+        if form.command.trains:
+            spawn(command, status, schedule_swap)
+        else:
+            swap(command.build())
         app.layout.focus(buffer)
 
     overlay = FormOverlay(
@@ -284,16 +291,19 @@ def run_chat(
 
     def picked(command):
         observer.on_event(CommandPicked(command.name))
+        if command.trains and load is None:
+            status.fail(command.name, "no load function")
+            return False
+        if isinstance(command, FormCommand):
+            open_form(command)
+            return True
         if command.trains:
-            if load is None:
-                status.fail(command.name, "no load function")
-                return False
-            if isinstance(command, FormCommand):
-                open_form(command)
-                return True
             spawn(command, status, schedule_swap)
         else:
-            swap(command.build())
+            try:
+                swap(command.build())
+            except KeyError as error:
+                status.fail(command.name, f"the model {error.args[0]} is gone")
         return False
 
     def pick_menu(command):

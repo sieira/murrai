@@ -444,6 +444,57 @@ def _training_command(
     )
 
 
+def _sessions_group(stories, store, seed, session):
+    loads = tuple(
+        Command(
+            f"load {name}",
+            "pick up this saved story",
+            partial(load_story_session, stories, store, seed, name),
+        )
+        for name in stories.names()
+    )
+    live = session() if session else None
+    save = ()
+    if live is not None:
+        description = "write this story down to load it later"
+        save = (
+            FormCommand(
+                "save story",
+                description,
+                partial(_save_story, stories, session, f"{live.checkpoint}-story"),
+                fields=(
+                    Field(
+                        "name",
+                        "name",
+                        "text",
+                        f"{live.checkpoint}-story",
+                        check="at least one character",
+                    ),
+                ),
+                bake=lambda values: Command(
+                    "save story",
+                    description,
+                    partial(_save_story, stories, session, values["name"]),
+                ),
+            ),
+        )
+    return save + loads
+
+
+def load_story_session(stories, store, seed, name):
+    save = stories.load(name)
+    model = restore(store.load(save.checkpoint))
+    return ChatSession.from_save(save, model, seed)
+
+
+def _save_story(stories, session, name):
+    live = session()
+    if live is None:
+        return None
+    stories.save(name, live.to_save())
+    return live
+
+
 def load_checkpoint_session(store, seed=0, name=None):
     if name is None:
         name = store.names()[-1]
@@ -455,6 +506,8 @@ def chat_menu(
     directory,
     seed=0,
     store=None,
+    stories=None,
+    session=None,
     neural_steps=2000,
     mlp_steps=10000,
     gpt_steps=2000,
@@ -540,6 +593,9 @@ def chat_menu(
             "new": (counted, *fresh),
             "load": loads,
             "retrain": retraining,
+            "sessions": _sessions_group(stories, store, seed, session)
+            if stories is not None
+            else (),
         }
 
     return menu

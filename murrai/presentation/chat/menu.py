@@ -252,8 +252,12 @@ def menu_tree(content, pick, about):
             MenuItem("retrain", children=retrain_items),
         ],
     )
+    sessions = MenuItem(
+        "Sessions",
+        children=[item(entry) for entry in content["sessions"]],
+    )
     return [
         models,
-        MenuItem("Sessions"),
+        sessions,
         MenuItem("About", children=[MenuItem("about", handler=about)]),
     ]

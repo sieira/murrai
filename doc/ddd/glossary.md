@@ -81,6 +81,10 @@ presentation.md; it binds the same way.
   command runs in the background (composition wires the concrete ones).
 - story: the chat's shared text; the characters the user typed plus the
   characters the model generated, in order.
+- session save: the story written down to load later (ADR-0010); a
+  `StorySave` holds the story's token ids in order, one origin per id
+  (the colors), and the checkpoint's name. The store keeps one JSON
+  file per save.
 - turn: one exchange; the user types their part and presses Enter to
   commit it (Tab takes the model's offered ghost instead; shift+enter or
   alt+enter writes a line break instead), then the model answers by

@@ -3,6 +3,7 @@ from dataclasses import dataclass
 from typing import Protocol, runtime_checkable
 
 from murrai.application.checkpoints import CheckpointRecord, Snapshot
+from murrai.application.sessions import StorySave
 from murrai.domain.tokenizer import TokenizerEncoderDecoder
 
 
@@ -41,5 +42,13 @@ class CheckpointStore(Protocol):
     def load(self, name: str) -> Snapshot: ...
 
     def record(self, name: str) -> CheckpointRecord: ...
+
+    def names(self) -> list[str]: ...
+
+
+class StoryStore(Protocol):
+    def save(self, name: str, save: StorySave) -> None: ...
+
+    def load(self, name: str) -> StorySave: ...
 
     def names(self) -> list[str]: ...

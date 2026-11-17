@@ -25,7 +25,7 @@ def _state_to_cpu(state):
     return state
 
 
-def _written_atomically(root, path, write):
+def written_atomically(root, path, write):
     root.mkdir(parents=True, exist_ok=True)
     descriptor, temp = tempfile.mkstemp(dir=root, suffix=".tmp")
     try:
@@ -55,7 +55,7 @@ class FileCheckpointStore:
             merges=snapshot.merges,
             state=_state_to_cpu(snapshot.state),
         )
-        _written_atomically(
+        written_atomically(
             self._root,
             self._path(name),
             lambda file: torch.save(
@@ -88,7 +88,7 @@ class FileCheckpointStore:
                 data["final_loss"] = record.gradient.final_loss
         if record.held_out_perplexity is not None:
             data["held_out_perplexity"] = record.held_out_perplexity
-        _written_atomically(
+        written_atomically(
             self._root,
             self._record_path(name),
             lambda file: file.write(json.dumps(data).encode()),

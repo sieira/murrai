@@ -71,6 +71,7 @@ def test_the_models_menu_lists_new_load_and_retrain():
         ),
         "load": (Command("load gpt-corpus", "saved yesterday", lambda: None),),
         "retrain": (_leaf("retrain gpt", continues=True),),
+        "sessions": (),
     }
     picked = []
     opened = []
@@ -99,6 +100,36 @@ def test_the_models_menu_lists_new_load_and_retrain():
     assert items[2].text == "About"
     items[2].children[0].handler()
     assert opened == [True]
+
+
+def test_the_sessions_menu_lists_the_save_and_each_story():
+    tree = {
+        "new": (),
+        "load": (),
+        "retrain": (),
+        "sessions": (
+            FormCommand(
+                "save story",
+                "write this story down to load it later",
+                lambda: None,
+                fields=(),
+                bake=lambda values: None,
+            ),
+            Command("load first", "pick up this saved story", lambda: None),
+        ),
+    }
+    picked = []
+
+    items = menu_tree(tree, pick=picked.append, about=lambda: None)
+
+    sessions = items[1]
+    assert sessions.text == "Sessions"
+    assert [item.text for item in sessions.children] == [
+        "save story · write this story down to load it later",
+        "load first · pick up this saved story",
+    ]
+    sessions.children[1].handler()
+    assert picked[0].name == "load first"
 
 
 def test_without_menu_content_the_bar_keeps_only_sessions_and_about():

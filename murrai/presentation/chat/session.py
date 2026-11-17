@@ -2,6 +2,7 @@ import itertools
 import random
 
 from murrai.application.ports import LanguageModel
+from murrai.application.sessions import StorySave
 
 
 class ChatSession:
@@ -11,6 +12,20 @@ class ChatSession:
         self._ids: list[int] = []
         self._origins: list[str] = []
         self.checkpoint = checkpoint
+
+    @classmethod
+    def from_save(cls, save: StorySave, model: LanguageModel, seed: int):
+        session = cls(model, seed, checkpoint=save.checkpoint)
+        session._ids = list(save.ids)
+        session._origins = list(save.origins)
+        return session
+
+    def to_save(self) -> StorySave:
+        return StorySave(
+            ids=tuple(self._ids),
+            origins=tuple(self._origins),
+            checkpoint=self.checkpoint,
+        )
 
     @property
     def kind(self) -> str:

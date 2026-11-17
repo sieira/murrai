@@ -103,7 +103,7 @@ def test_picking_a_command_publishes_the_pick_and_the_swap():
         pipe.send_text("\x10\x1b[B\x1b[C\r\x03")
         run_chat(
             _session(),
-            menu=lambda: {"new": commands, "load": (), "retrain": ()},
+            menu=lambda: {"new": commands, "load": (), "retrain": (), "sessions": ()},
             input=pipe,
             output=DummyOutput(),
             observer=log,

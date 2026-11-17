@@ -32,7 +32,7 @@ def test_ctrl_p_focuses_the_menu_and_swaps_the_session():
         pipe.send_text("\x10\x1b[B\x1b[C\r\x03")
         returned = run_chat(
             _session(),
-            menu=lambda: {"new": (command,), "load": (), "retrain": ()},
+            menu=lambda: {"new": (command,), "load": (), "retrain": (), "sessions": ()},
             input=pipe,
             output=DummyOutput(),
         )
@@ -52,7 +52,7 @@ def test_arrows_choose_which_command_runs():
         pipe.send_text("\x10\x1b[B\x1b[C\x1b[B\r\x03")
         run_chat(
             _session(),
-            menu=lambda: {"new": commands, "load": (), "retrain": ()},
+            menu=lambda: {"new": commands, "load": (), "retrain": (), "sessions": ()},
             input=pipe,
             output=DummyOutput(),
         )
@@ -64,7 +64,7 @@ def test_ctrl_p_without_a_command_keeps_the_session():
     session = _session()
 
     def empty():
-        return {"new": (), "load": (), "retrain": ()}
+        return {"new": (), "load": (), "retrain": (), "sessions": ()}
 
     with create_pipe_input() as pipe:
         pipe.send_text("\x10\x03")
@@ -94,7 +94,7 @@ def test_the_command_menu_rebuilds_each_time_it_opens():
                     lambda: trained,
                 ),
             )
-        return {"new": new, "load": loads, "retrain": ()}
+        return {"new": new, "load": loads, "retrain": (), "sessions": ()}
 
     with create_pipe_input() as pipe:
         pipe.send_text("\x10\x1b[B\x1b[C\r")
@@ -128,6 +128,7 @@ def test_a_chat_without_a_model_opens_with_the_menu_active():
             ),
             "load": (),
             "retrain": (),
+            "sessions": (),
         }
 
     output = _ScreenOutput()
@@ -176,6 +177,7 @@ def test_the_menu_loads_a_checkpoint():
                     ),
                 ),
                 "retrain": (),
+                "sessions": (),
             },
             input=pipe,
             output=output,
@@ -242,6 +244,7 @@ def test_picking_retrain_from_the_menu_pins_the_items_own_checkpoint(monkeypatch
                         pin={START_FROM: "gpt-corpus"},
                     ),
                 ),
+                "sessions": (),
             },
             input=pipe,
             output=output,
@@ -265,7 +268,7 @@ def test_a_training_command_without_a_load_function_fails_loudly():
         pipe.send_text("\x10\x1b[B\x1b[C\r\x03")
         run_chat(
             _session(),
-            menu=lambda: {"new": (command,), "load": (), "retrain": ()},
+            menu=lambda: {"new": (command,), "load": (), "retrain": (), "sessions": ()},
             input=pipe,
             output=DummyOutput(),
             spawn=spawn,
@@ -305,7 +308,7 @@ def test_a_picked_training_command_swaps_in_the_loaded_checkpoint():
         pipe.send_text("\x03")
         returned = run_chat(
             first,
-            menu=lambda: {"new": (command,), "load": (), "retrain": ()},
+            menu=lambda: {"new": (command,), "load": (), "retrain": (), "sessions": ()},
             input=pipe,
             output=DummyOutput(),
             spawn=spawn,
@@ -365,6 +368,7 @@ def test_the_screen_answers_keys_while_a_training_builds():
                     ),
                 ),
                 "retrain": (),
+                "sessions": (),
             },
             input=pipe,
             output=DummyOutput(),
@@ -531,6 +535,89 @@ def _form_chat(menu, spawn, log=None, load=None, checkpoint=None):
     return run
 
 
+def _save_command(values):
+    ACCEPTED.clear()
+    ACCEPTED.update(values)
+    return Command(
+        "save story",
+        "knobs",
+        lambda: _form_session(),
+        trains=False,
+    )
+
+
+def test_picking_save_story_opens_the_form_and_accepting_runs_it_synchronously():
+    spawned = []
+    log = ChatLog(clock=lambda: 0.0)
+    command = FormCommand(
+        "save story",
+        "write this story down to load it later",
+        lambda: _form_session(),
+        fields=(
+            Field(
+                "name",
+                "name",
+                "text",
+                "gpt-corpus-story",
+                check="at least one character",
+            ),
+        ),
+        bake=lambda values: _save_command(values),
+    )
+
+    def spawn(cmd, status, on_built):
+        spawned.append(cmd)
+
+    with create_pipe_input() as pipe:
+        pipe.send_text("\x10\x1b[C\x1b[B\r")
+        time.sleep(0.2)
+        pipe.send_text("\r")
+        time.sleep(0.2)
+        pipe.send_text("\x03")
+        _form_chat(
+            lambda: {"new": (), "load": (), "retrain": (), "sessions": (command,)},
+            spawn,
+            log,
+        )(pipe)
+
+    assert spawned == []
+    assert ACCEPTED == {"name": "gpt-corpus-story"}
+    assert "[form] opened save story" in [line.split(" ", 1)[1] for line in log.lines]
+
+
+def test_a_swap_tells_the_swap_listener():
+    swapped = []
+
+    def feeder(pipe):
+        time.sleep(0.5)
+        for key in ("\x1b[20~", "\x1b[B", "\x1b[B", "\x1b[C", "\r"):
+            pipe.send_text(key)
+            time.sleep(0.3)
+        time.sleep(0.4)
+        pipe.send_text("\x03")
+
+    with create_pipe_input() as pipe:
+        thread = threading.Thread(target=feeder, args=(pipe,))
+        thread.start()
+        run_chat(
+            _session(),
+            menu=lambda: {
+                "new": (),
+                "load": (Command("load other", "saved", lambda: _session()),),
+                "retrain": (),
+                "sessions": (),
+            },
+            input=pipe,
+            output=_ScreenOutput(),
+            load=lambda name: _session(),
+            on_swap=swapped.append,
+        )
+        thread.join()
+
+    assert len(swapped) == 1
+    assert isinstance(swapped[0], ChatSession)
+
+
 def test_picking_a_retrain_command_opens_a_form_and_escape_returns_to_the_editor():
     spawned = []
     log = ChatLog(clock=lambda: 0.0)
@@ -549,7 +636,11 @@ def test_picking_a_retrain_command_opens_a_form_and_escape_returns_to_the_editor
         pipe.send_text("\x10")
         time.sleep(0.2)
         pipe.send_text("\x03")
-        _form_chat(lambda: {"new": (command,), "load": (), "retrain": ()}, spawn, log)(
+        _form_chat(
+            lambda: {"new": (command,), "load": (), "retrain": (), "sessions": ()},
+            spawn,
+            log,
+        )(
             pipe,
         )
 
@@ -576,7 +667,12 @@ def test_the_form_spawns_the_command_with_the_edited_values():
         time.sleep(0.2)
         pipe.send_text("\x03")
         _form_chat(
-            lambda: {"new": (_form_command(),), "load": (), "retrain": ()},
+            lambda: {
+                "new": (_form_command(),),
+                "load": (),
+                "retrain": (),
+                "sessions": (),
+            },
             spawn,
         )(pipe)
 
@@ -603,7 +699,12 @@ def test_the_form_remembers_edited_values_for_the_session():
         time.sleep(0.2)
         pipe.send_text("\x03")
         _form_chat(
-            lambda: {"new": (_form_command(),), "load": (), "retrain": ()},
+            lambda: {
+                "new": (_form_command(),),
+                "load": (),
+                "retrain": (),
+                "sessions": (),
+            },
             spawn,
         )(pipe)
 
@@ -629,7 +730,12 @@ def test_a_bad_value_keeps_the_form_open_and_spawns_nothing():
         time.sleep(0.2)
         pipe.send_text("\x03")
         _form_chat(
-            lambda: {"new": (_form_command(),), "load": (), "retrain": ()},
+            lambda: {
+                "new": (_form_command(),),
+                "load": (),
+                "retrain": (),
+                "sessions": (),
+            },
             spawn,
             log,
         )(pipe)
@@ -667,6 +773,7 @@ def test_the_retrain_form_leaves_the_shape_to_the_savegame():
                         pin={START_FROM: "char-gpt"},
                     ),
                 ),
+                "sessions": (),
             },
             spawn,
         )(pipe)
@@ -686,7 +793,12 @@ def test_a_form_command_without_a_load_function_fails_at_the_pick():
         pipe.send_text("\x03")
         run_chat(
             _form_session(),
-            menu=lambda: {"new": (_form_command(),), "load": (), "retrain": ()},
+            menu=lambda: {
+                "new": (_form_command(),),
+                "load": (),
+                "retrain": (),
+                "sessions": (),
+            },
             input=pipe,
             output=DummyOutput(),
             spawn=spawn,
@@ -696,6 +808,39 @@ def test_a_form_command_without_a_load_function_fails_at_the_pick():
     assert [line.split(" ", 1)[1] for line in log.lines] == [
         "[command] picked retrain x",
         "[train] retrain x failed: no load function",
+    ]
+
+
+def test_a_story_load_whose_model_is_gone_fails_at_the_pick():
+    log = ChatLog(clock=lambda: 0.0)
+
+    def broken():
+        raise KeyError("gpt-corpus")
+
+    with create_pipe_input() as pipe:
+        pipe.send_text("\x1b[20~")
+        time.sleep(0.3)
+        for key in ("\x1b[B", "\x1b[B", "\x1b[C", "\r"):
+            pipe.send_text(key)
+            time.sleep(0.2)
+        time.sleep(0.2)
+        pipe.send_text("\x03")
+        run_chat(
+            _form_session(),
+            menu=lambda: {
+                "new": (),
+                "load": (Command("load hello-story", "saved", broken),),
+                "retrain": (),
+                "sessions": (),
+            },
+            input=pipe,
+            output=DummyOutput(),
+            observer=log,
+        )
+
+    assert [line.split(" ", 1)[1] for line in log.lines] == [
+        "[command] picked load hello-story",
+        "[train] load hello-story failed: the model gpt-corpus is gone",
     ]
 
 
@@ -720,7 +865,12 @@ def test_the_right_arrow_moves_to_the_next_choice():
         time.sleep(0.2)
         pipe.send_text("\x03")
         _form_chat(
-            lambda: {"new": (_form_command(fields),), "load": (), "retrain": ()},
+            lambda: {
+                "new": (_form_command(fields),),
+                "load": (),
+                "retrain": (),
+                "sessions": (),
+            },
             spawn,
         )(pipe)
 
@@ -750,7 +900,12 @@ def test_the_left_arrow_moves_to_the_previous_choice():
         time.sleep(0.2)
         pipe.send_text("\x03")
         _form_chat(
-            lambda: {"new": (_form_command(fields),), "load": (), "retrain": ()},
+            lambda: {
+                "new": (_form_command(fields),),
+                "load": (),
+                "retrain": (),
+                "sessions": (),
+            },
             spawn,
         )(pipe)
 

@@ -1,6 +1,7 @@
 import pytest
 
 from murrai.application.runs import train_neural_bigram
+from murrai.application.sessions import StorySave
 from murrai.domain.bigram import Bigram
 from murrai.domain.tokenizer import TokenizerEncoderDecoder
 from murrai.presentation.chat import ChatSession
@@ -26,6 +27,21 @@ def test_truncate_rolls_the_story_back(model):
     session.truncate(2)
     assert session.text == "ab"
     assert session.segments() == [("ab", "entered")]
+
+
+def test_a_session_rebuilds_from_a_save(model):
+    tokenizer = model.tokenizer
+    save = StorySave(
+        ids=tuple(tokenizer.encode("ab") + tokenizer.encode("b")),
+        origins=("entered", "entered", "generated"),
+        checkpoint="gpt-corpus",
+    )
+
+    session = ChatSession.from_save(save, model, seed=0)
+
+    assert session.checkpoint == "gpt-corpus"
+    assert session.text == "ab" + "b"
+    assert session.segments() == [("ab", "entered"), ("b", "generated")]
 
 
 def test_text_absent_from_the_corpus_extends_without_corrupting(model):

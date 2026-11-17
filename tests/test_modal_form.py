@@ -156,6 +156,7 @@ def _chat_screen(keys):
                         "new": (_form_command(),),
                         "load": (),
                         "retrain": (),
+                        "sessions": (),
                     },
                     input=pipe,
                     output=output,
