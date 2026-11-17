@@ -1,3 +1,5 @@
+from importlib import metadata
+
 from prompt_toolkit.data_structures import Point
 from prompt_toolkit.layout.containers import Window, to_container
 from prompt_toolkit.layout.mouse_handlers import MouseHandlers
@@ -31,7 +33,25 @@ def test_the_popover_is_exactly_as_wide_as_its_text_and_its_frame():
 
     width = dialog.container.preferred_width(100).preferred
 
-    assert width == len(ABOUT_TEXT) + 2
+    assert width == max(len(line) for line in ABOUT_TEXT.splitlines()) + 2
+
+
+def test_the_about_text_says_what_murrai_is():
+    assert "a conversational language model" in ABOUT_TEXT
+    assert "built from scratch on one machine" in ABOUT_TEXT
+
+
+def test_the_about_text_carries_the_version():
+    assert metadata.version("murrai") in ABOUT_TEXT
+
+
+def test_the_about_text_names_the_gpt_2_small_target():
+    assert "GPT-2-small" in ABOUT_TEXT
+    assert "ADR-0004" in ABOUT_TEXT
+
+
+def test_the_about_text_names_the_license():
+    assert "GPL-3.0-only" in ABOUT_TEXT
 
 
 def painted_shadow(container, box_width, box_height):
