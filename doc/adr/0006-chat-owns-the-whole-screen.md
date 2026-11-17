@@ -30,6 +30,11 @@ together.
   lands. A chat with no trained model opens with the panel open.
 - A command is one selectable action. Composition builds the list of
   commands; presentation only shows them.
+- A menu bar sits on the top line, its dropdowns floating over the
+  story like the form. Presentation builds the menu tree; composition
+  supplies the actions its items run.
+- Mouse reporting is on, so clicks reach the screen. In most terminals,
+  selecting text then needs Option (macOS) or Shift.
 
 ## Consequences
 

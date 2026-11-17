@@ -7,9 +7,10 @@ from prompt_toolkit.output import DummyOutput
 from murrai.application.ports import TrainingEvent
 from murrai.domain.bigram import Bigram
 from murrai.domain.tokenizer import TokenizerEncoderDecoder
-from murrai.presentation.chat import ChatSession, Command, run_chat
+from murrai.presentation.chat import ChatSession, Command, repl, run_chat
 from murrai.presentation.chat.form import Field
 from murrai.presentation.chat.lanes import ChatLog
+from murrai.presentation.chat.menu import AboutPopover
 from murrai.presentation.chat.panel import FormCommand
 from murrai.presentation.chat.repl import GhostChat, GhostSuggestions
 
@@ -660,6 +661,169 @@ def _wait_for_row(output, text, seconds=10):
                 return large[-1]
         time.sleep(0.05)
     raise AssertionError(f"no row {text!r} showed up on the screen")
+
+
+def _run_with_popover_spy(monkeypatch, keys):
+    popovers = []
+
+    class Spy(AboutPopover):
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+            popovers.append(self)
+
+    monkeypatch.setattr(repl, "AboutPopover", Spy)
+    session = _session()
+    output = _ScreenOutput()
+
+    def feeder(pipe):
+        time.sleep(0.5)
+        for chunk in keys:
+            pipe.send_text(chunk)
+            time.sleep(0.3)
+        pipe.send_text("\x03")
+
+    with create_pipe_input() as pipe:
+        thread = threading.Thread(target=feeder, args=(pipe,))
+        thread.start()
+        run_chat(session, commands=[], input=pipe, output=output)
+        thread.join()
+    return popovers[0]
+
+
+F9 = "\x1b[20~"
+ABOUT_ITEM = "\x1b[C\x1b[C\x1b[B"
+
+
+def test_f9_leaves_an_open_about_popover_alone(monkeypatch):
+    popover = _run_with_popover_spy(
+        monkeypatch,
+        [F9, ABOUT_ITEM, "\r", F9, "\x1b"],
+    )
+
+    assert popover.visible is False
+
+
+def test_space_picks_the_highlighted_menu_item(monkeypatch):
+    popover = _run_with_popover_spy(monkeypatch, [F9, ABOUT_ITEM, " "])
+
+    assert popover.visible is True
+
+
+def test_f9_opens_the_menu_bar_arrows_walk_and_about_picks():
+    session = _session()
+    output = _ScreenOutput()
+
+    def feeder(pipe):
+        pipe.send_text("\x1b[20~")
+        time.sleep(0.3)
+        pipe.send_text("\x1b[C\x1b[C\x1b[B")
+        time.sleep(0.3)
+        pipe.send_text("\r")
+        time.sleep(0.3)
+        pipe.send_text("\x1b")
+        time.sleep(0.3)
+        pipe.send_text("xy\r")
+        time.sleep(0.3)
+        pipe.send_text("\x03")
+
+    with create_pipe_input() as pipe:
+        thread = threading.Thread(target=feeder, args=(pipe,))
+        thread.start()
+        run_chat(session, commands=[], input=pipe, output=output)
+        thread.join()
+
+    assert any("built from scratch" in snapshot for snapshot in output.snapshots)
+    assert session.text == "xy"
+
+
+def test_ctrl_c_inside_the_menu_bar_quits_the_chat():
+    session = _session()
+    output = _ScreenOutput()
+    done = []
+
+    with create_pipe_input() as pipe:
+
+        def chat():
+            run_chat(session, commands=[], input=pipe, output=output)
+            done.append(1)
+
+        thread = threading.Thread(target=chat)
+        thread.start()
+        time.sleep(0.5)
+        pipe.send_text("\x1b[20~")
+        time.sleep(0.3)
+        pipe.send_text("\x03")
+        thread.join(timeout=10)
+        if thread.is_alive():
+            pipe.send_text("\x03")
+            thread.join(timeout=5)
+            raise AssertionError("ctrl-c inside the menu bar did not quit")
+    assert done == [1]
+
+
+def test_a_click_outside_the_bar_deselects_it():
+    session = _session()
+    output = _ScreenOutput()
+
+    def feeder(pipe):
+        pipe.send_text("\x1b[20~")
+        time.sleep(0.3)
+        pipe.send_text("\x1b[<0;10;4M")
+        time.sleep(0.1)
+        pipe.send_text("\x1b[<0;10;4m")
+        time.sleep(0.3)
+        pipe.send_text("xy\r")
+        time.sleep(0.3)
+        pipe.send_text("\x03")
+
+    with create_pipe_input() as pipe:
+        thread = threading.Thread(target=feeder, args=(pipe,))
+        thread.start()
+        run_chat(session, commands=[], input=pipe, output=output)
+        thread.join()
+
+    assert session.text == "xy"
+    assert not any("built from scratch" in snapshot for snapshot in output.snapshots)
+
+
+def test_f9_keeps_typing_out_of_the_editor_while_the_bar_is_open():
+    session = _session()
+
+    def feeder(pipe):
+        pipe.send_text("\x1b[20~")
+        time.sleep(0.3)
+        pipe.send_text("\t")
+        time.sleep(0.3)
+        pipe.send_text("\x03")
+
+    with create_pipe_input() as pipe:
+        thread = threading.Thread(target=feeder, args=(pipe,))
+        thread.start()
+        run_chat(session, commands=[], input=pipe, output=DummyOutput())
+        thread.join()
+
+    assert session.text == ""
+
+
+def test_a_second_f9_closes_the_bar_and_returns_to_the_editor():
+    session = _session()
+
+    def feeder(pipe):
+        pipe.send_text("\x1b[20~")
+        time.sleep(0.3)
+        pipe.send_text("\x1b[20~")
+        time.sleep(0.3)
+        pipe.send_text("\t")
+        time.sleep(0.3)
+        pipe.send_text("\x03")
+
+    with create_pipe_input() as pipe:
+        thread = threading.Thread(target=feeder, args=(pipe,))
+        thread.start()
+        run_chat(session, commands=[], input=pipe, output=DummyOutput())
+        thread.join()
+
+    assert len(session.text) > len("abab")
 
 
 def test_the_story_fills_the_box_with_one_row_per_line():

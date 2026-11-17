@@ -4,6 +4,9 @@ The ubiquitous language. Identifiers in code, tests, and docs use these
 terms. Entries are added at decision time, one plain line each. This file
 binds (AGENTS.md header).
 
+The words of the chat screen (menu bar, dropdown, popover) live in
+presentation.md; it binds the same way.
+
 ## Numbers and structures
 
 - tensor: a multi-dimensional array of numbers; everything in murrAI is one.
