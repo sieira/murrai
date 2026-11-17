@@ -69,9 +69,7 @@ class FileCheckpointStore:
                     "shape": vars(snapshot.shape),
                     "weights": snapshot.weights,
                     "run": (
-                        _state_to_cpu(snapshot.run.to_dict())
-                        if snapshot.run
-                        else None
+                        _state_to_cpu(snapshot.run.to_dict()) if snapshot.run else None
                     ),
                 },
                 file,

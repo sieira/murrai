@@ -369,7 +369,11 @@ class StreakRun(RunState):
 def test_the_store_saves_the_run_state_in_the_value_object_s_own_form(tmp_path):
     run = StreakRun(**RunState.fresh(0.5).to_dict(), streak=7)
     snapshot = Snapshot(
-        kind="transformer", merges=[], shape=Shape(), weights={}, run=run
+        kind="transformer",
+        merges=[],
+        shape=Shape(),
+        weights={},
+        run=run,
     )
     store = FileCheckpointStore(tmp_path / "checkpoints")
     store.save("streak", snapshot)
