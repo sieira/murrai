@@ -11,9 +11,9 @@ from prompt_toolkit.widgets import Dialog, MenuContainer
 from murrai.domain.bigram import Bigram
 from murrai.domain.tokenizer import TokenizerEncoderDecoder
 from murrai.presentation.chat import ChatSession, run_chat
+from murrai.presentation.chat.commands import Command, FormCommand
 from murrai.presentation.chat.form import Field, FormOverlay, TrainingForm
 from murrai.presentation.chat.menu import AboutPopover
-from murrai.presentation.chat.panel import Command, CommandPanel, FormCommand
 from murrai.presentation.chat.repl import GhostChat, chat_body
 from murrai.presentation.chat.status import TrainingStatus
 
@@ -56,8 +56,7 @@ def _form_command(fields=None):
     )
 
 
-def _layout_parts(command):
-    panel = CommandPanel([command])
+def _layout_parts():
     focused = []
     overlay = FormOverlay(
         on_accept=lambda form, values: None,
@@ -69,8 +68,6 @@ def _layout_parts(command):
         story=Window(),
         editor=Window(),
         die=Window(),
-        panel_list=Window(),
-        panel=panel,
         status=TrainingStatus(),
         chat=GhostChat(None),
         status_click=lambda event: None,
@@ -86,18 +83,17 @@ def _layout_parts(command):
 
 
 def test_the_form_is_a_float_over_the_chat_and_not_a_column():
-    layout, overlay, focused = _layout_parts(_form_command())
+    layout, overlay, focused = _layout_parts()
 
     root = layout.container
     assert isinstance(root, FloatContainer)
     assert overlay.float in root.floats
 
     rows = root.content.get_children()
-    assert len(rows) == 2
-    body_rows = rows[1].get_children()
-    assert len(body_rows) == 2
-    columns = body_rows[0].get_children()
-    assert len(columns) == 2
+    body = rows[1].get_children()
+    assert len(body) == 2
+    panes = body[0].get_children()
+    assert len(panes) == 2
 
     float_content = next(f.content for f in root.floats if f is overlay.float)
     assert float_content is overlay.container
@@ -156,7 +152,11 @@ def _chat_screen(keys):
             try:
                 box["session"] = run_chat(
                     _story_session(),
-                    commands=[_form_command()],
+                    menu=lambda: {
+                        "new": (_form_command(),),
+                        "load": (),
+                        "retrain": (),
+                    },
                     input=pipe,
                     output=output,
                     load=lambda name: _story_session(),
@@ -179,7 +179,9 @@ def _chat_screen(keys):
 
 
 def test_the_open_form_floats_a_titled_box_over_the_story():
-    output = _chat_screen([("\x10", 0.3), ("\r", 0.3)])
+    output = _chat_screen(
+        [("\x10", 0.3), ("\x1b[B", 0.3), ("\x1b[C", 0.3), ("\r", 0.3)],
+    )
 
     rows = _screens(output)[-1]
     screen = _text(rows)
@@ -198,7 +200,9 @@ def test_the_open_form_floats_a_titled_box_over_the_story():
 def test_closing_the_form_leaves_no_box_behind():
     # a lone escape is delivered only after the parser flush (0.1s) plus the
     # key processor timeout (0.1s) have both passed
-    output = _chat_screen([("\x10", 0.3), ("\r", 0.3), ("\x1b", 1.6)])
+    output = _chat_screen(
+        [("\x10", 0.3), ("\x1b[B", 0.3), ("\x1b[C", 0.3), ("\r", 0.3), ("\x1b", 1.6)],
+    )
 
     screens = _screens(output)
     assert any("retrain x" in _text(rows) for rows in screens)

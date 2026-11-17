@@ -9,20 +9,6 @@ class ChatEvent:
 
 
 @dataclass(frozen=True)
-class PanelOpened(ChatEvent):
-    count: int
-
-    def lane_line(self):
-        return f"[panel] opened {self.count} commands"
-
-
-@dataclass(frozen=True)
-class PanelClosed(ChatEvent):
-    def lane_line(self):
-        return "[panel] closed"
-
-
-@dataclass(frozen=True)
 class CommandPicked(ChatEvent):
     name: str
 

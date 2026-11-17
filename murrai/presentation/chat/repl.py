@@ -5,12 +5,11 @@ from prompt_toolkit.auto_suggest import AutoSuggest, Suggestion
 from prompt_toolkit.cursor_shapes import CursorShape
 from prompt_toolkit.filters import Condition
 from prompt_toolkit.key_binding import KeyBindings
-from prompt_toolkit.layout import Dimension, HSplit, Layout, VSplit, Window
-from prompt_toolkit.layout.containers import ConditionalContainer
-from prompt_toolkit.layout.controls import FormattedTextControl
+from prompt_toolkit.layout import Dimension, HSplit, Layout, Window
 from prompt_toolkit.styles import Style
 from prompt_toolkit.widgets import Frame, TextArea
 
+from murrai.presentation.chat.commands import FormCommand
 from murrai.presentation.chat.form import FormOverlay, TrainingForm
 from murrai.presentation.chat.lanes import (
     SILENT,
@@ -23,12 +22,6 @@ from murrai.presentation.chat.menu import (
     MenuBar,
     menu_tree,
 )
-from murrai.presentation.chat.panel import (
-    CommandPanel,
-    FormCommand,
-    description_fragments,
-    list_fragments,
-)
 from murrai.presentation.chat.status import (
     TrainingStatus,
     spawn_training,
@@ -39,7 +32,6 @@ GHOST_CHARS = 20
 TOP = 5
 STORY_TAIL_LINES = 20
 ESC_FLUSH = 0.1
-PANEL_WIDTH = 36
 BREAK = "↵"
 CURSOR_GREEN = "\x1b]12;#00ff00\x07"
 CURSOR_RESET = "\x1b]112\x07"
@@ -197,34 +189,10 @@ def status_line(status, model_kind=None):
         if fragments:
             fragments.append(("class:hint", " │ "))
         fragments.extend(runs)
-    return fragments or [("class:hint", "ctrl-p commands")]
+    return fragments or [("class:hint", "ctrl-p menu")]
 
 
-def chat_body(
-    story,
-    editor,
-    die,
-    panel_list,
-    panel,
-    status,
-    chat,
-    status_click,
-):
-    panel_column = HSplit(
-        [
-            Frame(panel_list, title="commands", height=Dimension(weight=TOP_WEIGHT)),
-            Frame(
-                Window(
-                    FormattedTextControl(
-                        lambda: description_fragments(panel, PANEL_WIDTH - 2),
-                    ),
-                ),
-                title="about",
-                height=Dimension(weight=BOTTOM_WEIGHT),
-            ),
-        ],
-        width=PANEL_WIDTH,
-    )
+def chat_body(story, editor, die, status, chat, status_click):
     status_control = ClickableFormattedText(
         on_click=status_click,
         text=lambda: status_line(
@@ -234,25 +202,13 @@ def chat_body(
     )
     return HSplit(
         [
-            VSplit(
+            HSplit(
                 [
-                    HSplit(
-                        [
-                            Frame(
-                                story,
-                                title="murrAI",
-                                height=Dimension(weight=TOP_WEIGHT),
-                            ),
-                            Frame(
-                                HSplit([editor, die]),
-                                title="write",
-                                height=Dimension(weight=BOTTOM_WEIGHT),
-                            ),
-                        ],
-                    ),
-                    ConditionalContainer(
-                        panel_column,
-                        Condition(lambda: panel.visible),
+                    Frame(story, title="murrAI", height=Dimension(weight=TOP_WEIGHT)),
+                    Frame(
+                        HSplit([editor, die]),
+                        title="write",
+                        height=Dimension(weight=BOTTOM_WEIGHT),
                     ),
                 ],
             ),
@@ -267,7 +223,6 @@ def chat_body(
 
 def run_chat(
     session=None,
-    commands=(),
     menu=None,
     input=None,
     output=None,
@@ -278,7 +233,6 @@ def run_chat(
     chat = GhostChat(session)
     suggestions = GhostSuggestions(chat)
     status = TrainingStatus(observer=observer)
-    panel = CommandPanel(commands, observer)
     remembered: dict[str, dict] = {}
 
     editor = TextArea(
@@ -376,58 +330,24 @@ def run_chat(
     def _(event):
         buffer.insert_text("\n")
 
-    panel_keys = KeyBindings()
-
-    @panel_keys.add("down")
-    def _(event):
-        panel.move(1)
-
-    @panel_keys.add("up")
-    def _(event):
-        panel.move(-1)
-
-    @panel_keys.add("enter")
-    def _(event):
-        command = panel.current
-        if command is None:
-            return
-        panel.close()
-        if not picked(command):
-            event.app.layout.focus(buffer)
-
     global_keys = KeyBindings()
-
-    @global_keys.add("c-p")
-    def _(event):
-        if panel.visible:
-            panel.close()
-            event.app.layout.focus(buffer)
-        elif overlay.visible:
-            return
-        else:
-            panel.open()
-            event.app.layout.focus(panel_list)
-
-    @global_keys.add("escape", filter=Condition(lambda: panel.visible))
-    def _(event):
-        panel.close()
-        event.app.layout.focus(buffer)
-
-    @global_keys.add("c-c")
-    def _(event):
-        event.app.exit()
 
     def menu_focused():
         return app.layout.current_window == menu_bar.window
 
+    @global_keys.add("c-p")
     @global_keys.add("f9")
     def _(event):
-        if overlay.visible or about.visible or (menu is not None and panel.visible):
+        if overlay.visible or about.visible:
             return
         if menu_focused():
             event.app.layout.focus(buffer)
         else:
             event.app.layout.focus(menu_bar.window)
+
+    @global_keys.add("c-c")
+    def _(event):
+        event.app.exit()
 
     @global_keys.add("escape", filter=Condition(lambda: menu_focused()))
     def _(event):
@@ -439,7 +359,7 @@ def run_chat(
             text=lambda: (
                 story_fragments(chat.session, tail_lines=_story_tail(story))
                 if chat.session
-                else [("class:hint", "no model yet; ctrl-p opens commands")]
+                else [("class:hint", "no model yet; ctrl-p opens the menu")]
             ),
         ),
         wrap_lines=True,
@@ -451,21 +371,11 @@ def run_chat(
         ),
         height=1,
     )
-    panel_list = Window(
-        ClickableFormattedText(
-            on_click=lambda event: focus(panel_list),
-            text=lambda: list_fragments(panel),
-            focusable=True,
-            key_bindings=panel_keys,
-        ),
-    )
     menu_bar = MenuBar(
         body=chat_body(
             story=story,
             editor=editor,
             die=die,
-            panel_list=panel_list,
-            panel=panel,
             status=status,
             chat=chat,
             status_click=lambda event: focus(buffer),

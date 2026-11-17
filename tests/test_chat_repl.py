@@ -8,10 +8,10 @@ from murrai.application.ports import TrainingEvent
 from murrai.domain.bigram import Bigram
 from murrai.domain.tokenizer import TokenizerEncoderDecoder
 from murrai.presentation.chat import ChatSession, Command, repl, run_chat
+from murrai.presentation.chat.commands import FormCommand
 from murrai.presentation.chat.form import START_FROM, Field
 from murrai.presentation.chat.lanes import ChatLog
 from murrai.presentation.chat.menu import AboutPopover
-from murrai.presentation.chat.panel import FormCommand
 from murrai.presentation.chat.repl import GhostChat, GhostSuggestions
 
 
@@ -19,22 +19,20 @@ def _session(text="abab"):
     return ChatSession(Bigram.fit(text, TokenizerEncoderDecoder()), 0)
 
 
-def test_ctrl_p_opens_the_command_menu_and_swaps_the_session():
+def test_ctrl_p_focuses_the_menu_and_swaps_the_session():
     built = []
     second = _session("baba")
-    commands = [
-        Command(
-            "counted bigram",
-            "odds tallied straight from the corpus",
-            lambda: (built.append(1), second)[1],
-        ),
-    ]
+    command = Command(
+        "counted bigram",
+        "odds tallied straight from the corpus",
+        lambda: (built.append(1), second)[1],
+    )
 
     with create_pipe_input() as pipe:
-        pipe.send_text("\x10\r\x03")
+        pipe.send_text("\x10\x1b[B\x1b[C\r\x03")
         returned = run_chat(
             _session(),
-            commands=commands,
+            menu=lambda: {"new": (command,), "load": (), "retrain": ()},
             input=pipe,
             output=DummyOutput(),
         )
@@ -45,23 +43,32 @@ def test_ctrl_p_opens_the_command_menu_and_swaps_the_session():
 
 def test_arrows_choose_which_command_runs():
     built = []
-    commands = [
+    commands = (
         Command("first", "one", lambda: (built.append("first"), _session())[1]),
         Command("second", "two", lambda: (built.append("second"), _session())[1]),
-    ]
+    )
 
     with create_pipe_input() as pipe:
-        pipe.send_text("\x10\x1b[B\r\x03")
-        run_chat(_session(), commands=commands, input=pipe, output=DummyOutput())
+        pipe.send_text("\x10\x1b[B\x1b[C\x1b[B\r\x03")
+        run_chat(
+            _session(),
+            menu=lambda: {"new": commands, "load": (), "retrain": ()},
+            input=pipe,
+            output=DummyOutput(),
+        )
 
     assert built == ["second"]
 
 
 def test_ctrl_p_without_a_command_keeps_the_session():
     session = _session()
+
+    def empty():
+        return {"new": (), "load": (), "retrain": ()}
+
     with create_pipe_input() as pipe:
         pipe.send_text("\x10\x03")
-        returned = run_chat(session, commands=[], input=pipe, output=DummyOutput())
+        returned = run_chat(session, menu=empty, input=pipe, output=DummyOutput())
 
     assert returned is session
 
@@ -70,30 +77,34 @@ def test_the_command_menu_rebuilds_each_time_it_opens():
     state = {"trained": False}
     trained = _session("baba")
 
-    def commands():
-        menu = []
-        if state["trained"]:
-            menu.append(
-                Command(
-                    "load counted-bigram",
-                    "pick up this trained model",
-                    lambda: trained,
-                ),
-            )
-        menu.append(
+    def tree():
+        new = (
             Command(
                 "retrain counted bigram",
                 "odds tallied straight from the corpus",
                 lambda: (state.update(trained=True), trained)[1],
             ),
         )
-        return menu
+        loads = ()
+        if state["trained"]:
+            loads = (
+                Command(
+                    "load counted-bigram",
+                    "pick up this trained model",
+                    lambda: trained,
+                ),
+            )
+        return {"new": new, "load": loads, "retrain": ()}
 
     with create_pipe_input() as pipe:
-        pipe.send_text("\x10\r\x10\r\x03")
+        pipe.send_text("\x10\x1b[B\x1b[C\r")
+        time.sleep(0.3)
+        pipe.send_text("\x10\x1b[B\x1b[B\x1b[C\r")
+        time.sleep(0.3)
+        pipe.send_text("\x03")
         returned = run_chat(
             _session(),
-            commands=commands,
+            menu=tree,
             input=pipe,
             output=DummyOutput(),
         )
@@ -131,7 +142,7 @@ def test_a_chat_without_a_model_opens_with_the_menu_active():
     with create_pipe_input() as pipe:
         thread = threading.Thread(target=feeder, args=(pipe,))
         thread.start()
-        returned = run_chat(None, commands=[], menu=tree, input=pipe, output=output)
+        returned = run_chat(None, menu=tree, input=pipe, output=output)
         thread.join()
 
     assert built == [1]
@@ -155,7 +166,6 @@ def test_the_menu_loads_a_checkpoint():
         thread.start()
         run_chat(
             _session(),
-            commands=[],
             menu=lambda: {
                 "new": (Command("counted bigram", "knobs", lambda: _session()),),
                 "load": (
@@ -223,7 +233,6 @@ def test_picking_retrain_from_the_menu_pins_the_items_own_checkpoint(monkeypatch
         thread.start()
         run_chat(
             session,
-            commands=[],
             menu=lambda: {
                 "new": (Command("counted bigram", "knobs", lambda: _session()),),
                 "load": (),
@@ -253,10 +262,10 @@ def test_a_training_command_without_a_load_function_fails_loudly():
         spawned.append(cmd)
 
     with create_pipe_input() as pipe:
-        pipe.send_text("\x10\r\x03")
+        pipe.send_text("\x10\x1b[B\x1b[C\r\x03")
         run_chat(
             _session(),
-            commands=[command],
+            menu=lambda: {"new": (command,), "load": (), "retrain": ()},
             input=pipe,
             output=DummyOutput(),
             spawn=spawn,
@@ -291,12 +300,12 @@ def test_a_picked_training_command_swaps_in_the_loaded_checkpoint():
 
     first = _session()
     with create_pipe_input() as pipe:
-        pipe.send_text("\x10\r")
+        pipe.send_text("\x10\x1b[B\x1b[C\r")
         time.sleep(0.3)
         pipe.send_text("\x03")
         returned = run_chat(
             first,
-            commands=[command],
+            menu=lambda: {"new": (command,), "load": (), "retrain": ()},
             input=pipe,
             output=DummyOutput(),
             spawn=spawn,
@@ -331,9 +340,9 @@ def test_the_screen_answers_keys_while_a_training_builds():
     log = ChatLog()
 
     def feeder(pipe):
-        pipe.send_text("\x10\r")
+        pipe.send_text("\x10\x1b[B\x1b[C\r")
         time.sleep(0.7)
-        pipe.send_text("\x10")
+        pipe.send_text("\x10\x1b[B\x1b[B\x1b[C\r")
         deadline = time.monotonic() + 10
         while time.monotonic() < deadline:
             if any("[session] swapped" in line for line in log.lines):
@@ -346,7 +355,17 @@ def test_the_screen_answers_keys_while_a_training_builds():
         thread.start()
         returned = run_chat(
             _session(),
-            commands=[command],
+            menu=lambda: {
+                "new": (command,),
+                "load": (
+                    Command(
+                        "load prepared",
+                        "pick up this trained model",
+                        lambda: _session(prepared.text),
+                    ),
+                ),
+                "retrain": (),
+            },
             input=pipe,
             output=DummyOutput(),
             observer=log,
@@ -356,8 +375,9 @@ def test_the_screen_answers_keys_while_a_training_builds():
 
     lines = [line.split(" ", 1)[1] for line in log.lines]
     picked = lines.index("[command] picked retrain x")
+    mid_pick = lines.index("[command] picked load prepared")
     swapped = next(i for i, line in enumerate(lines) if line == "[session] swapped")
-    assert lines[picked:swapped].count("[panel] opened 1 commands") == 1
+    assert picked < mid_pick < swapped
     assert returned.text == prepared.text
     assert returned is not prepared
 
@@ -434,7 +454,7 @@ def test_the_cursor_turns_green_while_chatting_and_resets_on_exit():
     output = _RecordingOutput()
     with create_pipe_input() as pipe:
         pipe.send_text("\x03")
-        run_chat(_session(), commands=[], input=pipe, output=output)
+        run_chat(_session(), input=pipe, output=output)
 
     assert output.raw[0] == "\x1b]12;#00ff00\x07"
     assert output.raw[-1] == "\x1b]112\x07"
@@ -492,7 +512,7 @@ def _form_command(fields=None, continues=False, pin=None):
     )
 
 
-def _form_chat(commands, spawn, log=None, load=None, checkpoint=None):
+def _form_chat(menu, spawn, log=None, load=None, checkpoint=None):
     def run(pipe):
         return run_chat(
             ChatSession(
@@ -500,7 +520,7 @@ def _form_chat(commands, spawn, log=None, load=None, checkpoint=None):
                 0,
                 checkpoint=checkpoint,
             ),
-            commands=commands,
+            menu=menu,
             input=pipe,
             output=DummyOutput(),
             spawn=spawn,
@@ -520,7 +540,7 @@ def test_picking_a_retrain_command_opens_a_form_and_escape_returns_to_the_editor
         spawned.append(cmd)
 
     with create_pipe_input() as pipe:
-        pipe.send_text("\x10\r")
+        pipe.send_text("\x10\x1b[B\x1b[C\r")
         time.sleep(0.2)
         pipe.send_text("\x10")
         time.sleep(0.2)
@@ -529,16 +549,15 @@ def test_picking_a_retrain_command_opens_a_form_and_escape_returns_to_the_editor
         pipe.send_text("\x10")
         time.sleep(0.2)
         pipe.send_text("\x03")
-        _form_chat([command], spawn, log)(pipe)
+        _form_chat(lambda: {"new": (command,), "load": (), "retrain": ()}, spawn, log)(
+            pipe,
+        )
 
     assert spawned == []
     assert [line.split(" ", 1)[1] for line in log.lines] == [
-        "[panel] opened 1 commands",
-        "[panel] closed",
         "[command] picked retrain x",
         "[form] opened retrain x",
         "[form] cancelled retrain x",
-        "[panel] opened 1 commands",
     ]
 
 
@@ -549,14 +568,17 @@ def test_the_form_spawns_the_command_with_the_edited_values():
         spawned.append(cmd)
 
     with create_pipe_input() as pipe:
-        pipe.send_text("\x10\r")
+        pipe.send_text("\x10\x1b[B\x1b[C\r")
         time.sleep(0.2)
         pipe.send_text("\x7f\x7f\x7f\x7f5")
         time.sleep(0.2)
         pipe.send_text("\r")
         time.sleep(0.2)
         pipe.send_text("\x03")
-        _form_chat([_form_command()], spawn)(pipe)
+        _form_chat(
+            lambda: {"new": (_form_command(),), "load": (), "retrain": ()},
+            spawn,
+        )(pipe)
 
     assert len(spawned) == 1
     assert ACCEPTED == {"steps": 5}
@@ -571,16 +593,19 @@ def test_the_form_remembers_edited_values_for_the_session():
         spawned.append(cmd)
 
     with create_pipe_input() as pipe:
-        pipe.send_text("\x10\r")
+        pipe.send_text("\x10\x1b[B\x1b[C\r")
         time.sleep(0.2)
         pipe.send_text("\x7f\x7f\x7f\x7f5\r")
         time.sleep(0.2)
-        pipe.send_text("\x10\r")
+        pipe.send_text("\x10\x1b[B\x1b[C\r")
         time.sleep(0.2)
         pipe.send_text("\r")
         time.sleep(0.2)
         pipe.send_text("\x03")
-        _form_chat([_form_command()], spawn)(pipe)
+        _form_chat(
+            lambda: {"new": (_form_command(),), "load": (), "retrain": ()},
+            spawn,
+        )(pipe)
 
     assert ACCEPTED == {"steps": 5}
     assert len(spawned) == 2
@@ -594,7 +619,7 @@ def test_a_bad_value_keeps_the_form_open_and_spawns_nothing():
         spawned.append(cmd)
 
     with create_pipe_input() as pipe:
-        pipe.send_text("\x10\r")
+        pipe.send_text("\x10\x1b[B\x1b[C\r")
         time.sleep(0.2)
         pipe.send_text("x")
         time.sleep(0.2)
@@ -603,7 +628,11 @@ def test_a_bad_value_keeps_the_form_open_and_spawns_nothing():
         pipe.send_text("\x1b")
         time.sleep(0.2)
         pipe.send_text("\x03")
-        _form_chat([_form_command()], spawn, log)(pipe)
+        _form_chat(
+            lambda: {"new": (_form_command(),), "load": (), "retrain": ()},
+            spawn,
+            log,
+        )(pipe)
 
     assert spawned == []
     assert [line.split(" ", 1)[1] for line in log.lines][-2:] == [
@@ -622,19 +651,23 @@ def test_the_retrain_form_leaves_the_shape_to_the_savegame():
         pass
 
     with create_pipe_input() as pipe:
-        pipe.send_text("\x10\r")
+        pipe.send_text("\x10\x1b[B\x1b[B\x1b[B\x1b[C\r")
         time.sleep(0.2)
         pipe.send_text("\r")
         time.sleep(0.2)
         pipe.send_text("\x03")
         _form_chat(
-            [
-                _form_command(
-                    fields,
-                    continues=True,
-                    pin={START_FROM: "char-gpt"},
+            lambda: {
+                "new": (),
+                "load": (),
+                "retrain": (
+                    _form_command(
+                        fields,
+                        continues=True,
+                        pin={START_FROM: "char-gpt"},
+                    ),
                 ),
-            ],
+            },
             spawn,
         )(pipe)
 
@@ -648,12 +681,12 @@ def test_a_form_command_without_a_load_function_fails_at_the_pick():
         pass
 
     with create_pipe_input() as pipe:
-        pipe.send_text("\x10\r")
+        pipe.send_text("\x10\x1b[B\x1b[C\r")
         time.sleep(0.2)
         pipe.send_text("\x03")
         run_chat(
             _form_session(),
-            commands=[_form_command()],
+            menu=lambda: {"new": (_form_command(),), "load": (), "retrain": ()},
             input=pipe,
             output=DummyOutput(),
             spawn=spawn,
@@ -661,8 +694,6 @@ def test_a_form_command_without_a_load_function_fails_at_the_pick():
         )
 
     assert [line.split(" ", 1)[1] for line in log.lines] == [
-        "[panel] opened 1 commands",
-        "[panel] closed",
         "[command] picked retrain x",
         "[train] retrain x failed: no load function",
     ]
@@ -679,7 +710,7 @@ def test_the_right_arrow_moves_to_the_next_choice():
         spawned.append(cmd)
 
     with create_pipe_input() as pipe:
-        pipe.send_text("\x10\r")
+        pipe.send_text("\x10\x1b[B\x1b[C\r")
         time.sleep(0.2)
         pipe.send_text("\t")
         time.sleep(0.2)
@@ -688,7 +719,10 @@ def test_the_right_arrow_moves_to_the_next_choice():
         pipe.send_text("\r")
         time.sleep(0.2)
         pipe.send_text("\x03")
-        _form_chat([_form_command(fields)], spawn)(pipe)
+        _form_chat(
+            lambda: {"new": (_form_command(fields),), "load": (), "retrain": ()},
+            spawn,
+        )(pipe)
 
     assert ACCEPTED == {"steps": 2000, "size": "100k"}
 
@@ -704,7 +738,7 @@ def test_the_left_arrow_moves_to_the_previous_choice():
         spawned.append(cmd)
 
     with create_pipe_input() as pipe:
-        pipe.send_text("\x10\r")
+        pipe.send_text("\x10\x1b[B\x1b[C\r")
         time.sleep(0.2)
         pipe.send_text("\t")
         time.sleep(0.2)
@@ -715,7 +749,10 @@ def test_the_left_arrow_moves_to_the_previous_choice():
         pipe.send_text("\r")
         time.sleep(0.2)
         pipe.send_text("\x03")
-        _form_chat([_form_command(fields)], spawn)(pipe)
+        _form_chat(
+            lambda: {"new": (_form_command(fields),), "load": (), "retrain": ()},
+            spawn,
+        )(pipe)
 
     assert ACCEPTED == {"steps": 2000, "size": "all"}
 
@@ -815,7 +852,7 @@ def _run_with_popover_spy(monkeypatch, keys):
     with create_pipe_input() as pipe:
         thread = threading.Thread(target=feeder, args=(pipe,))
         thread.start()
-        run_chat(session, commands=[], input=pipe, output=output)
+        run_chat(session, input=pipe, output=output)
         thread.join()
     return popovers[0]
 
@@ -859,7 +896,7 @@ def test_f9_opens_the_menu_bar_arrows_walk_and_about_picks():
     with create_pipe_input() as pipe:
         thread = threading.Thread(target=feeder, args=(pipe,))
         thread.start()
-        run_chat(session, commands=[], input=pipe, output=output)
+        run_chat(session, input=pipe, output=output)
         thread.join()
 
     assert any("built from scratch" in snapshot for snapshot in output.snapshots)
@@ -874,7 +911,7 @@ def test_ctrl_c_inside_the_menu_bar_quits_the_chat():
     with create_pipe_input() as pipe:
 
         def chat():
-            run_chat(session, commands=[], input=pipe, output=output)
+            run_chat(session, input=pipe, output=output)
             done.append(1)
 
         thread = threading.Thread(target=chat)
@@ -909,7 +946,7 @@ def test_a_click_outside_the_bar_deselects_it():
     with create_pipe_input() as pipe:
         thread = threading.Thread(target=feeder, args=(pipe,))
         thread.start()
-        run_chat(session, commands=[], input=pipe, output=output)
+        run_chat(session, input=pipe, output=output)
         thread.join()
 
     assert session.text == "xy"
@@ -929,7 +966,7 @@ def test_f9_keeps_typing_out_of_the_editor_while_the_bar_is_open():
     with create_pipe_input() as pipe:
         thread = threading.Thread(target=feeder, args=(pipe,))
         thread.start()
-        run_chat(session, commands=[], input=pipe, output=DummyOutput())
+        run_chat(session, input=pipe, output=DummyOutput())
         thread.join()
 
     assert session.text == ""
@@ -950,7 +987,7 @@ def test_a_second_f9_closes_the_bar_and_returns_to_the_editor():
     with create_pipe_input() as pipe:
         thread = threading.Thread(target=feeder, args=(pipe,))
         thread.start()
-        run_chat(session, commands=[], input=pipe, output=DummyOutput())
+        run_chat(session, input=pipe, output=DummyOutput())
         thread.join()
 
     assert len(session.text) > len("abab")

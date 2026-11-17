@@ -20,8 +20,8 @@ from murrai.application.runs import (
     train_transformer_lm,
     training_device,
 )
+from murrai.presentation.chat.commands import Command, FormCommand
 from murrai.presentation.chat.form import FRESH, START_FROM, Field
-from murrai.presentation.chat.panel import Command, FormCommand
 from murrai.presentation.chat.session import ChatSession
 
 
@@ -551,24 +551,3 @@ def _retrainable(store):
         for name in store.names()
         if store.load(name).kind in RETRAINABLE
     )
-
-
-def chat_commands(
-    directory,
-    seed=0,
-    store=None,
-    neural_steps=2000,
-    mlp_steps=10000,
-    gpt_steps=2000,
-    clock=time.time,
-):
-    tree = chat_menu(
-        directory,
-        seed,
-        store,
-        neural_steps,
-        mlp_steps,
-        gpt_steps,
-        clock,
-    )()
-    return [*tree["load"], *tree["new"], *tree["retrain"]]

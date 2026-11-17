@@ -1,4 +1,4 @@
-from murrai.presentation.chat.panel import Command
+from murrai.presentation.chat.commands import Command
 from murrai.presentation.chat.repl import run_chat
 from murrai.presentation.chat.session import ChatSession
 
