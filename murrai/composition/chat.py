@@ -157,6 +157,10 @@ def _device(values, prefer_mps):
     )
 
 
+# where a kind is willing to train: mps pays only for the gpt (#49)
+PREFER_MPS = {"windowed-mlp": False, "gpt": True}
+
+
 def _settings(values):
     return {
         "steps": values["steps"],
@@ -232,7 +236,7 @@ def _run_mlp(text, seed, store, values, bus=None, keeper=None):
                 "patience": values["patience"],
                 "shrink": values["shrink"],
                 "holdout": values["holdout"],
-                "device": _device(values, prefer_mps=False),
+                "device": _device(values, prefer_mps=PREFER_MPS["windowed-mlp"]),
             },
             ("window", "dimension", "hidden"),
         ),
@@ -260,7 +264,7 @@ def _run_gpt(text, seed, store, values, bus=None, keeper=None):
                 "patience": values["patience"],
                 "shrink": values["shrink"],
                 "holdout": values["holdout"],
-                "device": _device(values, prefer_mps=True),
+                "device": _device(values, prefer_mps=PREFER_MPS["gpt"]),
             },
             ("depth", "dimension", "heads", "max_time"),
         ),
@@ -703,7 +707,11 @@ def _training_command(
 
         def calibrator_for(values):
             choice = values.get("device", "auto")
-            key = (kind, choice)
+            device = training_device(
+                prefer_mps=PREFER_MPS.get(kind, False),
+                choice=choice,
+            )
+            key = (kind, str(device))
             calibrator = calibrators.get(key)
             if calibrator is None:
                 calibrator = Calibrator(

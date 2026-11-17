@@ -253,7 +253,7 @@ def test_the_form_stays_silent_when_the_rehearsal_fails_without_history(
     defaults = _defaults(gpt)
 
     gpt.estimates(defaults)
-    calibrator = calibrators[("gpt", "auto")]
+    calibrator = next(iter(calibrators.values()))
     for _ in range(200):
         if not calibrator.pending:
             break
@@ -276,6 +276,7 @@ def test_reading_the_estimates_starts_the_rehearsal(corpus, monkeypatch):
 
 
 def test_a_device_change_measures_the_new_chip(corpus, monkeypatch):
+    _available(monkeypatch, cuda=False, mps=True)
     real = murrai_composition_chat.train_transformer_lm
     rehearsals = []
 
@@ -301,6 +302,29 @@ def test_a_device_change_measures_the_new_chip(corpus, monkeypatch):
 
     assert len(rehearsals) == 2
     assert str(rehearsals[1]["device"]) == "cpu"
+
+
+def test_auto_and_prefer_gpu_share_one_measurement(corpus, monkeypatch):
+    real = murrai_composition_chat.train_transformer_lm
+    rehearsals = []
+
+    def counting(text, **kwargs):
+        rehearsals.append(kwargs)
+        return real(text, **kwargs)
+
+    monkeypatch.setattr(murrai_composition_chat, "train_transformer_lm", counting)
+    gpt = _command(corpus, "retrain gpt", seed=0, gpt_steps=20, chip="cpu")
+    defaults = _defaults(gpt)
+
+    for _ in range(200):
+        if gpt.estimates(defaults):
+            break
+        time.sleep(0.01)
+    assert len(rehearsals) == 1
+
+    gpu = {**defaults, "device": "prefer gpu"}
+    assert gpt.estimates(gpu)
+    assert len(rehearsals) == 1
 
 
 def test_a_vanished_checkpoint_is_ignored_by_the_estimate(corpus):
