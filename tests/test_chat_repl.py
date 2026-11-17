@@ -689,6 +689,31 @@ def test_f9_opens_the_menu_bar_arrows_walk_and_about_picks():
     assert session.text == "xy"
 
 
+def test_a_click_outside_the_bar_deselects_it():
+    session = _session()
+    output = _ScreenOutput()
+
+    def feeder(pipe):
+        pipe.send_text("\x1b[20~")
+        time.sleep(0.3)
+        pipe.send_text("\x1b[<0;10;4M")
+        time.sleep(0.1)
+        pipe.send_text("\x1b[<0;10;4m")
+        time.sleep(0.3)
+        pipe.send_text("xy\r")
+        time.sleep(0.3)
+        pipe.send_text("\x03")
+
+    with create_pipe_input() as pipe:
+        thread = threading.Thread(target=feeder, args=(pipe,))
+        thread.start()
+        run_chat(session, commands=[], input=pipe, output=output)
+        thread.join()
+
+    assert session.text == "xy"
+    assert not any("built from scratch" in snapshot for snapshot in output.snapshots)
+
+
 def test_f9_keeps_typing_out_of_the_editor_while_the_bar_is_open():
     session = _session()
 

@@ -73,7 +73,7 @@ STYLE = Style.from_dict(
         "menu-bar": "bg:ansiblue fg:ansiwhite",
         "menu-bar.selected-item": "bg:ansiwhite fg:ansiblue",
         "menu": "bg:ansiblue fg:ansiwhite",
-        "menu-border": "bg:ansiblue fg:ansiblue",
+        "menu-border": "bg:#000087 fg:#000087",
         "menu-item": "bg:ansiblue fg:ansiwhite",
         "menu-item.selected": "bg:ansiwhite fg:ansiblue",
         "shadow": "bg:#000087",
@@ -209,6 +209,18 @@ def status_line(status, model_kind=None):
     return fragments or [("class:hint", "ctrl-p commands")]
 
 
+class ClickableFormattedText(FormattedTextControl):
+    def __init__(self, on_click, **kwargs):
+        super().__init__(**kwargs)
+        self._on_click = on_click
+
+    def mouse_handler(self, mouse_event):
+        handled = super().mouse_handler(mouse_event)
+        if mouse_event.event_type == MouseEventType.MOUSE_UP:
+            self._on_click(mouse_event)
+        return handled
+
+
 def chat_body(
     story,
     editor,
@@ -217,6 +229,7 @@ def chat_body(
     panel,
     status,
     chat,
+    status_click=None,
 ):
     panel_column = HSplit(
         [
@@ -232,6 +245,22 @@ def chat_body(
             ),
         ],
         width=PANEL_WIDTH,
+    )
+    status_control = (
+        ClickableFormattedText(
+            on_click=status_click,
+            text=lambda: status_line(
+                status,
+                chat.session.kind if chat.session else None,
+            ),
+        )
+        if status_click is not None
+        else FormattedTextControl(
+            lambda: status_line(
+                status,
+                chat.session.kind if chat.session else None,
+            ),
+        )
     )
     body = HSplit(
         [
@@ -258,12 +287,7 @@ def chat_body(
                 ],
             ),
             Window(
-                FormattedTextControl(
-                    lambda: status_line(
-                        status,
-                        chat.session.kind if chat.session else None,
-                    ),
-                ),
+                status_control,
                 height=1,
                 dont_extend_height=True,
             ),
@@ -283,7 +307,7 @@ class ChatMenu(MenuContainer):
             if level < len(self.selected_menu):
                 menu = self._get_menu(level)
                 if menu.children:
-                    width = menu.width + 4
+                    width = menu.width + 3
                     result.append(("class:menu-border", Border.TOP_LEFT))
                     result.append(("class:menu-border", Border.HORIZONTAL * width))
                     result.append(("class:menu-border", Border.TOP_RIGHT))
@@ -319,8 +343,8 @@ class ChatMenu(MenuContainer):
                         yield ("class:menu-border", Border.VERTICAL)
                         yield (
                             style,
-                            f"  {item.text}".ljust(width - 2)
-                            + ("> " if item.children else "  "),
+                            f"  {item.text}".ljust(width - 1)
+                            + (">" if item.children else " "),
                             mouse_handler,
                         )
                         yield ("class:menu-border", Border.VERTICAL)
@@ -547,8 +571,9 @@ def run_chat(
         event.app.layout.focus(buffer)
 
     story = Window(
-        FormattedTextControl(
-            lambda: (
+        ClickableFormattedText(
+            on_click=lambda event: focus(buffer),
+            text=lambda: (
                 story_fragments(chat.session, tail_lines=_story_tail(story))
                 if chat.session
                 else [("class:hint", "no model yet; ctrl-p opens commands")]
@@ -557,12 +582,16 @@ def run_chat(
         wrap_lines=True,
     )
     die = Window(
-        FormattedTextControl(lambda: _die_fragments(chat, suggestions, buffer)),
+        ClickableFormattedText(
+            on_click=lambda event: focus(buffer),
+            text=lambda: _die_fragments(chat, suggestions, buffer),
+        ),
         height=1,
     )
     panel_list = Window(
-        FormattedTextControl(
-            lambda: list_fragments(panel),
+        ClickableFormattedText(
+            on_click=lambda event: focus(panel_list),
+            text=lambda: list_fragments(panel),
             focusable=True,
             key_bindings=panel_keys,
         ),
@@ -576,6 +605,7 @@ def run_chat(
             panel=panel,
             status=status,
             chat=chat,
+            status_click=lambda event: focus(buffer),
         ),
         menu_items=[
             MenuItem("Models"),

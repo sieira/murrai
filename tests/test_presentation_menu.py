@@ -28,10 +28,10 @@ def dropdown_fragments(container, selected=None):
     return window.content.text()
 
 
-def test_the_dropdown_border_is_painted_invisible():
+def test_the_dropdown_border_matches_the_shadow():
     attrs = STYLE.get_attrs_for_style_str("class:menu-border")
 
-    assert attrs.color == attrs.bgcolor
+    assert attrs.bgcolor == STYLE.get_attrs_for_style_str("class:shadow").bgcolor
 
 
 def test_the_dropdown_rows_are_left_aligned_with_a_two_space_pad():
@@ -39,7 +39,7 @@ def test_the_dropdown_rows_are_left_aligned_with_a_two_space_pad():
 
     first_row = next(f for f in fragments if "about" in f[1])
 
-    assert first_row[1] == "  about".ljust(13) + "  "
+    assert first_row[1] == "  about".ljust(13) + " "
 
 
 def test_the_longest_item_sets_the_dropdown_width():
@@ -47,7 +47,7 @@ def test_the_longest_item_sets_the_dropdown_width():
 
     second_row = next(f for f in fragments if "longer item" in f[1])
 
-    assert second_row[1] == "  longer item  "
+    assert second_row[1] == "  longer item "
 
 
 def test_the_selected_row_is_marked_and_the_mark_is_invisible():
