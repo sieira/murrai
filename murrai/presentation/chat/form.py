@@ -235,7 +235,8 @@ def hint_fragments(form, width=None):
     field = form.current
     if field is None or not field.about:
         return []
-    text = textwrap.fill(field.about, width) if width else field.about
+    text = field.about[0].upper() + field.about[1:]
+    text = textwrap.fill(text, width) if width else text
     return [("class:hint", text)]
 
 
@@ -245,7 +246,7 @@ def estimate_fragments(form):
     lines = form.command.estimates(form.snapshot_values())
     if not lines:
         return []
-    return [("", "\n"), ("class:eta", lines[0])]
+    return [("", "\n"), ("class:eta", lines[0]), ("", "\n")]
 
 
 class FormOverlay:

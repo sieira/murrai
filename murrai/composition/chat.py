@@ -646,11 +646,11 @@ def _continue_config(store, name, values, shape_names, shapes):
     return config
 
 
-def _measure(run, directory, seed, fields, shape_names):
+def _measure(run, directory, seed, fields, shape_names, device):
     defaults = {field.name: field.default for field in fields}
 
     def measure():
-        burst = {**defaults, "steps": 10, "size": "100k"}
+        burst = {**defaults, "steps": 10, "size": "100k", "device": device}
         clock = StepClock()
         run(_sliced_text(directory, burst), seed, None, burst, bus=clock)
         config = {name: defaults[name] for name in shape_names}
@@ -660,15 +660,7 @@ def _measure(run, directory, seed, fields, shape_names):
     return measure
 
 
-def _calibrate(calibrator):
-    def calibrate():
-        calibrator.begin()
-        threading.Thread(target=calibrator.refresh, daemon=True).start()
-
-    return calibrate
-
-
-def _estimates(kind, store, calibrator, cost, shape_names):
+def _estimates(kind, store, calibrator_for, cost, shape_names):
     shapes = {}
 
     def estimates(values):
@@ -677,10 +669,13 @@ def _estimates(kind, store, calibrator, cost, shape_names):
         config = _cost_config(store, values, shape_names, shapes)
         if config is None:
             return []
+        calibrator = calibrator_for(values)
         projected = calibrator.project(config)
-        if projected is None and not calibrator.pending:
-            # the calibration failed or never ran: fall back to the
-            # closest past run of this kind
+        if projected is None and calibrator.pending:
+            return []
+        if projected is None:
+            # the calibration failed: fall back to the closest past
+            # run of this kind
             projected = estimate_seconds(_records(store), config, kind, cost)
         if projected is None:
             return []
@@ -703,17 +698,24 @@ def _training_command(
     calibrators=None,
 ):
     shape_names = tuple(field.name for field in fields if field.shape)
-    estimates = calibrate = None
+    estimates = None
     if cost is not None:
-        calibrator = calibrators.get(kind)
-        if calibrator is None:
-            calibrator = Calibrator(
-                _measure(run, directory, seed, fields, shape_names),
-                cost,
-            )
-            calibrators[kind] = calibrator
-        estimates = _estimates(kind, store, calibrator, cost, shape_names)
-        calibrate = _calibrate(calibrator)
+
+        def calibrator_for(values):
+            choice = values.get("device", "auto")
+            key = (kind, choice)
+            calibrator = calibrators.get(key)
+            if calibrator is None:
+                calibrator = Calibrator(
+                    _measure(run, directory, seed, fields, shape_names, choice),
+                    cost,
+                )
+                calibrators[key] = calibrator
+                calibrator.begin()
+                threading.Thread(target=calibrator.refresh, daemon=True).start()
+            return calibrator
+
+        estimates = _estimates(kind, store, calibrator_for, cost, shape_names)
 
     def bake(values):
         return Command(
@@ -732,7 +734,6 @@ def _training_command(
         bake=bake,
         trains=True,
         estimates=estimates,
-        calibrate=calibrate,
     )
 
 

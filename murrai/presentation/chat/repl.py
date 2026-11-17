@@ -324,9 +324,6 @@ def run_chat(
                 observer=observer,
             ),
         )
-        calibrate = getattr(command, "calibrate", None)
-        if calibrate is not None:
-            calibrate()
 
     about = AboutPopover(on_close=lambda: focus(buffer), focus=focus)
 

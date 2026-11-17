@@ -189,7 +189,11 @@ def test_a_continue_run_records_an_empty_shape(corpus):
     assert store.record("gpt-corpus").gradient.shape == {}
 
 
-def test_the_gpt_form_estimates_from_history(corpus):
+def test_the_gpt_form_estimates_from_history(corpus, monkeypatch):
+    def boom(*args, **kwargs):
+        raise RuntimeError("no chip")
+
+    monkeypatch.setattr(murrai_composition_chat, "train_transformer_lm", boom)
     store = InMemoryCheckpointStore()
     store.save("gpt-corpus", Snapshot(kind="gpt", merges=(), state={}))
     store.save_record(
@@ -219,28 +223,84 @@ def test_the_gpt_form_estimates_from_history(corpus):
     )
     gpt = _command(corpus, "retrain gpt", seed=0, gpt_steps=20, store=store, chip="cpu")
 
-    seconds = gpt.estimates(_defaults(gpt))
+    lines = []
+    for _ in range(200):
+        lines = gpt.estimates(_defaults(gpt))
+        if lines:
+            break
+        time.sleep(0.01)
 
-    assert seconds == ["ETA: about 10 min"]
+    assert lines == ["ETA: about 10 min"]
 
 
-def test_the_form_is_silent_when_it_has_nothing_to_say(corpus):
-    gpt = _command(corpus, "retrain gpt", seed=0, gpt_steps=20, chip="cpu")
+def test_the_form_stays_silent_when_the_rehearsal_fails_without_history(
+    corpus,
+    monkeypatch,
+):
+    def boom(*args, **kwargs):
+        raise RuntimeError("no chip")
 
-    assert gpt.estimates(_defaults(gpt)) == []
+    monkeypatch.setattr(murrai_composition_chat, "train_transformer_lm", boom)
+    calibrators = {}
+    gpt = _command(
+        corpus,
+        "retrain gpt",
+        seed=0,
+        gpt_steps=20,
+        chip="cpu",
+        calibrators=calibrators,
+    )
+    defaults = _defaults(gpt)
+
+    gpt.estimates(defaults)
+    calibrator = calibrators[("gpt", "auto")]
+    for _ in range(200):
+        if not calibrator.pending:
+            break
+        time.sleep(0.01)
+
+    assert gpt.estimates(defaults) == []
 
 
-def test_the_gpt_form_probes_the_chip_with_a_rehearsal(corpus, monkeypatch):
+def test_reading_the_estimates_starts_the_rehearsal(corpus, monkeypatch):
     captured = _capturing(monkeypatch, "train_transformer_lm")
     gpt = _command(corpus, "retrain gpt", seed=0, gpt_steps=20, chip="cpu")
 
-    gpt.calibrate()
+    gpt.estimates(_defaults(gpt))
     for _ in range(200):
         if "kwargs" in captured:
             break
         time.sleep(0.01)
 
     assert captured["kwargs"]["steps"] == 10
+
+
+def test_a_device_change_measures_the_new_chip(corpus, monkeypatch):
+    real = murrai_composition_chat.train_transformer_lm
+    rehearsals = []
+
+    def counting(text, **kwargs):
+        rehearsals.append(kwargs)
+        return real(text, **kwargs)
+
+    monkeypatch.setattr(murrai_composition_chat, "train_transformer_lm", counting)
+    gpt = _command(corpus, "retrain gpt", seed=0, gpt_steps=20, chip="cpu")
+    defaults = _defaults(gpt)
+
+    for _ in range(200):
+        if gpt.estimates(defaults):
+            break
+        time.sleep(0.01)
+    assert len(rehearsals) == 1
+
+    values = {**defaults, "device": "cpu"}
+    for _ in range(200):
+        if gpt.estimates(values):
+            break
+        time.sleep(0.01)
+
+    assert len(rehearsals) == 2
+    assert str(rehearsals[1]["device"]) == "cpu"
 
 
 def test_a_vanished_checkpoint_is_ignored_by_the_estimate(corpus):
@@ -272,7 +332,7 @@ def test_one_calibration_serves_rebuilt_commands(corpus, monkeypatch):
         )
         if c.name == "retrain gpt"
     )
-    first.calibrate()
+    first.estimates(_defaults(first))
     for _ in range(200):
         if first.estimates(_defaults(first)):
             break
@@ -290,7 +350,7 @@ def test_one_calibration_serves_rebuilt_commands(corpus, monkeypatch):
         )
         if c.name == "retrain gpt"
     )
-    second.calibrate()
+    second.estimates(_defaults(second))
     for _ in range(200):
         if second.estimates(_defaults(second)):
             break

@@ -363,7 +363,7 @@ def _hinted_fields():
 def test_the_hint_explains_the_selected_field():
     form = _form(_hinted_fields())
 
-    assert hint_fragments(form) == [("class:hint", "how many batches to train on")]
+    assert hint_fragments(form) == [("class:hint", "How many batches to train on")]
 
 
 def test_the_hint_follows_the_selection():
@@ -371,7 +371,7 @@ def test_the_hint_follows_the_selection():
 
     form.move(1)
 
-    assert hint_fragments(form) == [("class:hint", "how many sequences train at once")]
+    assert hint_fragments(form) == [("class:hint", "How many sequences train at once")]
 
 
 def test_a_field_without_an_explanation_shows_no_hint():
@@ -394,7 +394,7 @@ def test_a_hint_wraps_between_words():
 
     text = "".join(t for _, t in hint_fragments(form, width=10))
 
-    assert text == "how many\nsequences\ntrain at\nonce"
+    assert text == "How many\nsequences\ntrain at\nonce"
 
 
 def test_an_empty_hint_about_clears_the_line():
@@ -436,7 +436,7 @@ def test_locked_fields_stay_out_of_the_estimates_values():
     assert "depth" not in form.snapshot_values()
 
 
-def test_the_estimate_sits_apart_from_the_hint_as_one_eta_line():
+def test_the_estimate_is_set_off_from_the_hint_by_blank_lines():
     command = FormCommand(
         "retrain x",
         "same memory",
@@ -447,7 +447,11 @@ def test_the_estimate_sits_apart_from_the_hint_as_one_eta_line():
     )
     form = TrainingForm(command)
 
-    assert estimate_fragments(form) == [("", "\n"), ("class:eta", "ETA: about 5 min")]
+    assert estimate_fragments(form) == [
+        ("", "\n"),
+        ("class:eta", "ETA: about 5 min"),
+        ("", "\n"),
+    ]
 
 
 def test_a_command_without_estimates_shows_no_lines():

@@ -22,7 +22,6 @@ class FormCommand:
     bake: Callable
     trains: bool = False
     estimates: Callable | None = None
-    calibrate: Callable | None = None
 
 
 class CommandPanel:

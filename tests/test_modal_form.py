@@ -223,10 +223,12 @@ def test_the_dialog_shows_the_hint_of_the_selected_field():
     )
 
     screens = [_text(rows) for rows in _screens(output)]
-    first = next(i for i, screen in enumerate(screens) if "how many batches" in screen)
-    last = max(i for i, screen in enumerate(screens) if "step size ends" in screen)
-    assert "how many batches" not in screens[last]
-    assert "step size ends" not in screens[first]
+    first = next(i for i, screen in enumerate(screens) if "How many batches" in screen)
+    last = max(
+        i for i, screen in enumerate(screens) if "Where the step size ends" in screen
+    )
+    assert "How many batches" not in screens[last]
+    assert "Where the step size ends" not in screens[first]
 
 
 def test_the_dialog_shows_the_time_estimate():
