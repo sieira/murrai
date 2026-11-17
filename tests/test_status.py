@@ -25,7 +25,7 @@ def test_running_trainings_show_without_a_selected_model():
 
 
 def test_no_model_and_no_runs_leaves_the_hint():
-    assert plain_text(status_line(TrainingStatus())) == "ctrl-p commands"
+    assert plain_text(status_line(TrainingStatus())) == "ctrl-p menu"
 
 
 def test_a_running_training_shows_name_and_counts():

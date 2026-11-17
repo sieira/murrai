@@ -1,5 +1,6 @@
 import pytest
 
+from murrai.presentation.chat.commands import Command, FormCommand
 from murrai.presentation.chat.form import (
     Field,
     TrainingForm,
@@ -7,7 +8,6 @@ from murrai.presentation.chat.form import (
     label_fragments,
 )
 from murrai.presentation.chat.lanes import ChatLog
-from murrai.presentation.chat.panel import Command, FormCommand
 
 
 def _fields():

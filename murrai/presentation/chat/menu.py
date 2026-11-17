@@ -228,25 +228,15 @@ def menu_tree(content, pick, about):
     def leaf(item):
         return lambda: pick(item)
 
-    retrain_items = [
-        MenuItem(item.name, handler=leaf(item)) for item in content["retrain"]
-    ]
+    def item(item):
+        return MenuItem(f"{item.name} · {item.description}", handler=leaf(item))
+
+    retrain_items = [item(entry) for entry in content["retrain"]]
     models = MenuItem(
         "Models",
         children=[
-            MenuItem(
-                "new",
-                children=[
-                    MenuItem(item.name, handler=leaf(item)) for item in content["new"]
-                ],
-            ),
-            MenuItem(
-                "load",
-                children=[
-                    MenuItem(f"{item.name} · {item.description}", handler=leaf(item))
-                    for item in content["load"]
-                ],
-            ),
+            MenuItem("new", children=[item(entry) for entry in content["new"]]),
+            MenuItem("load", children=[item(entry) for entry in content["load"]]),
             MenuItem("retrain", children=retrain_items),
         ],
     )
