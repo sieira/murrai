@@ -27,7 +27,8 @@ murrAI trains a 10-50M parameter model on this machine (Apple M4, MPS) and
 targets, at Phase 5:
 
 1. Perplexity per parameter at or better than GPT-2-small on a held-out
-   corpus that both models score. The corpus is named in a Phase 5 ADR.
+   corpus that both models score. The corpus is named in a Phase 5
+   study note in `doc/study/`, decided before the training run.
 2. Grammatical fluency on murrAI's home domain, judged by the author on
    side-by-side samples against GPT-2-small output.
 
@@ -44,4 +45,5 @@ is an acceptable outcome; an unmeasured claim is not.
 
 - Phase 5 includes a scoring harness that runs GPT-2-small on the same
   corpus (an adapter behind the existing ports).
-- The corpus choice and the fluency protocol get their own Phase 5 ADRs.
+- The corpus choice and the fluency protocol are recorded as Phase 5
+  study notes in `doc/study/`, decided before compute spend.

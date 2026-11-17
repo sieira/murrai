@@ -4,13 +4,13 @@ from types import SimpleNamespace
 import pytest
 import torch
 
+import murrai.application.runs as runs
 import murrai.composition.chat as murrai_composition_chat
 from murrai.adapters.checkpoint import FileCheckpointStore, InMemoryCheckpointStore
 from murrai.application.checkpoints import CheckpointRecord, RunSettings, Snapshot
 from murrai.application.ports import TrainingEvent
 from murrai.application.runs import training_device
 from murrai.composition.chat import chat_commands
-from murrai.domain.transformer import TransformerLM
 
 
 @pytest.fixture
@@ -341,10 +341,16 @@ def test_the_load_command_builds_a_working_session(corpus):
 
 
 def test_training_saves_the_model_before_the_metrics_run(tmp_path, monkeypatch):
-    def broken_perplexity(self, text):
-        raise RuntimeError("metrics blew up")
+    # The step-0 baseline validates before any step runs; the break must
+    # land on the post-training metrics so the run itself completes.
+    seen = []
 
-    monkeypatch.setattr(TransformerLM, "perplexity", broken_perplexity)
+    def broken_metrics(model, stream):
+        seen.append(stream)
+        if len(seen) > 1:
+            raise RuntimeError("metrics blew up")
+
+    monkeypatch.setattr(runs, "_stream_nll", broken_metrics)
     corpus = tmp_path / "corpus"
     corpus.mkdir()
     (corpus / "story.txt").write_text("aabbaabb" * 20)
